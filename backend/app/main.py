@@ -43,8 +43,8 @@ from .routers import users
 app.include_router(users.router)
 
 # Mount static images and videos
-images_path = "/app/data/images"
-videos_path = "/app/data/videos"
+images_path = "data/images"
+videos_path = "data/videos"
 os.makedirs(images_path, exist_ok=True)
 os.makedirs(videos_path, exist_ok=True)
 app.mount("/static/images", StaticFiles(directory=images_path), name="static_images")
