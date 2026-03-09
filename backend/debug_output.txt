@@ -1,0 +1,16 @@
+--- STARTING: Leonardo Abalsamo ---
+Lead already exists: Leonardo Abalsamo (ID: 10176)
+Checking existing order for lead 10176 with amount 361422.0
+SaleOrder already exists for Lead Leonardo Abalsamo
+--- STARTING: Lucrecia Andrea Carino ---
+Lead already exists: Lucrecia Andrea Carino (ID: 10545)
+Checking existing order for lead 10545 with amount 137600.0
+SaleOrder already exists for Lead Lucrecia Andrea Carino
+--- STARTING: Marcela Alejandra Matias ---
+Lead already exists: Marcela Alejandra Matias (ID: 10591)
+Checking existing order for lead 10591 with amount 311686.26
+SaleOrder already exists for Lead Marcela Alejandra Matias
+--- STARTING: Silvana Sonzogni ---
+Lead already exists: Silvana Sonzogni (ID: 10749)
+Checking existing order for lead 10749 with amount 208248.8
+SaleOrder already exists for Lead Silvana Sonzogni

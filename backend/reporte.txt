@@ -1,0 +1,70 @@
+--- PROBLEMAS ENCONTRADOS ---
+[SKU 10100001] Faltan imágenes - Nombre: SET DE VALIJAS URBAN MODE SOFT NEGRO 20" 24" 28" DOBLE RUEDA, CON CANDADO SIMIL TSA X1U - Stock: 0
+[SKU 10100002] Faltan imágenes - Nombre: SET DE VALIJAS SKORA PINK SOFT SIMIL NYLON NEGRO 20""24""28"" RUEDA SIMPLE X1U - Stock: 0
+[SKU 10200004] Faltan imágenes - Nombre: Mochila Travel Skora Pink - Stock: 0
+[SKU 10200005] Faltan imágenes - Nombre: Mochila Travel Go - Stock: 0
+[SKU 10200007] Faltan imágenes - Nombre: Humidificador en forma de pelota - Stock: 0
+[SKU 10200008] Faltan imágenes - Nombre: Dispenser de detergente con porta esponja - Stock: 0
+[SKU 10200009] No existe en CATALOGO.csv - Nombre: MOCHILA TRAVEL SKORA PINK 18 PULG COMPARTIMENTO ACOLCHADO PORTANOTEBOOK EXPANDIBLE, BOLSILLO OCULT
+[SKU 10200009] Faltan imágenes - Nombre: MOCHILA TRAVEL SKORA PINK 18 PULG COMPARTIMENTO ACOLCHADO PORTANOTEBOOK EXPANDIBLE, BOLSILLO OCULT - Stock: 0
+[SKU 10200010] No existe en CATALOGO.csv - Nombre: MOCHILA TRAVEL GO 18 PULG COMPARTIMENTO ACOLCHADO PORTANOTEBOOK EXPANDIBLE, BOLSILLO OCULTO CON C
+[SKU 10200010] Faltan imágenes - Nombre: MOCHILA TRAVEL GO 18 PULG COMPARTIMENTO ACOLCHADO PORTANOTEBOOK EXPANDIBLE, BOLSILLO OCULTO CON C - Stock: 0
+[SKU 10300012] Faltan imágenes - Nombre: Humidificador en forma de pelota - Stock: 0
+[SKU 10300013] Faltan imágenes - Nombre: Dispenser de detergente con porta esponja - Stock: 0
+[SKU 10300014] Faltan imágenes - Nombre: Dispenser de detergente con porta esponja - Stock: 0
+[SKU 10300015] Faltan imágenes - Nombre: Organizador de 16 compartimientos - Stock: 0
+[SKU 10300016] No existe en CATALOGO.csv - Nombre: LUNCHERA BOX CON CUBIERTOS REDONDA  16*8CM 372
+[SKU 10300017] No existe en CATALOGO.csv - Nombre: LUNCHERA BOX RECTANGULAR
+[SKU 10300017] Faltan imágenes - Nombre: LUNCHERA BOX RECTANGULAR - Stock: 0
+[SKU 10600018] Faltan imágenes - Nombre: Organizador de 6 compartimientos - Stock: 0
+[SKU 10500019] Faltan imágenes - Nombre: 
+Pizarra LED  - Stock: 0
+[SKU 10300020] Faltan imágenes - Nombre: 
+Pizarra LED  - Stock: 0
+[SKU 10300022] Faltan imágenes - Nombre: 
+Pizarra LED  - Stock: 0
+[SKU 10300023] Faltan imágenes - Nombre: 
+Pizarra LED  - Stock: 0
+[SKU 10300024] Faltan imágenes - Nombre: Oso de peluche Marron - Stock: 0
+[SKU 10600025] Faltan imágenes - Nombre: Oso de peluche Celeste - Stock: 0
+[SKU 10300026] No existe en CATALOGO.csv - Nombre: JARRA DE VIDRIO 1,8L 370
+[SKU 10300030] Faltan imágenes - Nombre: Organizador de Acrílico con Manija - Stock: 10
+[SKU 10300031] No existe en CATALOGO.csv - Nombre: ORGANIZADOR CON MANIJA 29*15CM 370
+[SKU 10300031] Faltan imágenes - Nombre: ORGANIZADOR CON MANIJA 29*15CM 370 - Stock: 0
+[SKU 10600032] Faltan imágenes - Nombre: Conejo de peluche - Stock: 0
+[SKU 10300034] Faltan imágenes - Nombre: Proyector de galaxia LED en forma de astronauta - Stock: 0
+[SKU 10300035] Faltan imágenes - Nombre: 
+Proyector de galaxia en forma de astronauta - Stock: 0
+[SKU 10300036] Faltan imágenes - Nombre: 
+Proyector de galaxia LED en forma de astronauta - Stock: 0
+[SKU 10600037] Faltan imágenes - Nombre: Mini proyector Ultra HD - Stock: 0
+[SKU 10300038] Faltan imágenes - Nombre: Luz Tactil Usb - Stock: 0
+[SKU 10300040] No existe en CATALOGO.csv - Nombre: SET X3 RECIPIENTES HERMETICOS DE VIDRIO 330/600/900MI
+[SKU 20600041] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR PIPE MADERA CLARO 500 ML
+[SKU 20600041] Faltan imágenes - Nombre: HUMIDIFICADOR PIPE MADERA CLARO 500 ML - Stock: 2
+[SKU 20600042] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR PIPE MADERA OSCURO 500 ML
+[SKU 20600042] Faltan imágenes - Nombre: HUMIDIFICADOR PIPE MADERA OSCURO 500 ML - Stock: 2
+[SKU 20600043] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR LONG NECK MADERA CLARO 500 ML
+[SKU 20600043] Faltan imágenes - Nombre: HUMIDIFICADOR LONG NECK MADERA CLARO 500 ML - Stock: 0
+[SKU 20600044] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR LONG NECK MADERA OSURO 500 ML
+[SKU 20600044] Faltan imágenes - Nombre: HUMIDIFICADOR LONG NECK MADERA OSURO 500 ML - Stock: 0
+[SKU 20600045] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR MOON 120 ML
+[SKU 20600045] Faltan imágenes - Nombre: HUMIDIFICADOR MOON 120 ML - Stock: 0
+[SKU 20600046] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR FLASH GLASS 120 ML
+[SKU 20600046] Faltan imágenes - Nombre: HUMIDIFICADOR FLASH GLASS 120 ML - Stock: 1
+[SKU 20600047] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR STATIC LICHT GLASS 200 ML
+[SKU 20600047] Faltan imágenes - Nombre: HUMIDIFICADOR STATIC LICHT GLASS 200 ML - Stock: 2
+[SKU 20600049] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR VOLCANO 300 ML
+[SKU 20600049] Faltan imágenes - Nombre: HUMIDIFICADOR VOLCANO 300 ML - Stock: 0
+[SKU 20600050] No existe en CATALOGO.csv - Nombre: HUMIDIFICADOR JUPITER 120 ML
+[SKU 20600050] Faltan imágenes - Nombre: HUMIDIFICADOR JUPITER 120 ML - Stock: 0
+[SKU 20300052] Faltan imágenes - Nombre: Dispenser de detergente con porta esponja - Stock: 170
+[SKU 20800058] Faltan imágenes - Nombre: Oso de peluche Marron - Stock: 0
+[SKU 20800061] Faltan imágenes - Nombre: Elefante de peluche - Stock: 1
+[SKU 20800063] Faltan imágenes - Nombre: Proyector de galaxia LED en forma de astronauta - Stock: 0
+[SKU 20800064] Faltan imágenes - Nombre: 
+Proyector de galaxia en forma de astronauta - Stock: 1
+[SKU 20600067] Faltan imágenes - Nombre: 
+Proyector de galaxia LED en forma de astronauta - Stock: 0
+[SKU 10700076] No existe en CATALOGO.csv - Nombre: LUZ TACTIL USB 
+[SKU 10900078] No existe en CATALOGO.csv - Nombre: SET ALIMENTACION COMIDA BEBE SILICONA PLATO VASO BOWL BABERO ROSA BEBE

@@ -1,0 +1,139 @@
+import io
+import os
+from datetime import datetime
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from .. import models
+
+def generate_remito_pdf(order: models.SaleOrder) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    normal_style = styles["Normal"]
+    bold_style = ParagraphStyle(name='Bold', parent=styles['Normal'], fontName='Helvetica-Bold')
+    
+    # 1. Top Green Header
+    # Adjust date for Argentina timezone since `order.created_at` might be in UTC from DB
+    from datetime import timedelta
+    date_ar = order.created_at - timedelta(hours=3) if getattr(order.created_at, "tzinfo", None) is None or order.created_at.tzinfo.utcoffset(order.created_at).total_seconds() == 0 else order.created_at
+    
+    header_date = Paragraph(f"<font color='white'><b>Fecha: {date_ar.strftime('%d/%m/%Y')}</b></font>", bold_style)
+    t_header = Table([[header_date]], colWidths=[18*cm])
+    t_header.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#008f68")),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 4),
+        ('TOPPADDING', (0,0), (-1,-1), 4),
+    ]))
+    elements.append(t_header)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # 2. Company Info & Logo
+    logo_path = "/app/data/images/UNPO1.jpg" # Using the valid logo
+    if os.path.exists(logo_path):
+        logo = Image(logo_path, width=4*cm, height=2*cm)
+    else:
+        logo = Paragraph("<b>UNPO</b>", ParagraphStyle(name="Title", fontSize=24, parent=styles["Normal"]))
+        
+    company_info = Paragraph("Razón Social<br/>CUIT<br/>WEB", normal_style)
+    remito_number = Paragraph(f"<b>REMITO N° {order.id}</b>", normal_style)
+    
+    t_company = Table([[logo, company_info, remito_number]], colWidths=[5*cm, 8*cm, 5*cm])
+    t_company.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (2,0), (2,0), 'CENTER'),
+        ('BOX', (0,0), (-1,-1), 1, colors.black),
+        ('INNERGRID', (0,0), (-1,-1), 1, colors.black),
+        ('PADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(t_company)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # 3. Client Info
+    lead = order.lead
+    client_data = f"""
+    <b>Nombre:</b> {lead.full_name}<br/>
+    <b>DNI/CUIT:</b> {lead.dni_cuit or ''}<br/>
+    <b>Domicilio:</b> {lead.address or ''}<br/>
+    <b>Localidad:</b> {lead.locality or ''}<br/>
+    <b>Provincia:</b> {lead.province or ''}<br/>
+    <b>Teléfono:</b> {lead.phone or ''}<br/>
+    <b>C.P:</b> {lead.zip_code or ''}
+    """
+    t_client = Table([[Paragraph(client_data, normal_style)]], colWidths=[18*cm])
+    t_client.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 1, colors.black),
+        ('PADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(t_client)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # 4. Products Table
+    table_data = [["BULTO", "UNIDAD", "DESCRIPCIÓN", "PRECIO", "PRECIO TOTAL"]]
+    
+    for item in order.items:
+        table_data.append([
+            "1",  # BULTO (simplificado)
+            str(int(item.quantity)), # UNIDAD
+            str(item.product.name if item.product else item.product_sku),
+            f"${item.unit_price:,.2f}",
+            f"${item.total_price:,.2f}"
+        ])
+        
+    # Table Total
+    table_data.append(["", "", "", "", f"${order.total_amount:,.2f}"])
+        
+    t_products = Table(table_data, colWidths=[2*cm, 2*cm, 8*cm, 3*cm, 3*cm])
+    t_products.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")), # Slate-900 header
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('ALIGN', (2,1), (2,-1), 'LEFT'),
+        ('ALIGN', (3,1), (-1,-1), 'RIGHT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ('TOPPADDING', (0,0), (-1,0), 6),
+        ('GRID', (0,0), (-1, -2), 0.5, colors.HexColor("#e2e8f0")), # Light slate grid
+        ('BOX', (0,0), (-1, -2), 1, colors.HexColor("#94a3b8")),
+        ('BOX', (-1, -1), (-1, -1), 1, colors.HexColor("#94a3b8")), # Total box
+        ('BACKGROUND', (-1,-1), (-1,-1), colors.HexColor("#f8fafc")), # Total background
+        ('FONTNAME', (-1,-1), (-1,-1), 'Helvetica-Bold'),
+    ]))
+    elements.append(t_products)
+    elements.append(Spacer(1, 1*cm))
+    
+    # 5. Received Box
+    t_received = Table([[Paragraph("RECIBÍ CONFORME:", normal_style)]], colWidths=[18*cm], rowHeights=[2*cm])
+    t_received.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 1, colors.black),
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('PADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(t_received)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # 6. Transport Details
+    delivery_d = order.delivery_date.strftime('%d/%m/%Y') if order.delivery_date else ''
+    transport_data = f"""
+    DATOS DEL TRANSPORTISTA<br/>
+    Nombre: {order.transport_name or ''}<br/>
+    DNI: {order.transport_dni or ''}<br/>
+    Patente: {order.license_plate or ''}<br/>
+    Lugar de Entrega: {order.delivery_address or ''}<br/>
+    Fecha de Entrega: {delivery_d}
+    """
+    t_transport = Table([[Paragraph(transport_data, normal_style)]], colWidths=[18*cm])
+    t_transport.setStyle(TableStyle([
+        ('BOX', (0,0), (-1,-1), 1, colors.black),
+        ('PADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(t_transport)
+    
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.read()
