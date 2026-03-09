@@ -22,7 +22,8 @@ origins = [
     "https://unpo.com.ar",
     "https://www.unpo.com.ar",
     "https://unpo.online",
-    "https://www.unpo.online"
+    "https://www.unpo.online",
+    "https://unpo-website.vercel.app"
 ]
 
 app.add_middleware(
