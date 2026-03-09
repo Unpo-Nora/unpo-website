@@ -19,6 +19,10 @@ origins = [
     "http://localhost:3000",
     "http://localhost:5173",
     "http://127.0.0.1:3000",
+    "https://unpo.com.ar",
+    "https://www.unpo.com.ar",
+    "https://unpo.online",
+    "https://www.unpo.online"
 ]
 
 app.add_middleware(
