@@ -57,7 +57,7 @@ export default function UserManagement() {
         }
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/users/', {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -76,7 +76,7 @@ export default function UserManagement() {
         setActionLoading(true);
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch('http://localhost:8000/users/', {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -119,7 +119,7 @@ export default function UserManagement() {
         try {
             const token = localStorage.getItem('token');
             // Todos los usuarios pueden cambiar su propia contraseña usando su ID actual
-            const res = await fetch(`http://localhost:8000/users/${currentUser?.id}/password`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/${currentUser?.id}/password`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

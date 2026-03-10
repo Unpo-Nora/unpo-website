@@ -46,7 +46,7 @@ export default function NoraDashboard() {
     const fetchLeads = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/leads/', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -70,7 +70,7 @@ export default function NoraDashboard() {
         if (lead.status === 'NEW' && currentUser?.email) {
             try {
                 const token = localStorage.getItem('token');
-                const response = await fetch(`http://localhost:8000/leads/${lead.id}`, {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
@@ -98,7 +98,7 @@ export default function NoraDashboard() {
     const handleRevertToNew = async (lead: Lead) => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:8000/leads/${lead.id}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',

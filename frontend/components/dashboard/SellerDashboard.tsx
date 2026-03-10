@@ -78,7 +78,7 @@ export default function SellerDashboard() {
     const fetchLeads = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/leads/', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
@@ -100,7 +100,7 @@ export default function SellerDashboard() {
         if (lead.status === 'NEW' && currentUser?.email) {
             try {
                 const token = localStorage.getItem('token');
-                const response = await fetch(`http://localhost:8000/leads/${lead.id}`, {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
                     method: 'PATCH',
                     headers: {
                         'Content-Type': 'application/json',
@@ -137,7 +137,7 @@ export default function SellerDashboard() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:8000/leads/${selectedLead.id}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${selectedLead.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -167,7 +167,7 @@ export default function SellerDashboard() {
     const handleRevertToNew = async (lead: Lead) => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:8000/leads/${lead.id}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -193,7 +193,7 @@ export default function SellerDashboard() {
         setIsDeleting(true);
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:8000/leads/${leadToDelete.id}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${leadToDelete.id}`, {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
@@ -253,7 +253,7 @@ export default function SellerDashboard() {
                 seller: currentUser?.email
             };
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/leads/', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

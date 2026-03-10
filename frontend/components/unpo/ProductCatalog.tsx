@@ -34,7 +34,7 @@ export default function ProductCatalog() {
     const fetchExchangeRate = async () => {
         try {
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`http://${host}:8000/settings/manual_exchange_rate`);
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`);
             if (response.ok) {
                 const data = await response.json();
                 setExchangeRate(Number(data.value));
@@ -47,7 +47,7 @@ export default function ProductCatalog() {
     const fetchCategories = async () => {
         try {
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`http://${host}:8000/products/categories`);
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/categories`);
             if (response.ok) {
                 const data = await response.json();
                 setCategories(data);
@@ -63,7 +63,7 @@ export default function ProductCatalog() {
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             // Fetch more products to handle local filtering better if needed, 
             // but the user wants it organized.
-            let apiUrl = `http://${host}:8000/products/?limit=200`;
+            let apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=200`;
 
             const response = await fetch(apiUrl);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);

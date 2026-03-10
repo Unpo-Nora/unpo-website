@@ -30,7 +30,7 @@ export default function ClientsDashboard() {
     const fetchClients = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/leads/?status=CLIENT', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/?status=CLIENT`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
@@ -44,7 +44,7 @@ export default function ClientsDashboard() {
 
     const handleDownloadPDF = async (orderId: number) => {
         try {
-            window.open(`http://localhost:8000/sales/${orderId}/pdf`, '_blank');
+            window.open(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderId}/pdf`, '_blank');
         } catch (error) {
             console.error(error);
         }
@@ -55,7 +55,7 @@ export default function ClientsDashboard() {
 
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`http://localhost:8000/sales/${orderId}/cancel`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderId}/cancel`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -201,7 +201,7 @@ function ClientHistory({ leadId, onDownload, onCancel }: { leadId: number, onDow
     const fetchHistory = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:8000/sales/lead/${leadId}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/lead/${leadId}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();

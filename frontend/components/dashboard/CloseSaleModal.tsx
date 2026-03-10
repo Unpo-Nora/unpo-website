@@ -55,7 +55,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     const fetchProducts = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/products/?limit=1000', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=1000`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
@@ -134,7 +134,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
             };
 
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/sales/', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -147,7 +147,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                 const orderData = await response.json();
 
                 // Immediately trigger PDF download safely
-                window.open(`http://localhost:8000/sales/${orderData.id}/pdf`, '_blank');
+                window.open(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderData.id}/pdf`, '_blank');
 
                 onSuccess(orderData.id);
             } else {

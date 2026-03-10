@@ -57,7 +57,7 @@ export default function AnalyticsDashboard() {
                 const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
                 const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
 
-                const response = await fetch(`http://${host}:8000/analytics/summary`, {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/summary`, {
                     headers: {
                         'Authorization': `Bearer ${token}`
                     }

@@ -52,7 +52,7 @@ export default function InventoryDashboard() {
         try {
             const token = localStorage.getItem('token');
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const apiUrl = `http://${host}:8000/products/`;
+            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/`;
 
             console.log("Fetching inventory from:", apiUrl);
             const response = await fetch(apiUrl, {
@@ -77,7 +77,7 @@ export default function InventoryDashboard() {
         try {
             const token = localStorage.getItem('token');
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`http://${host}:8000/settings/manual_exchange_rate`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
@@ -98,7 +98,7 @@ export default function InventoryDashboard() {
         try {
             const token = localStorage.getItem('token');
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`http://${host}:8000/settings/manual_exchange_rate`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
                 method: 'PUT',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -129,7 +129,7 @@ export default function InventoryDashboard() {
         setMessage(null);
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:8000/products/sync', {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/sync`, {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${token}` }
             });

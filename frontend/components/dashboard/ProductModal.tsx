@@ -70,8 +70,8 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
             const token = localStorage.getItem('token');
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             const url = product
-                ? `http://${host}:8000/products/${product.sku}`
-                : `http://${host}:8000/products/`;
+                ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${product.sku}`
+                : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/`;
 
             const method = product ? 'PUT' : 'POST';
 
@@ -94,7 +94,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                         imageFormData.append('file', file);
 
                         try {
-                            await fetch(`http://${host}:8000/products/${sku}/images`, {
+                            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${sku}/images`, {
                                 method: 'POST',
                                 headers: { 'Authorization': `Bearer ${token}` },
                                 body: imageFormData
@@ -140,7 +140,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
         try {
             const token = localStorage.getItem('token');
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`http://${host}:8000/products/${product.sku}`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${product.sku}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -166,7 +166,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
         try {
             const token = localStorage.getItem('token');
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`http://${host}:8000/products/${product.sku}/hard`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${product.sku}/hard`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` }
             });
