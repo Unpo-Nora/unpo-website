@@ -85,18 +85,22 @@ export default function ProductCatalog() {
 
     // Local filtering for better UX responsiveness, excluding out of stock items
     const filteredProducts = useMemo(() => {
-        return products.filter(p => {
+        const filtered = products.filter(p => {
             const hasStock = p.stock_quantity > 0;
             const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
             const matchesCategory = selectedCategoryId ? p.category_id === selectedCategoryId : true;
             return hasStock && matchesSearch && matchesCategory;
         });
+
+        return filtered.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
     }, [products, searchTerm, selectedCategoryId]);
 
     // Only show categories that have products in the current list
     const activeCategories = useMemo(() => {
         const productCategoryIds = new Set(products.map(p => p.category_id));
-        return categories.filter(cat => productCategoryIds.has(cat.id));
+        const active = categories.filter(cat => productCategoryIds.has(cat.id));
+
+        return active.sort((a, b) => a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
     }, [categories, products]);
 
     const getCategoryName = (id?: number) => {
