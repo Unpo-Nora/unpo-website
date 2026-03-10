@@ -160,14 +160,18 @@ def generate_catalog_pdf(products) -> bytes:
     elements.append(t_header)
     elements.append(Spacer(1, 0.5*cm))
     
-    # 2. Company Info & Logo
-    logo_path = "/app/data/images/UNPO1.jpg"
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # This reaches backend/app, need to go one level up to backend
+    PROJECT_ROOT = os.path.dirname(BASE_DIR)
+    IMAGES_DIR = os.path.join(PROJECT_ROOT, "data", "images")
+    
+    logo_path = os.path.join(IMAGES_DIR, "UNPO1.jpg")
     if os.path.exists(logo_path):
         logo = Image(logo_path, width=5*cm, height=2.5*cm)
     else:
         logo = Paragraph("<b>UNPO</b>", ParagraphStyle(name="Title", fontSize=24, parent=styles["Normal"]))
         
-    company_info = Paragraph("<b>Importadores Directos Muebles y Bazar</b><br/>Precios Mayoristas (Sin IVA)<br/>unpo.com.ar", normal_style)
+    company_info = Paragraph("<b>Importadores Directos Bazar</b><br/>Precios Mayoristas (Sin IVA)<br/>unpo.com.ar", normal_style)
     
     t_company = Table([[logo, company_info]], colWidths=[8*cm, 10*cm])
     t_company.setStyle(TableStyle([
@@ -187,14 +191,14 @@ def generate_catalog_pdf(products) -> bytes:
         # Load Image
         img_element = ""
         if p.images and len(p.images) > 0:
-            filename = p.images[0].replace("/static/images/", "")
-            img_path = os.path.join("/app/data/images", filename)
+            filename = p.images[0].replace("/static/images/", "").strip("/")
+            img_path = os.path.join(IMAGES_DIR, filename)
             if os.path.exists(img_path):
                 img_element = Image(img_path, width=2.5*cm, height=2.5*cm)
                 
         # Format Text Elements
         cat_name = p.category.name if p.category else "-"
-        name_desc = f"<b>{p.name}</b><br/><font size=8 color='#475569'>{p.description[:100]}...</font>"
+        name_desc = f"<b>{p.name}</b><br/><font size=8 color='#475569'>{p.description}</font>"
         prod_para = Paragraph(name_desc, normal_style)
         price_str = f"${p.price_wholesale:,.2f}"
         
