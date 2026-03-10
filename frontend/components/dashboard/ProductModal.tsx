@@ -308,7 +308,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                     {/* Existing Images */}
                                     {existingImages.map((imgUrl, idx) => (
                                         <div key={`existing-${idx}`} className="relative group aspect-square rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center">
-                                            <img src={`http://localhost:8000${imgUrl}`} alt="Product snapshot" className="w-full h-full object-cover" />
+                                            <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${imgUrl}`} alt="Product snapshot" className="w-full h-full object-cover" />
                                         </div>
                                     ))}
 

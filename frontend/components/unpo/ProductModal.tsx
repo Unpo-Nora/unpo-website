@@ -43,7 +43,7 @@ export default function ProductModal({ product, isOpen, onClose, categoryName }:
     };
 
     const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const baseUrl = `http://${host}:8000`;
+    const baseUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`;
 
     // Combinar imágenes y videos en una sola lista multimedia
     const media = [

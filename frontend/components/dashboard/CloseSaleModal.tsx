@@ -223,7 +223,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                                     {/* Thumbnail */}
                                                     <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
                                                         {imgUrl ? (
-                                                            <img src={`http://localhost:8000${imgUrl}`} alt={p.name} className="w-full h-full object-cover" />
+                                                            <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${imgUrl}`} alt={p.name} className="w-full h-full object-cover" />
                                                         ) : (
                                                             <Package size={24} className="text-slate-300" />
                                                         )}
@@ -264,7 +264,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                                 {/* Cart Item Thumbnail */}
                                                 <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
                                                     {c.product_image ? (
-                                                        <img src={`http://localhost:8000${c.product_image}`} alt={c.product_name} className="w-full h-full object-cover" />
+                                                        <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${c.product_image}`} alt={c.product_name} className="w-full h-full object-cover" />
                                                     ) : (
                                                         <Package size={16} className="text-slate-300" />
                                                     )}

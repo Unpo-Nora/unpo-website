@@ -230,7 +230,7 @@ export default function ProductCatalog() {
                                                     <img
                                                         src={(() => {
                                                             const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-                                                            const baseUrl = `http://${currentHost}:8000`;
+                                                            const baseUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`;
                                                             return product.images[0].startsWith('http')
                                                                 ? product.images[0]
                                                                 : `${baseUrl}${product.images[0]}`;
