@@ -137,3 +137,93 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     doc.build(elements)
     buffer.seek(0)
     return buffer.read()
+
+def generate_catalog_pdf(products) -> bytes:
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    elements = []
+    
+    styles = getSampleStyleSheet()
+    normal_style = styles["Normal"]
+    bold_style = ParagraphStyle(name='Bold', parent=styles['Normal'], fontName='Helvetica-Bold')
+    title_style = ParagraphStyle(name='CatTitle', parent=styles['Normal'], fontName='Helvetica-Bold', fontSize=18, textColor=colors.HexColor("#0f172a"), spaceAfter=12)
+    
+    # 1. Top Header
+    header_date = Paragraph(f"<font color='white'><b>Catálogo Mayorista UNPO - Fecha: {datetime.now().strftime('%d/%m/%Y')}</b></font>", bold_style)
+    t_header = Table([[header_date]], colWidths=[18*cm])
+    t_header.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor("#008f68")),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(t_header)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # 2. Company Info & Logo
+    logo_path = "/app/data/images/UNPO1.jpg"
+    if os.path.exists(logo_path):
+        logo = Image(logo_path, width=5*cm, height=2.5*cm)
+    else:
+        logo = Paragraph("<b>UNPO</b>", ParagraphStyle(name="Title", fontSize=24, parent=styles["Normal"]))
+        
+    company_info = Paragraph("<b>Importadores Directos Muebles y Bazar</b><br/>Precios Mayoristas (Sin IVA)<br/>unpo.com.ar", normal_style)
+    
+    t_company = Table([[logo, company_info]], colWidths=[8*cm, 10*cm])
+    t_company.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (1,0), (1,0), 'RIGHT'),
+    ]))
+    elements.append(t_company)
+    elements.append(Spacer(1, 0.5*cm))
+    
+    # 3. Products Table
+    table_data = [["IMAGEN", "SKU", "PRODUCTO", "CATEGORÍA", "PRECIO\n(Sin IVA)"]]
+    
+    # Sort products by category name for better presentation
+    products_sorted = sorted(products, key=lambda x: (x.category.name if x.category else "", x.name))
+    
+    for p in products_sorted:
+        # Load Image
+        img_element = ""
+        if p.images and len(p.images) > 0:
+            filename = p.images[0].replace("/static/images/", "")
+            img_path = os.path.join("/app/data/images", filename)
+            if os.path.exists(img_path):
+                img_element = Image(img_path, width=2.5*cm, height=2.5*cm)
+                
+        # Format Text Elements
+        cat_name = p.category.name if p.category else "-"
+        name_desc = f"<b>{p.name}</b><br/><font size=8 color='#475569'>{p.description[:100]}...</font>"
+        prod_para = Paragraph(name_desc, normal_style)
+        price_str = f"${p.price_wholesale:,.2f}"
+        
+        table_data.append([
+            img_element,
+            p.sku,
+            prod_para,
+            cat_name,
+            price_str
+        ])
+        
+    t_products = Table(table_data, colWidths=[3.5*cm, 2.5*cm, 7*cm, 2.5*cm, 2.5*cm])
+    t_products.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (2,1), (2,-1), 'LEFT'), # Left align product info
+        ('ALIGN', (4,1), (4,-1), 'RIGHT'), # Right align prices
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('TOPPADDING', (0,0), (-1,0), 8),
+        ('GRID', (0,0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ('BOX', (0,0), (-1, -1), 1, colors.HexColor("#94a3b8")),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+    ]))
+    
+    elements.append(t_products)
+    
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer.read()

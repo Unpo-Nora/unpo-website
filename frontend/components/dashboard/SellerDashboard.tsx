@@ -13,7 +13,8 @@ import {
     Save,
     RotateCcw,
     CheckCircle,
-    Trash2
+    Trash2,
+    Download
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import CloseSaleModal from './CloseSaleModal';
@@ -280,6 +281,34 @@ export default function SellerDashboard() {
         }
     };
 
+    const handleDownloadCatalog = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/catalog/pdf`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Catalogo_UNPO.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } else {
+                alert("Error al descargar el catálogo. Usted no tiene permisos o hubo un error en el servidor.");
+            }
+        } catch (error) {
+            console.error("Error downloading catalog:", error);
+            alert("Error de red al intentar descargar.");
+        }
+    };
+
     const filteredLeads = leads
         .filter(l => l.status === activeTab)
         .filter(l =>
@@ -318,6 +347,14 @@ export default function SellerDashboard() {
                 </div>
 
                 <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-slate-100 self-start">
+                    <button
+                        onClick={handleDownloadCatalog}
+                        className="px-6 py-2 mr-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
+                        title="Descargar Catálogo en stock (PDF)"
+                    >
+                        <Download size={18} />
+                        Catálogo PDF
+                    </button>
                     <button
                         onClick={() => { setActiveTab("NEW"); setCurrentPage(1); }}
                         className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "NEW" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'

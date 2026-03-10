@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 import shutil
+from datetime import datetime
 import uuid
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -15,7 +16,30 @@ get_db = database.get_db
 
 from .auth import get_current_user
 from ..utils.product_importer import sync_products_from_excel
+from ..utils.pdf_generator import generate_catalog_pdf
+from fastapi.responses import Response
 import os
+
+@router.get("/catalog/pdf")
+def download_catalog_pdf(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Genera y descarga un PDF del catálogo con productos en stock. Solo Staff.
+    """
+    if current_user.role not in ["admin", "seller", "vendor"]:
+        raise HTTPException(status_code=403, detail="No tiene permisos para descargar el catálogo")
+        
+    products = crud.get_products(db, in_stock=True, limit=1000)
+    
+    pdf_bytes = generate_catalog_pdf(products)
+    
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=Catalogo_UNPO_{datetime.now().strftime('%Y%m%d')}.pdf"}
+    )
 
 @router.post("/sync")
 def sync_products(
