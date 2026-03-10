@@ -270,25 +270,13 @@ export default function ProductCatalog() {
                                                 </p>
 
                                                 <div className="mt-auto flex flex-col justify-end pt-5 border-t border-slate-50 gap-2">
-                                                    <div>
-                                                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-1">PRECIO MAYORISTA UNITARIO</p>
-
-                                                        {product.price_usd ? (
-                                                            <div className="flex flex-col">
-                                                                <div className="flex items-baseline gap-1">
-                                                                    <span className="text-xl font-black text-slate-900 tracking-tighter italic">US$ {product.price_usd}</span>
-                                                                    <span className="text-[10px] font-bold text-slate-400">+ IVA</span>
-                                                                </div>
-                                                                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md inline-block max-w-max mt-1">
-                                                                    Aprox. ${(product.price_usd * exchangeRate).toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS
-                                                                </span>
-                                                            </div>
-                                                        ) : (
-                                                            <p className="text-xl font-black text-slate-900 tracking-tighter italic">
-                                                                ${Number(product.price_wholesale).toLocaleString()} <span className="text-[10px] font-bold text-slate-400 not-italic">+ IVA</span>
-                                                            </p>
-                                                        )}
-                                                    </div>
+                                                    <a
+                                                        href="/#contact"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-center rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-sm"
+                                                    >
+                                                        Me interesa este producto
+                                                    </a>
                                                     {product.stock_quantity > 0 ? (
                                                         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-emerald-100">
                                                             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>

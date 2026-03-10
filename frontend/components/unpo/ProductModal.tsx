@@ -155,15 +155,14 @@ export default function ProductModal({ product, isOpen, onClose, categoryName }:
                         {product.name}
                     </h2>
 
-                    <div className="mb-8 p-6 bg-slate-50 rounded-[32px] border border-slate-100/50">
-                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-1">PRECIO MAYORISTA (ARS)</p>
-                        <div className="flex items-baseline gap-2">
-                            <p className="text-4xl font-black text-slate-900 tracking-tighter italic">
-                                ${Number(product.price_wholesale).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
-                                <span className="text-[10px] font-bold text-slate-400 ml-2 not-italic">+ IVA</span>
-                            </p>
-                        </div>
-                    </div>
+                    <a
+                        href="/#contact"
+                        onClick={onClose}
+                        className="mb-8 w-full p-6 bg-blue-600 hover:bg-blue-700 text-white rounded-[32px] shadow-xl shadow-blue-200 transition-all flex flex-col items-center justify-center group"
+                    >
+                        <span className="text-sm font-black uppercase tracking-widest mb-1 group-hover:scale-105 transition-transform">Me interesa este producto</span>
+                        <span className="text-xs text-blue-200 font-medium tracking-wide">Consultar precio y disponibilidad</span>
+                    </a>
 
                     <div className="space-y-6 mb-10">
                         <div className="flex items-center gap-3">
