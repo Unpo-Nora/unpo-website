@@ -38,7 +38,7 @@ export default function Hero() {
                             Quiero ser cliente
                         </Link>
                         <Link
-                            href="#catalog"
+                            href="/catalogo"
                             className="w-full sm:w-auto px-8 py-4 bg-transparent text-white border-2 border-white/30 hover:border-white hover:bg-white/10 text-lg font-semibold rounded-xl transition-all backdrop-blur-sm"
                         >
                             Ver Catálogo

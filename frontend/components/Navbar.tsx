@@ -29,7 +29,7 @@ export default function Navbar() {
 
                     {/* Desktop Navigation */}
                     <div className="hidden md:flex items-center space-x-8">
-                        <Link href="#catalog" className="text-slate-600 hover:text-blue-600 font-medium transition-colors">
+                        <Link href="/catalogo" className="text-slate-600 hover:text-blue-600 font-medium transition-colors">
                             Catálogo
                         </Link>
                         <Link href="#about" className="text-slate-600 hover:text-blue-600 font-medium transition-colors">

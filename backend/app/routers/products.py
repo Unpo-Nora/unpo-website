@@ -44,6 +44,21 @@ def sync_products(
 def read_categories(db: Session = Depends(get_db)):
     return crud.get_categories(db)
 
+@router.post("/categories", response_model=schemas.Category)
+def create_category(
+    category: schemas.CategoryCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tiene permisos para crear categorías")
+        
+    db_cat = models.Category(name=category.name)
+    db.add(db_cat)
+    db.commit()
+    db.refresh(db_cat)
+    return db_cat
+
 @router.get("/", response_model=List[schemas.Product])
 def read_products(
     skip: int = 0, 
