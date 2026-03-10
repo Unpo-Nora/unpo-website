@@ -6,6 +6,8 @@ from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from PIL import Image as PILImage
+from reportlab.lib.utils import ImageReader
 from .. import models
 
 def generate_remito_pdf(order: models.SaleOrder) -> bytes:
@@ -194,7 +196,26 @@ def generate_catalog_pdf(products) -> bytes:
             filename = p.images[0].replace("/static/images/", "").strip("/")
             img_path = os.path.join(IMAGES_DIR, filename)
             if os.path.exists(img_path):
-                img_element = Image(img_path, width=2.5*cm, height=2.5*cm)
+                try:
+                    pil_img = PILImage.open(img_path)
+                    if pil_img.mode in ("RGBA", "CMYK", "LA", "P"):
+                        # Remove transparency and convert
+                        background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                        if pil_img.mode in ('RGBA', 'LA'):
+                            background.paste(pil_img, mask=pil_img.split()[-1])
+                        else:
+                            background.paste(pil_img)
+                        pil_img = background
+                    else:
+                        pil_img = pil_img.convert("RGB")
+                        
+                    img_io = io.BytesIO()
+                    pil_img.save(img_io, format='JPEG')
+                    img_io.seek(0)
+                    img_element = Image(img_io, width=2.5*cm, height=2.5*cm)
+                except Exception as e:
+                    print(f"Error loading image {img_path}: {e}")
+                    img_element = ""
                 
         # Format Text Elements
         cat_name = p.category.name if p.category else "-"
