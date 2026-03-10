@@ -9,6 +9,7 @@ def reset_julian_password():
         if user:
             user.hashed_password = auth.get_password_hash("Julian*2024")
             user.role = "admin"
+            user.is_active = True
             db.commit()
             print(f"Password reset for {user.email}. New password is 'Julian*2024'")
         else:
