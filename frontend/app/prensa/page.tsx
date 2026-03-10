@@ -54,7 +54,7 @@ export default function PrensaPage() {
                                 </p>
                                 <div className="flex flex-col sm:flex-row gap-4">
                                     <a
-                                        href="https://instagram.com/unpo_oficial" // Update with real link
+                                        href="https://www.instagram.com/unpo.ar/" // Update with real link
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center justify-center gap-3 px-6 py-4 bg-gradient-to-r from-purple-500 via-pink-500 to-orange-500 text-white rounded-xl font-medium hover:opacity-90 transition-opacity"
@@ -64,7 +64,7 @@ export default function PrensaPage() {
                                     </a>
 
                                     <a
-                                        href="https://facebook.com/unposa" // Update with real link
+                                        href="https://www.facebook.com/profile.php?id=61558759825065" // Update with real link
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="flex items-center justify-center gap-3 px-6 py-4 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"

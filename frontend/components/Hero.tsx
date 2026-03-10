@@ -3,7 +3,7 @@ import Image from 'next/image';
 
 export default function Hero() {
     return (
-        <section className="relative bg-slate-900 overflow-hidden min-h-[600px] flex items-center">
+        <section id="about" className="relative bg-slate-900 overflow-hidden min-h-[600px] flex items-center">
             {/* Background Image with Overlay */}
             <div className="absolute inset-0 z-0">
                 <Image
