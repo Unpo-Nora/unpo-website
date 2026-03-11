@@ -187,7 +187,7 @@ def generate_catalog_pdf(products) -> bytes:
     table_data = [["IMAGEN", "SKU", "PRODUCTO", "CATEGORÍA", "PRECIO\n(Sin IVA)"]]
     
     # Sort products by category name for better presentation
-    products_sorted = sorted(products, key=lambda x: (x.category.name if x.category else "", x.name))
+    products_sorted = sorted(products, key=lambda x: (str(x.category.name) if x.category and x.category.name else "", str(x.name) if x.name else ""))
     
     for p in products_sorted:
         # Load Image
@@ -208,11 +208,12 @@ def generate_catalog_pdf(products) -> bytes:
                         pil_img = background
                     else:
                         pil_img = pil_img.convert("RGB")
-                        
+                    
+                    pil_img.thumbnail((250, 250))
                     img_io = io.BytesIO()
-                    pil_img.save(img_io, format='JPEG')
+                    pil_img.save(img_io, format='JPEG', quality=75, optimize=True)
                     img_io.seek(0)
-                    img_element = Image(img_io, width=2.5*cm, height=2.5*cm)
+                    img_element = Image(img_io, width=4.0*cm, height=4.0*cm)
                 except Exception as e:
                     print(f"Error loading image {img_path}: {e}")
                     img_element = ""
@@ -235,7 +236,7 @@ def generate_catalog_pdf(products) -> bytes:
             price_str
         ])
         
-    t_products = Table(table_data, colWidths=[3.5*cm, 2.5*cm, 7*cm, 2.5*cm, 2.5*cm])
+    t_products = Table(table_data, colWidths=[4.2*cm, 2.3*cm, 6.5*cm, 2.5*cm, 2.5*cm])
     t_products.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
