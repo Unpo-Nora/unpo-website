@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
 import shutil
 from datetime import datetime
 import uuid
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from .. import crud, models, schemas, database
+from PIL import Image as PILImage
+import gc
 
 router = APIRouter(
     prefix="/products",
@@ -198,3 +200,56 @@ async def upload_product_image(
     crud.update_product(db, sku=sku, product_data={"images": current_images})
     
     return {"status": "success", "url": image_url, "images": current_images}
+
+def optimize_all_images_bg():
+    images_dir = "/app/data/images"
+    if not os.path.exists(images_dir):
+        return
+        
+    for filename in os.listdir(images_dir):
+        if filename.startswith("."): 
+            continue
+        img_path = os.path.join(images_dir, filename)
+        if os.path.isfile(img_path):
+            try:
+                PILImage.MAX_IMAGE_PIXELS = 25000000
+                pil_img = PILImage.open(img_path)
+                
+                # If image is larger than 1000px, shrink to 1000px max (safe for PDF, small disk size)
+                if max(pil_img.size) > 1000:
+                    pil_img.thumbnail((1000, 1000))
+                    
+                    if pil_img.mode in ("RGBA", "CMYK", "LA", "P"):
+                        background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                        if pil_img.mode in ('RGBA', 'LA'):
+                            background.paste(pil_img, mask=pil_img.split()[-1])
+                        else:
+                            background.paste(pil_img)
+                        pil_img.close()
+                        pil_img = background
+                    elif pil_img.mode != "RGB":
+                        rgb_img = pil_img.convert("RGB")
+                        pil_img.close()
+                        pil_img = rgb_img
+                        
+                    pil_img.save(img_path, format='JPEG', quality=85, optimize=True)
+                
+                try:
+                    pil_img.close()
+                except:
+                    pass
+                    
+                gc.collect()
+            except Exception as e:
+                print(f"Error optimizing {filename}: {e}")
+
+@router.post("/optimize-images")
+def trigger_image_optimization(
+    background_tasks: BackgroundTasks,
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tiene permisos para optimizar imágenes")
+    
+    background_tasks.add_task(optimize_all_images_bg)
+    return {"status": "success", "message": "Image optimization started in background"}
