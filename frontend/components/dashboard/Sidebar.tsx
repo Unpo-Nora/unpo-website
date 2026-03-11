@@ -51,7 +51,7 @@ export default function Sidebar() {
             title: 'Importar Leads',
             path: '/admin/import',
             icon: <FileUp size={20} />,
-            roles: ['admin']
+            roles: ['admin', 'vendedor']
         },
         {
             title: 'Personal y Seguridad',

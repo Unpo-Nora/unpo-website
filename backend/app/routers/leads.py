@@ -132,7 +132,7 @@ async def import_leads_excel(
     """
     Endpoint para subir y procesar archivos Excel de leads. Solo Admins.
     """
-    if current_user.role != "admin":
+    if current_user.role not in ["admin", "vendedor"]:
         raise HTTPException(status_code=403, detail="No tiene permisos para realizar esta acción")
         
     if not file.filename.endswith(('.xlsx', '.xlsm')):

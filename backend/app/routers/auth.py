@@ -68,6 +68,21 @@ async def reset_password_nico(db: Session = Depends(get_db)):
     db.commit()
     return {"status": "success", "message": "Password for nicolasr reset to Nico*2024"}
 
+@router.get("/fix-roles")
+async def fix_roles(db: Session = Depends(get_db)):
+    from .. import models
+    users = db.query(models.User).all()
+    fixed = []
+    for u in users:
+        if u.role not in ['admin', 'vendedor'] and u.role is not None:
+            if u.full_name in ['admin', 'vendedor']:
+                temp = u.role
+                u.role = u.full_name
+                u.full_name = temp
+                fixed.append(u.email)
+    db.commit()
+    return {"status": "success", "fixed": fixed}
+
 @router.get("/setup-admin")
 async def setup_initial_admin(db: Session = Depends(get_db)):
     from .. import models
