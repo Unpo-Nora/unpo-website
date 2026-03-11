@@ -204,6 +204,8 @@ def generate_catalog_pdf(products) -> bytes:
                     if not os.path.exists(thumb_path):
                         # Generate thumbnail to disk
                         pil_img = PILImage.open(img_path)
+                        pil_img.thumbnail((250, 250))
+                        
                         if pil_img.mode in ("RGBA", "CMYK", "LA", "P"):
                             background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
                             if pil_img.mode in ('RGBA', 'LA'):
@@ -212,14 +214,16 @@ def generate_catalog_pdf(products) -> bytes:
                                 background.paste(pil_img)
                             pil_img.close()
                             pil_img = background
-                        else:
+                        elif pil_img.mode != "RGB":
                             rgb_img = pil_img.convert("RGB")
                             pil_img.close()
                             pil_img = rgb_img
                         
-                        pil_img.thumbnail((250, 250))
                         pil_img.save(thumb_path, format='JPEG', quality=85, optimize=True)
                         pil_img.close()
+                        
+                        import gc
+                        gc.collect()
                         
                     img_element = Image(thumb_path, width=4.0*cm, height=4.0*cm)
                 except Exception as e:
