@@ -196,36 +196,38 @@ def generate_catalog_pdf(products) -> bytes:
             filename = p.images[0].replace("/static/images/", "").strip("/")
             img_path = os.path.join(IMAGES_DIR, filename)
             if os.path.exists(img_path):
+                # Hidden file prefix prevents uvicorn --reload from triggering
+                thumb_path = os.path.join(IMAGES_DIR, f".thumb_{filename}")
+                
                 try:
-                    # Protect against decompression bombs
-                    PILImage.MAX_IMAGE_PIXELS = 15000000
-                    
-                    pil_img = PILImage.open(img_path)
-                    pil_img.draft("RGB", (500, 500))
-                    pil_img.thumbnail((250, 250))
-                    
-                    if pil_img.mode in ("RGBA", "CMYK", "LA", "P"):
-                        background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
-                        if pil_img.mode in ('RGBA', 'LA'):
-                            background.paste(pil_img, mask=pil_img.split()[-1])
-                        else:
-                            background.paste(pil_img)
+                    if not os.path.exists(thumb_path):
+                        # Protect against decompression bombs
+                        PILImage.MAX_IMAGE_PIXELS = 15000000
+                        
+                        pil_img = PILImage.open(img_path)
+                        pil_img.draft("RGB", (500, 500))
+                        pil_img.thumbnail((250, 250))
+                        
+                        if pil_img.mode in ("RGBA", "CMYK", "LA", "P"):
+                            background = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                            if pil_img.mode in ('RGBA', 'LA'):
+                                background.paste(pil_img, mask=pil_img.split()[-1])
+                            else:
+                                background.paste(pil_img)
+                            pil_img.close()
+                            pil_img = background
+                        elif pil_img.mode != "RGB":
+                            rgb_img = pil_img.convert("RGB")
+                            pil_img.close()
+                            pil_img = rgb_img
+                        
+                        pil_img.save(thumb_path, format='JPEG', quality=85, optimize=True)
                         pil_img.close()
-                        pil_img = background
-                    elif pil_img.mode != "RGB":
-                        rgb_img = pil_img.convert("RGB")
-                        pil_img.close()
-                        pil_img = rgb_img
-                    
-                    img_io = io.BytesIO()
-                    pil_img.save(img_io, format='JPEG', quality=85, optimize=True)
-                    pil_img.close()
-                    img_io.seek(0)
-                    
-                    import gc
-                    gc.collect()
-                    
-                    img_element = Image(img_io, width=4.0*cm, height=4.0*cm)
+                        
+                        import gc
+                        gc.collect()
+                        
+                    img_element = Image(thumb_path, width=4.0*cm, height=4.0*cm)
                 except Exception as e:
                     print(f"Error loading image {img_path}: {e}")
                     img_element = ""
