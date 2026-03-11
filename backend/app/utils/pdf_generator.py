@@ -219,9 +219,13 @@ def generate_catalog_pdf(products) -> bytes:
                 
         # Format Text Elements
         cat_name = p.category.name if p.category else "-"
-        name_desc = f"<b>{p.name}</b><br/><font size=8 color='#475569'>{p.description}</font>"
+        import html
+        safe_name = html.escape(str(p.name or ""))
+        safe_desc = html.escape(str(p.description or ""))
+        name_desc = f"<b>{safe_name}</b><br/><font size=8 color='#475569'>{safe_desc}</font>"
         prod_para = Paragraph(name_desc, normal_style)
-        price_str = f"${p.price_wholesale:,.2f}"
+        price_val = p.price_wholesale if getattr(p, "price_wholesale", None) is not None else 0.0
+        price_str = f"${price_val:,.2f}"
         
         table_data.append([
             img_element,

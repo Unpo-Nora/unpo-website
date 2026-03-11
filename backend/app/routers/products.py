@@ -28,7 +28,7 @@ def download_catalog_pdf(
     """
     Genera y descarga un PDF del catálogo con productos en stock. Solo Staff.
     """
-    if current_user.role not in ["admin", "seller", "vendor"]:
+    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
         raise HTTPException(status_code=403, detail="No tiene permisos para descargar el catálogo")
         
     products = crud.get_products(db, in_stock=True, limit=1000)

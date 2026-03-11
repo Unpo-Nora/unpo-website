@@ -34,7 +34,7 @@ from .auth import get_current_user
 @router.get("/", response_model=List[schemas.LeadResponse])
 def read_leads(
     skip: int = 0, 
-    limit: int = 1000, 
+    limit: int = 5000, 
     status: str = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)

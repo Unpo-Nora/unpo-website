@@ -98,7 +98,7 @@ def get_lead_by_contact(db: Session, email: str = None, phone: str = None):
         
     return db.query(models.Lead).filter(or_(*filters)).first()
 
-def get_leads(db: Session, skip: int = 0, limit: int = 1000, status: str = None, seller: str = None):
+def get_leads(db: Session, skip: int = 0, limit: int = 5000, status: str = None, seller: str = None):
     query = db.query(models.Lead)
     if status:
         query = query.filter(models.Lead.status == status)
