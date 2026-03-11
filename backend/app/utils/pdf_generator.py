@@ -184,7 +184,8 @@ def generate_catalog_pdf(products) -> bytes:
     elements.append(Spacer(1, 0.5*cm))
     
     # 3. Products Table
-    table_data = [["IMAGEN", "SKU", "PRODUCTO", "CATEGORÍA", "PRECIO\n(Sin IVA)"]]
+    header_row = ["IMAGEN", "SKU", "PRODUCTO", "CATEGORÍA", "PRECIO\n(Sin IVA)"]
+    all_rows = []
     
     # Sort products by category name for better presentation
     products_sorted = sorted(products, key=lambda x: (str(x.category.name) if x.category and x.category.name else "", str(x.name) if x.name else ""))
@@ -212,7 +213,7 @@ def generate_catalog_pdf(products) -> bytes:
         price_val = p.price_wholesale if getattr(p, "price_wholesale", None) is not None else 0.0
         price_str = f"${price_val:,.2f}"
         
-        table_data.append([
+        all_rows.append([
             img_element,
             p.sku,
             prod_para,
@@ -220,8 +221,7 @@ def generate_catalog_pdf(products) -> bytes:
             price_str
         ])
         
-    t_products = Table(table_data, colWidths=[4.2*cm, 2.3*cm, 6.5*cm, 2.5*cm, 2.5*cm])
-    t_products.setStyle(TableStyle([
+    table_style = TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
@@ -234,10 +234,17 @@ def generate_catalog_pdf(products) -> bytes:
         ('GRID', (0,0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
         ('BOX', (0,0), (-1, -1), 1, colors.HexColor("#94a3b8")),
         ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-    ]))
-    
-    elements.append(t_products)
-    
+    ])
+
+    CHUNK_SIZE = 50
+    for i in range(0, len(all_rows), CHUNK_SIZE):
+        chunk = all_rows[i:i + CHUNK_SIZE]
+        t_products = Table([header_row] + chunk, colWidths=[4.2*cm, 2.3*cm, 6.5*cm, 2.5*cm, 2.5*cm], repeatRows=1)
+        t_products.setStyle(table_style)
+        elements.append(t_products)
+        if i + CHUNK_SIZE < len(all_rows):
+             elements.append(Spacer(1, 0.5*cm))
+             
     doc.build(elements)
     buffer.seek(0)
     return buffer.read()
