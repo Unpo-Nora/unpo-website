@@ -198,12 +198,19 @@ def generate_catalog_pdf(products) -> bytes:
             if os.path.exists(img_path):
                 import tempfile
                 thumb_dir = os.path.join(tempfile.gettempdir(), "unpo_thumbs")
-                os.makedirs(thumb_dir, exist_ok=True)
-                thumb_path = os.path.join(thumb_dir, f"thumb_{filename}")
+                
                 try:
+                    os.makedirs(thumb_dir, exist_ok=True)
+                    thumb_path = os.path.join(thumb_dir, f"thumb_{filename}")
+                    
                     if not os.path.exists(thumb_path):
                         # Generate thumbnail to disk
+                        # Protect against decompression bombs
+                        PILImage.MAX_IMAGE_PIXELS = 15000000 # ~15 Megapixels max
+                        
                         pil_img = PILImage.open(img_path)
+                        # Tell decoder to subsample if possible (JPEGs only), saves massive memory!
+                        pil_img.draft("RGB", (500, 500))
                         pil_img.thumbnail((250, 250))
                         
                         if pil_img.mode in ("RGBA", "CMYK", "LA", "P"):
