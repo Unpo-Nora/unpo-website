@@ -196,7 +196,10 @@ def generate_catalog_pdf(products) -> bytes:
             filename = p.images[0].replace("/static/images/", "").strip("/")
             img_path = os.path.join(IMAGES_DIR, filename)
             if os.path.exists(img_path):
-                thumb_path = os.path.join(IMAGES_DIR, f"thumb_250_{filename}")
+                import tempfile
+                thumb_dir = os.path.join(tempfile.gettempdir(), "unpo_thumbs")
+                os.makedirs(thumb_dir, exist_ok=True)
+                thumb_path = os.path.join(thumb_dir, f"thumb_{filename}")
                 try:
                     if not os.path.exists(thumb_path):
                         # Generate thumbnail to disk
