@@ -59,6 +59,15 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def read_users_me(current_user = Depends(get_current_user)):
     return current_user
 
+@router.get("/reset-nico")
+async def reset_password_nico(db: Session = Depends(get_db)):
+    user = crud.get_user_by_email(db, email="nicolasr@unpo.com.ar")
+    if not user:
+        return {"status": "error", "message": "User not found"}
+    user.hashed_password = auth.get_password_hash("Nico*2024")
+    db.commit()
+    return {"status": "success", "message": "Password for nicolasr reset to Nico*2024"}
+
 @router.get("/setup-admin")
 async def setup_initial_admin(db: Session = Depends(get_db)):
     from .. import models
