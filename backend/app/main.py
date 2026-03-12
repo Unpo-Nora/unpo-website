@@ -71,3 +71,13 @@ def fix_production_10300028(db: Session = Depends(get_db)):
         })
         return {"status": "success", "message": "Updated 10300028 successfully."}
     return {"status": "error", "message": "not found"}
+
+@app.get("/fix_admin_name")
+def fix_admin_name(db: Session = Depends(get_db)):
+    from . import models
+    admin = db.query(models.User).filter(models.User.email == "julianv@unpo.com.ar").first()
+    if admin:
+        admin.full_name = "Julian"
+        db.commit()
+        return {"status": "success", "message": "Admin name updated to Julian."}
+    return {"status": "error", "message": "Admin user not found"}
