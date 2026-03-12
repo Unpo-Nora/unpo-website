@@ -36,9 +36,13 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     elements.append(Spacer(1, 0.5*cm))
     
     # 2. Company Info & Logo
-    logo_path = "/app/data/images/UNPO1.jpg" # Using the valid logo
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    PROJECT_ROOT = os.path.dirname(BASE_DIR)
+    IMAGES_DIR = os.path.join(PROJECT_ROOT, "data", "images")
+    logo_path = os.path.join(IMAGES_DIR, "UNPO1.jpg")
+    
     if os.path.exists(logo_path):
-        logo = Image(logo_path, width=4*cm, height=2*cm)
+        logo = Image(logo_path, width=4.5*cm, height=2.2*cm)
     else:
         logo = Paragraph("<b>UNPO</b>", ParagraphStyle(name="Title", fontSize=24, parent=styles["Normal"]))
         
