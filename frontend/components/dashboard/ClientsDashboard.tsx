@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Search, History, FileText, Download, XCircle, MessageCircle } from 'lucide-react';
+import { Search, History, FileText, Download, XCircle, MessageCircle, ShoppingCart } from 'lucide-react';
+import CloseSaleModal from './CloseSaleModal';
 
 interface Client {
     id: number;
@@ -22,6 +23,8 @@ export default function ClientsDashboard() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
     const [currentPage, setCurrentPage] = useState(1);
+    const [clientToCloseSale, setClientToCloseSale] = useState<Client | null>(null);
+    const [refreshKey, setRefreshKey] = useState(0);
 
     useEffect(() => {
         fetchClients();
@@ -120,7 +123,7 @@ export default function ClientsDashboard() {
                             ) : paginatedClients.length === 0 ? (
                                 <tr><td colSpan={4} className="text-center py-20 text-slate-400 font-medium">No hay clientes aún</td></tr>
                             ) : paginatedClients.map((client) => (
-                                <tr key={client.id} className="hover:bg-slate-50/80 transition-colors">
+                                <tr key={`${client.id}-${refreshKey}`} className="hover:bg-slate-50/80 transition-colors">
                                     <td className="px-8 py-6">
                                         <div className="font-bold text-slate-900 text-lg leading-tight">{client.full_name}</div>
                                         <div className="text-sm text-emerald-600 mt-1 font-bold">Cliente Oficial</div>
@@ -140,7 +143,15 @@ export default function ClientsDashboard() {
                                         </div>
                                     </td>
                                     <td className="px-8 py-6 text-right">
-                                        <ClientHistory leadId={client.id} onDownload={handleDownloadPDF} onCancel={handleCancelOrder} />
+                                        <div className="flex flex-col items-end gap-3">
+                                            <button
+                                                onClick={() => setClientToCloseSale(client)}
+                                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-blue-100 mb-2"
+                                            >
+                                                <ShoppingCart size={14} /> Nueva Venta
+                                            </button>
+                                            <ClientHistory leadId={client.id} onDownload={handleDownloadPDF} onCancel={handleCancelOrder} />
+                                        </div>
                                     </td>
                                 </tr>
                             ))}
@@ -186,6 +197,18 @@ export default function ClientsDashboard() {
                     </div>
                 )}
             </div>
+
+            {/* Close Sale Modal */}
+            {clientToCloseSale && (
+                <CloseSaleModal
+                    lead={clientToCloseSale}
+                    onClose={() => setClientToCloseSale(null)}
+                    onSuccess={(orderId) => {
+                        setClientToCloseSale(null);
+                        setRefreshKey(prev => prev + 1);
+                    }}
+                />
+            )}
         </div>
     );
 }
