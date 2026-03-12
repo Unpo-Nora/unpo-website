@@ -218,7 +218,7 @@ export default function ProductCatalog() {
                                     </p>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-6">
                                     {filteredProducts.map((product) => (
                                         <div
                                             key={product.sku}
@@ -260,22 +260,22 @@ export default function ProductCatalog() {
                                                 </div>
                                             </div>
 
-                                            <div className="p-8 flex flex-col flex-1">
-                                                <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors mb-3 line-clamp-2 min-h-[3rem] text-lg tracking-tight">
+                                            <div className="p-4 flex flex-col flex-1">
+                                                <h3 className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors mb-2 line-clamp-2 min-h-[2.5rem] text-sm md:text-base tracking-tight">
                                                     {product.name}
                                                 </h3>
 
-                                                <p className="text-slate-500 text-sm line-clamp-3 mb-8 font-medium leading-relaxed">
+                                                <p className="text-slate-500 text-xs md:text-sm line-clamp-2 mb-4 font-medium leading-relaxed">
                                                     {product.description || 'Consulta detalles técnicos y embalaje con un asesor de ventas especializado.'}
                                                 </p>
 
-                                                <div className="mt-auto flex flex-col justify-end pt-5 border-t border-slate-50 gap-2">
+                                                <div className="mt-auto flex flex-col justify-end pt-3 border-t border-slate-50 gap-2">
                                                     <a
                                                         href="/#contact"
                                                         onClick={(e) => e.stopPropagation()}
-                                                        className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white text-center rounded-xl text-xs font-black uppercase tracking-widest transition-colors shadow-sm"
+                                                        className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white text-center rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors shadow-sm"
                                                     >
-                                                        Me interesa este producto
+                                                        Me interesa
                                                     </a>
                                                     {product.stock_quantity > 0 ? (
                                                         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-widest rounded-xl border border-emerald-100">

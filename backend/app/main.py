@@ -1,6 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from .database import engine, Base
+from sqlalchemy.orm import Session
+from .database import engine, Base, get_db
 from .routers import products, leads, auth, analytics, sales, settings
 from fastapi.staticfiles import StaticFiles
 import os
@@ -58,3 +59,15 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "ok", "db": "connected"}
+
+@app.get("/fix_production_10300028")
+def fix_production_10300028(db: Session = Depends(get_db)):
+    from . import crud
+    product = crud.get_product(db, sku='10300028')
+    if product:
+        crud.update_product(db, sku='10300028', product_data={
+            "description": "Aceitero/Vinagrero de vidrio de 300ml de capacidad, pico de plástico con cierre tapón.",
+            "price_wholesale": 2681.25
+        })
+        return {"status": "success", "message": "Updated 10300028 successfully."}
+    return {"status": "error", "message": "not found"}
