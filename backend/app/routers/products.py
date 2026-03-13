@@ -186,6 +186,28 @@ def update_product(
         raise HTTPException(status_code=404, detail="Product not found")
     return db_product
 
+@router.patch("/{sku}/stock", response_model=schemas.Product)
+def adjust_stock(
+    sku: str,
+    adjustment_data: schemas.StockAdjustment,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+        raise HTTPException(status_code=403, detail="No tiene permisos para modificar stock")
+        
+    db_product = crud.get_product(db, sku=sku)
+    if db_product is None:
+        raise HTTPException(status_code=404, detail="Product not found")
+        
+    db_product.stock_quantity += adjustment_data.adjustment
+    if db_product.stock_quantity < 0:
+        db_product.stock_quantity = 0
+        
+    db.commit()
+    db.refresh(db_product)
+    return db_product
+
 @router.delete("/{sku}", response_model=schemas.Product)
 def archive_product(
     sku: str,

@@ -165,6 +165,40 @@ export default function InventoryDashboard() {
         fetchProducts(); // Refresh list after save or archive
     };
 
+    const handleStockAdjust = async (e: React.MouseEvent, sku: string, adjustment: number) => {
+        e.stopPropagation();
+        
+        // Optimistic update
+        setProducts(prev => prev.map(p => {
+            if (p.sku === sku) {
+                return { ...p, stock_quantity: Math.max(0, p.stock_quantity + adjustment) };
+            }
+            return p;
+        }));
+
+        try {
+            const token = localStorage.getItem('token');
+            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${sku}/stock`;
+            const response = await fetch(apiUrl, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ adjustment })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                fetchProducts(); // Revert
+                setMessage({ type: 'error', text: errorData.detail || 'Error al actualizar stock' });
+            }
+        } catch (error) {
+            fetchProducts(); // Revert
+            setMessage({ type: 'error', text: 'Error de red al actualizar stock' });
+        }
+    };
+
     // Filter by search term
     const searchedProducts = products.filter(p =>
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -324,15 +358,32 @@ export default function InventoryDashboard() {
                                             <div className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wide font-medium">{p.provider_name || 'Sin Proveedor'}</div>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-5 text-center">
-                                        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${p.stock_quantity > 10
-                                            ? 'bg-emerald-50 text-emerald-600'
-                                            : p.stock_quantity > 0
-                                                ? 'bg-amber-50 text-amber-600'
-                                                : 'bg-red-50 text-red-600'
-                                            }`}>
-                                            <Box size={14} />
-                                            {p.stock_quantity}
+                                    <td className="px-6 py-5 text-center" onClick={(e) => e.stopPropagation()}>
+                                        <div className="flex items-center justify-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleStockAdjust(e, p.sku, -1)}
+                                                disabled={p.stock_quantity <= 0}
+                                                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold disabled:opacity-50 transition-colors"
+                                            >
+                                                -
+                                            </button>
+                                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${p.stock_quantity > 10
+                                                ? 'bg-emerald-50 text-emerald-600'
+                                                : p.stock_quantity > 0
+                                                    ? 'bg-amber-50 text-amber-600'
+                                                    : 'bg-red-50 text-red-600'
+                                                }`}>
+                                                <Box size={14} />
+                                                {p.stock_quantity}
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => handleStockAdjust(e, p.sku, 1)}
+                                                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold transition-colors"
+                                            >
+                                                +
+                                            </button>
                                         </div>
                                     </td>
                                     <td className="px-6 py-5 text-right">

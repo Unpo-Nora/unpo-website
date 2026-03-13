@@ -150,6 +150,9 @@ class Product(ProductBase):
     class Config:
         from_attributes = True
 
+class StockAdjustment(BaseModel):
+    adjustment: int
+
 # --- Settings Schemas ---
 
 class SettingsBase(BaseModel):
