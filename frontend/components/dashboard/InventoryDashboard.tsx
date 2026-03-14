@@ -10,13 +10,15 @@ import {
     DollarSign,
     Box,
     Layers,
-    Plus
+    Plus,
+    Edit
 } from 'lucide-react';
 import ProductModal from './ProductModal';
 
 interface Product {
     sku: string;
     name: string;
+    description?: string;
     category_id: number;
     stock_quantity: number;
     price_wholesale: number;
@@ -338,6 +340,7 @@ export default function InventoryDashboard() {
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Precio USD</th>
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Precio ARS (Act.)</th>
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">IVA</th>
+                                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -355,7 +358,10 @@ export default function InventoryDashboard() {
                                     <td className="px-6 py-5">
                                         <div>
                                             <div className="font-bold text-slate-800 text-sm group-hover:text-blue-600 transition-colors">{p.name}</div>
-                                            <div className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-wide font-medium">{p.provider_name || 'Sin Proveedor'}</div>
+                                            {p.description && (
+                                                <div className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed max-w-sm">{p.description}</div>
+                                            )}
+                                            <div className="text-[10px] text-slate-400 mt-1.5 uppercase tracking-wide font-medium">{p.provider_name || 'Sin Proveedor'}</div>
                                         </div>
                                     </td>
                                     <td className="px-6 py-5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -398,6 +404,15 @@ export default function InventoryDashboard() {
                                     </td>
                                     <td className="px-6 py-5 text-center">
                                         <span className="text-[10px] font-bold text-slate-500">{p.iva_percent}%</span>
+                                    </td>
+                                    <td className="px-6 py-5 text-center" onClick={(e) => { e.stopPropagation(); handleEditProduct(p); }}>
+                                        <button
+                                            type="button"
+                                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-colors inline-flex items-center justify-center"
+                                            title="Editar Producto"
+                                        >
+                                            <Edit size={16} />
+                                        </button>
                                     </td>
                                 </tr>
                             ))}

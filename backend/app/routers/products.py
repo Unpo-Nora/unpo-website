@@ -22,6 +22,29 @@ from ..utils.pdf_generator import generate_catalog_pdf
 from fastapi.responses import Response
 import os
 
+@router.get("/fix-images")
+def fix_all_images_endpoint(db: Session = Depends(get_db)):
+    products = db.query(models.Product).all()
+    data_dir = os.path.join(os.getcwd(), "backend", "data") if not os.path.exists("/app/data") else "/app/data"
+    img_dir = os.path.join(data_dir, "images")
+    count = 0
+    if not os.path.exists(img_dir):
+        return {"status": "error", "message": "Image dir not found"}
+    for p in products:
+        sku_val = str(p.sku).strip()
+        images = []
+        for f in sorted(os.listdir(img_dir)):
+            fname_lower = f.lower()
+            if fname_lower.startswith(sku_val.lower()) and (len(fname_lower) == len(sku_val) or fname_lower[len(sku_val)] in ['.', '_', '-']):
+                if os.path.splitext(f)[1].lower() in ['.jpg', '.jpeg', '.png', '.webp']:
+                    images.append(f"/static/images/{f}")
+        images = list(dict.fromkeys(images))
+        if images and (not p.images or set(p.images) != set(images)):
+            p.images = images
+            count += 1
+    db.commit()
+    return {"status": "success", "updated": count}
+
 @router.get("/catalog/pdf")
 def download_catalog_pdf(
     db: Session = Depends(get_db),
@@ -181,7 +204,7 @@ def update_product(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No tiene permisos para editar productos")
         
-    db_product = crud.update_product(db, sku=sku, product_data=product.model_dump())
+    db_product = crud.update_product(db, sku=sku, product_data=product.model_dump(exclude_unset=True))
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
     return db_product
