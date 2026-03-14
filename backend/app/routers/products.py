@@ -25,9 +25,7 @@ import os
 @router.get("/fix-images")
 def fix_all_images_endpoint(db: Session = Depends(get_db)):
     products = db.query(models.Product).all()
-    import pathlib
-    base_dir = pathlib.Path(__file__).parent.parent.parent
-    img_dir = str(base_dir / "data" / "images")
+    img_dir = "data/images"
     count = 0
     if not os.path.exists(img_dir):
         return {"status": "error", "message": "Image dir not found"}
