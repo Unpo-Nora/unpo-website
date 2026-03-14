@@ -29,10 +29,13 @@ def fix_all_images_endpoint(db: Session = Depends(get_db)):
     count = 0
     if not os.path.exists(img_dir):
         return {"status": "error", "message": "Image dir not found"}
+        
+    debug_files = os.listdir(img_dir)
+    
     for p in products:
         sku_val = str(p.sku).strip()
         images = []
-        for f in sorted(os.listdir(img_dir)):
+        for f in debug_files:
             fname_lower = f.lower()
             if fname_lower.startswith(sku_val.lower()) and (len(fname_lower) == len(sku_val) or fname_lower[len(sku_val)] in ['.', '_', '-']):
                 if os.path.splitext(f)[1].lower() in ['.jpg', '.jpeg', '.png', '.webp']:
@@ -42,7 +45,13 @@ def fix_all_images_endpoint(db: Session = Depends(get_db)):
             p.images = images
             count += 1
     db.commit()
-    return {"status": "success", "updated": count}
+    return {
+        "status": "success", 
+        "updated": count, 
+        "debug_img_dir": img_dir,
+        "debug_files_count": len(debug_files),
+        "debug_files_sample": debug_files[:10]
+    }
 
 @router.get("/catalog/pdf")
 def download_catalog_pdf(
