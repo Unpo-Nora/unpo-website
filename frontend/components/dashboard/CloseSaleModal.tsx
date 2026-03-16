@@ -7,6 +7,7 @@ interface Product {
     sku: string;
     name: string;
     price_wholesale: number;
+    price_usd?: number;
     stock_quantity: number;
     images?: string[];
 }
@@ -31,6 +32,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     const [products, setProducts] = useState<Product[]>([]);
     const [searchTerm, setSearchTerm] = useState("");
     const [cart, setCart] = useState<OrderItem[]>([]);
+    const [exchangeRate, setExchangeRate] = useState<number>(1);
 
     // Step 2 Form State
     const [formData, setFormData] = useState({
@@ -50,7 +52,23 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
 
     useEffect(() => {
         fetchProducts();
+        fetchExchangeRate();
     }, []);
+
+    const fetchExchangeRate = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setExchangeRate(Number(data.value) || 1);
+            }
+        } catch (error) {
+            console.error("Error fetching exchange rate:", error);
+        }
+    };
 
     const fetchProducts = async () => {
         try {
@@ -65,9 +83,15 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
         }
     };
 
+    const getProductPrice = (item: Product) => {
+        if (item.price_wholesale) return Number(item.price_wholesale);
+        if (item.price_usd && exchangeRate > 0) return Number(item.price_usd) * exchangeRate;
+        return 0;
+    };
+
     const handleAddToCart = (item: Product) => {
         if (item.stock_quantity <= 0) return;
-        const price = Number(item.price_wholesale) || 0;
+        const price = getProductPrice(item);
         const existing = cart.find(c => c.product_sku === item.sku);
         if (existing) {
             if (existing.quantity >= item.stock_quantity) return; // cannot exceed stock
@@ -167,9 +191,9 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={onClose}></div>
-            <div className="relative bg-white w-full max-w-5xl h-[90vh] rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 overflow-x-hidden overflow-y-auto">
+            <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm fixed" onClick={onClose}></div>
+            <div className="relative bg-white w-full max-w-5xl h-[95vh] sm:h-[90vh] rounded-2xl sm:rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col my-4">
 
                 {/* Header */}
                 <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
@@ -199,12 +223,12 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                 </div>
 
                 {/* Body Content */}
-                <div className="flex-1 overflow-y-auto p-8">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-8">
                     {step === 1 ? (
-                        <div className="flex h-full gap-8">
+                        <div className="flex flex-col lg:flex-row h-full gap-6 sm:gap-8">
                             {/* Product List */}
-                            <div className="flex-1 border-r border-slate-100 pr-8 flex flex-col">
-                                <div className="relative mb-6">
+                            <div className="flex-1 lg:border-r border-slate-100 lg:pr-8 flex flex-col min-h-[400px]">
+                                <div className="relative mb-6 shrink-0">
                                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                                     <input
                                         type="text"
@@ -238,7 +262,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                                                 {p.stock_quantity > 0 ? `${p.stock_quantity} EN STOCK` : 'SIN STOCK'}
                                                             </span>
                                                         </div>
-                                                        <span className="text-sm font-black text-emerald-600">${p.price_wholesale?.toLocaleString()}</span>
+                                                        <span className="text-sm font-black text-emerald-600">${getProductPrice(p).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                                                     </div>
                                                 </div>
                                                 <button
@@ -252,8 +276,8 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                             </div>
 
                             {/* Cart Summary */}
-                            <div className="w-[350px] shrink-0 flex flex-col bg-slate-50/50 rounded-3xl p-6 border border-slate-100">
-                                <h4 className="font-black tracking-tight text-lg mb-6 flex items-center gap-2"><ShoppingCart size={20} className="text-blue-600" /> Carrito Actual</h4>
+                            <div className="w-full lg:w-[350px] shrink-0 flex flex-col bg-slate-50/50 rounded-3xl p-4 sm:p-6 border border-slate-100 min-h-[400px]">
+                                <h4 className="font-black tracking-tight text-lg mb-6 flex items-center gap-2 shrink-0"><ShoppingCart size={20} className="text-blue-600" /> Carrito Actual</h4>
 
                                 <div className="flex-1 overflow-y-auto space-y-4">
                                     {cart.length === 0 ? (
@@ -312,7 +336,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                             </div>
                         </div>
                     ) : (
-                        <div className="max-w-4xl mx-auto grid grid-cols-2 gap-12">
+                        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
                             {/* Billing Info */}
                             <div className="space-y-6">
                                 <h4 className="text-lg font-black tracking-tight flex items-center gap-2 text-slate-800 border-b border-slate-100 pb-4">
