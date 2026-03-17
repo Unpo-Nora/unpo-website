@@ -129,7 +129,7 @@ def read_products(
     return products
 
 def optimize_all_images_bg():
-    images_dir = "/app/data/images"
+    images_dir = "data/images"
     if not os.path.exists(images_dir):
         return
         
@@ -289,7 +289,7 @@ async def upload_product_image(
     filename = f"{sku}_{uuid.uuid4().hex[:8]}.{ext}"
     
     # Save file
-    images_dir = "/app/data/images"
+    images_dir = "data/images"
     os.makedirs(images_dir, exist_ok=True)
     file_path = os.path.join(images_dir, filename)
     
@@ -299,8 +299,8 @@ async def upload_product_image(
     # Public URL
     image_url = f"/static/images/{filename}"
     
-    # Update product images in database
-    current_images = db_product.images or []
+    # Update product images in database. Must create a new list for SQLAlchemy to detect changes.
+    current_images = list(db_product.images or [])
     current_images.append(image_url)
     
     crud.update_product(db, sku=sku, product_data={"images": current_images})
