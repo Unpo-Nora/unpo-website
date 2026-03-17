@@ -169,26 +169,29 @@ def sync_products_from_excel(db: Session, excel_path: str):
                 db.add(db_category)
                 db.flush()
 
-            # Precio (Priorizamos CATALOGO.csv: CONTADO / TRANSFERENCIA)
+            # Precio (Priorizamos MAYORISTA.csv 'PRECIO SIN IVA')
             price = Decimal(0)
             try:
                 raw_price = None
-                # Priorizar CATALOGO 'CONTADO / TRANSFERENCIA'
-                if cat_info is not None:
+                
+                # 1. Prioridad: MAYORISTA 'PRECIO SIN IVA' (Fuente de Inventario/Costos)
+                col_price_may = 'PRECIO SIN IVA' if 'PRECIO SIN IVA' in df_may.columns else (df_may.columns[9] if len(df_may.columns) > 9 else None)
+                if col_price_may and col_price_may in row and not pd.isna(row[col_price_may]) and str(row[col_price_may]).strip() and str(row[col_price_may]) != '0':
+                    raw_price = row[col_price_may]
+                
+                # 2. Fallback: CATALOGO 'CONTADO / TRANSFERENCIA'
+                if (pd.isna(raw_price) or not str(raw_price).strip() or str(raw_price) == '0') and cat_info is not None:
                     if 'CONTADO / TRANSFERENCIA' in cat_info and not pd.isna(cat_info['CONTADO / TRANSFERENCIA']) and str(cat_info['CONTADO / TRANSFERENCIA']).strip():
                         raw_price = cat_info['CONTADO / TRANSFERENCIA']
                     elif len(cat_info) > 7 and not pd.isna(cat_info.iloc[7]) and str(cat_info.iloc[7]).strip():
                         raw_price = cat_info.iloc[7]
                 
-                # Fallback a MAYORISTA 'PRECIO SIN IVA' (columna 9 aprox) si no hay precio en CATALOGO
+                # 3. Fallback final: Cualquier celda de precio en MAYORISTA
                 if pd.isna(raw_price) or not str(raw_price).strip() or str(raw_price) == '0':
-                    col_price_may = 'PRECIO SIN IVA' if 'PRECIO SIN IVA' in df_may.columns else (df_may.columns[9] if len(df_may.columns) > 9 else None)
-                    if col_price_may and col_price_may in row and not pd.isna(row[col_price_may]) and str(row[col_price_may]).strip():
-                        raw_price = row[col_price_may]
-                    else:
-                        raw_price = row.iloc[8] if len(row) > 8 else '0'
+                    raw_price = row.iloc[8] if len(row) > 8 else '0'
                 
                 if not pd.isna(raw_price) and str(raw_price).strip():
+                    price_str = str(raw_price).replace('$', '').strip()
                     # Formato del CSV suele ser "29,122.70" o "4.125,00" o "4,125.00"
                     # Si tiene coma y punto, asumimos US: "1,234.56" -> quitar coma, mantener punto
                     # Si tiene solo comas: "4.125,00" -> quitar punto, cambiar coma a punto

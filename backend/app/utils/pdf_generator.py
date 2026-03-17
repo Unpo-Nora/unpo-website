@@ -202,26 +202,38 @@ def generate_catalog_pdf(products) -> bytes:
             img_path = os.path.join(IMAGES_DIR, filename)
             if os.path.exists(img_path):
                 try:
-                    img_element = Image(img_path, width=4.0*cm, height=4.0*cm)
+                    # Open with PIL to ensure RGB conversion (prevents black images for CMYK/etc)
+                    with PILImage.open(img_path) as pil_img:
+                        if pil_img.mode != "RGB":
+                            pil_img = pil_img.convert("RGB")
+                        
+                        # Use a temporary buffer or ImageReader for the converted image
+                        img_reader = ImageReader(pil_img)
+                        img_element = Image(img_reader, width=4.0*cm, height=4.0*cm)
                 except Exception as e:
                     print(f"Error loading image {img_path}: {e}")
                     img_element = ""
                 
         # Format Text Elements
-        cat_name = p.category.name if p.category else "-"
+        price_val = p.price_wholesale if getattr(p, "price_wholesale", None) is not None else 0.0
+        if price_val == 0:
+            continue
+
+        cat_name_val = p.category.name if p.category else "-"
+        cat_para = Paragraph(cat_name_val, normal_style)
+        
         import html
         safe_name = html.escape(str(p.name or ""))
         safe_desc = html.escape(str(p.description or ""))
         name_desc = f"<b>{safe_name}</b><br/><font size=8 color='#475569'>{safe_desc}</font>"
         prod_para = Paragraph(name_desc, normal_style)
-        price_val = p.price_wholesale if getattr(p, "price_wholesale", None) is not None else 0.0
         price_str = f"${price_val:,.2f}"
         
         all_rows.append([
             img_element,
             p.sku,
             prod_para,
-            cat_name,
+            cat_para,
             price_str
         ])
         
