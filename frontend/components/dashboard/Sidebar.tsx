@@ -12,10 +12,16 @@ import {
     Settings,
     UserCircle,
     Star,
-    MonitorSmartphone
+    MonitorSmartphone,
+    X
 } from 'lucide-react';
 
-export default function Sidebar() {
+interface SidebarProps {
+    isOpen?: boolean;
+    setIsOpen?: (val: boolean) => void;
+}
+
+export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
     console.log("Sidebar Mounted at:", new Date().toLocaleTimeString());
     const { user, loading, logout } = useAuth();
     const pathname = usePathname();
@@ -72,18 +78,29 @@ export default function Sidebar() {
     );
 
     return (
-        <aside className="w-64 bg-slate-900 text-slate-300 flex flex-col h-screen sticky top-0 border-r border-slate-800">
+        <aside className={`
+            fixed lg:static inset-y-0 left-0 z-50
+            w-64 bg-slate-900 text-slate-300 flex flex-col h-full border-r border-slate-800
+            transform transition-transform duration-300 ease-in-out
+            ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+            shrink-0
+        `}>
             {/* Brand */}
-            <div className="p-6 border-b border-slate-800 mb-6">
-                <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-red-600 rounded flex items-center justify-center text-white font-bold italic">
+            <div className="p-6 border-b border-slate-800 mb-6 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-8 h-8 bg-red-600 rounded flex items-center justify-center text-white font-bold italic shrink-0">
                         U
                     </div>
-                    <div>
-                        <h1 className="text-white font-bold tracking-tight">UNPO Control Center</h1>
-                        <p className="text-xs text-slate-500">Gestión de Inventario y Leads</p>
+                    <div className="overflow-hidden">
+                        <h1 className="text-white font-bold tracking-tight truncate">UNPO Control Center</h1>
+                        <p className="text-xs text-slate-500 truncate">Gestión de Inventario y Leads</p>
                     </div>
                 </div>
+                {setIsOpen && (
+                    <button onClick={() => setIsOpen(false)} className="lg:hidden p-2 -mr-2 text-slate-400 hover:text-white rounded-lg shrink-0">
+                        <X size={20} />
+                    </button>
+                )}
             </div>
 
             {/* Navigation */}

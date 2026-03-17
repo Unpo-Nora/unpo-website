@@ -162,3 +162,11 @@ class User(Base):
     hashed_password = Column(String)
     full_name = Column(String, nullable=True)
     role = Column(String, default="admin")
+
+class PageView(Base):
+    __tablename__ = "page_views"
+
+    id = Column(Integer, primary_key=True, index=True)
+    visitor_id = Column(String, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

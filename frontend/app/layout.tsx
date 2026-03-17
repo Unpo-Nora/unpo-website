@@ -7,6 +7,7 @@ export const metadata: Metadata = {
 };
 
 import { AuthProvider } from "@/context/AuthContext";
+import VisitorTracker from "@/components/VisitorTracker";
 
 export default function RootLayout({
     children,
@@ -17,6 +18,7 @@ export default function RootLayout({
         <html lang="en">
             <body className="min-h-screen bg-gray-50">
                 <AuthProvider>
+                    <VisitorTracker />
                     {children}
                 </AuthProvider>
             </body>
