@@ -7,11 +7,21 @@ from typing import List, Optional
 from .. import crud, models, schemas, database
 from PIL import Image as PILImage
 import gc
+import os
+from supabase import create_client, Client
 
 router = APIRouter(
     prefix="/products",
     tags=["products"]
 )
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "products")
+
+supabase: Optional[Client] = None
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Dependency
 get_db = database.get_db
@@ -288,16 +298,34 @@ async def upload_product_image(
     ext = file.filename.split('.')[-1]
     filename = f"{sku}_{uuid.uuid4().hex[:8]}.{ext}"
     
-    # Save file
-    images_dir = "data/images"
-    os.makedirs(images_dir, exist_ok=True)
-    file_path = os.path.join(images_dir, filename)
-    
-    with open(file_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    image_url = ""
+
+    if supabase:
+        try:
+            # Subir a Supabase Storage
+            file_bytes = await file.read()
+            res = supabase.storage.from_(SUPABASE_BUCKET).upload(
+                path=filename,
+                file=file_bytes,
+                file_options={"content-type": file.content_type}
+            )
+            # Obtener URL pública
+            public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(filename)
+            image_url = public_url
+        except Exception as e:
+            print(f"Error uploading to Supabase: {e}")
+            raise HTTPException(status_code=500, detail="Error al subir la imagen a la nube")
+    else:
+        # Fallback local (Save file)
+        images_dir = "data/images"
+        os.makedirs(images_dir, exist_ok=True)
+        file_path = os.path.join(images_dir, filename)
         
-    # Public URL
-    image_url = f"/static/images/{filename}"
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        # Public URL
+        image_url = f"/static/images/{filename}"
     
     # Update product images in database. Must create a new list for SQLAlchemy to detect changes.
     current_images = list(db_product.images or [])
