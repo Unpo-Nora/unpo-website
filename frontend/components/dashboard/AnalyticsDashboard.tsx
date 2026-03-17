@@ -24,6 +24,10 @@ import jsPDF from 'jspdf';
 import { useAuth } from '@/context/AuthContext';
 
 interface AnalyticsData {
+    visitors?: {
+        total: number;
+        monthly: number;
+    };
     leads: {
         total: number;
         new: number;
@@ -173,7 +177,8 @@ export default function AnalyticsDashboard() {
             {/* Content Container (For PDF Export Targeting) */}
             <div id="analytics-content" className="space-y-8 bg-slate-50 p-4 -m-4 rounded-3xl">
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                    <StatCard title="Visitas Únicas" value={data.visitors?.total?.toString() || "0"} subtitle={`${data.visitors?.monthly || 0} este mes`} icon={<TrendingUp className="text-purple-600" />} color="bg-purple-50" />
                     <StatCard title="Leads Totales" value={data.leads.total.toString()} icon={<Users className="text-blue-600" />} color="bg-blue-50" />
                     <StatCard title="Tasa de Contacto" value={`${data.leads.conversion_rate}%`} subtitle={`${data.leads.contacted} contactados`} icon={<TrendingUp className="text-emerald-600" />} color="bg-emerald-50" />
                     <StatCard title="Nuevos Leads" value={data.leads.new.toString()} subtitle="Pendientes de asignación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />

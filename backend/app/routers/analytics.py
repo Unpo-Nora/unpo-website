@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from .. import models, database
 from .auth import get_current_user
+from pydantic import BaseModel
 from typing import List, Dict, Any
 from datetime import datetime
 import calendar
@@ -64,6 +65,19 @@ def _group_product_stats(raw_stats):
         reverse=True
     )
     return sorted_products
+
+class VisitRequest(BaseModel):
+    visitor_id: str
+
+@router.post("/visit")
+def record_visit(request: VisitRequest, db: Session = Depends(get_db)):
+    # Check if visitor already exists
+    existing_visit = db.query(models.PageView).filter(models.PageView.visitor_id == request.visitor_id).first()
+    if not existing_visit:
+        new_visit = models.PageView(visitor_id=request.visitor_id)
+        db.add(new_visit)
+        db.commit()
+    return {"status": "ok"}
 
 @router.get("/summary")
 def get_analytics_summary(
@@ -258,7 +272,17 @@ def get_analytics_summary(
         for p in raw_monthly_top_products
     ]
 
+    # D. Visitantes Unicos (Totales y Mensuales)
+    total_unique_visitors = db.query(models.PageView).count()
+    monthly_unique_visitors = db.query(models.PageView).filter(
+        models.PageView.created_at >= current_month_start
+    ).count()
+
     return {
+        "visitors": {
+            "total": total_unique_visitors,
+            "monthly": monthly_unique_visitors
+        },
         "leads": {
             "total": total_leads,
             "new": new_leads,
