@@ -211,7 +211,7 @@ def delete_old_leads(db: Session, year: int = 2025):
     
     for lead in leads_to_delete:
         # Delete associated items and orders if they exist
-        order_ids = [order.id for order in lead.sale_orders]
+        order_ids = [order.id for order in lead.orders]
         if order_ids:
             db.query(models.OrderItem).filter(models.OrderItem.order_id.in_(order_ids)).delete(synchronize_session=False)
             db.query(models.SaleOrder).filter(models.SaleOrder.id.in_(order_ids)).delete(synchronize_session=False)

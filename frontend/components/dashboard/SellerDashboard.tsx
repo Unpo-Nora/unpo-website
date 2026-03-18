@@ -514,13 +514,22 @@ export default function SellerDashboard() {
                                     <td className="px-8 py-6 text-right">
                                         <div className="flex items-center justify-end gap-3">
                                             {activeTab === "NEW" ? (
-                                                <button
-                                                    onClick={() => handleWhatsAppClick(lead)}
-                                                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm font-black rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-green-200"
-                                                >
-                                                    <MessageCircle size={20} />
-                                                    WhatsApp
-                                                </button>
+                                                <div className="flex items-center gap-3">
+                                                    <button
+                                                        onClick={() => handleWhatsAppClick(lead)}
+                                                        className="inline-flex items-center gap-2 px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm font-black rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-green-200"
+                                                    >
+                                                        <MessageCircle size={20} />
+                                                        WhatsApp
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setLeadToDelete(lead)}
+                                                        className="p-2.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-2xl transition-all"
+                                                        title="Eliminar Registro"
+                                                    >
+                                                        <Trash2 size={22} />
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <>
                                                     <button
