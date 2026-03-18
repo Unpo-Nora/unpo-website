@@ -145,3 +145,17 @@ async def import_leads_excel(
         raise HTTPException(status_code=500, detail=result["message"])
     
     return result
+@router.delete("/cleanup/2025")
+def cleanup_old_leads(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    """
+    Elimina permanentemente leads del año 2025. Solo Admins.
+    """
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tiene permisos para realizar esta acción")
+    
+    deleted_count = crud.delete_old_leads(db, year=2025)
+    
+    return {"status": "success", "message": f"Se eliminaron {deleted_count} leads del 2025."}

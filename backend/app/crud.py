@@ -191,6 +191,44 @@ def cancel_sale_order(db: Session, order_id: int):
     return db_order
 
 
+def delete_old_leads(db: Session, year: int = 2025):
+    """
+    Deletes leads from a specific year.
+    Warning: This will also delete associated sale orders and order items if they exist.
+    """
+    from datetime import datetime
+    start_date = datetime(year, 1, 1)
+    end_date = datetime(year + 1, 1, 1)
+    
+    # Identify leads to delete
+    leads_to_delete = db.query(models.Lead).filter(
+        or_(
+            models.Lead.created_at >= start_date,
+            models.Lead.created_at < end_date,
+            models.Lead.lead_date >= start_date,
+            models.Lead.lead_date < end_date
+        )
+    ).all()
+    
+    lead_ids = [lead.id for lead in leads_to_delete]
+    
+    if not lead_ids:
+        return 0
+    
+    # Delete associated order items first (cascading manually if not set in DB)
+    # OrderItem -> SaleOrder -> Lead
+    order_ids = [order.id for order in db.query(models.SaleOrder).filter(models.SaleOrder.lead_id.in_(lead_ids)).all()]
+    
+    if order_ids:
+        db.query(models.OrderItem).filter(models.OrderItem.order_id.in_(order_ids)).delete(synchronize_session=False)
+        db.query(models.SaleOrder).filter(models.SaleOrder.id.in_(order_ids)).delete(synchronize_session=False)
+    
+    # Finally delete the leads
+    deleted_count = db.query(models.Lead).filter(models.Lead.id.in_(lead_ids)).delete(synchronize_session=False)
+    
+    db.commit()
+    return deleted_count
+
 # --- Users & Auth ---
 def get_user_by_email(db: Session, email: str):
     return db.query(models.User).filter(models.User.email == email).first()

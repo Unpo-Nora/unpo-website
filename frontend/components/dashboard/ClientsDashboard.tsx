@@ -75,6 +75,32 @@ export default function ClientsDashboard() {
         }
     };
 
+    const handleCleanup2025 = async () => {
+        if (!confirm("⚠️ ATENCIÓN: ¿Estás seguro de que quieres eliminar PERMANENTEMENTE todos los leads del año 2025? Esta acción no se puede deshacer y también eliminará las órdenes de venta asociadas a esos leads.")) return;
+        
+        const secondConfirm = confirm("Por favor, confirma una segunda vez. Esta acción es IRREVERSIBLE.");
+        if (!secondConfirm) return;
+
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/cleanup/2025`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+
+            const result = await res.json();
+            if (res.ok) {
+                alert(`✅ Éxito: ${result.message}`);
+                fetchClients();
+            } else {
+                alert(`❌ Error: ${result.detail || "No se pudo completar la acción"}`);
+            }
+        } catch (err) {
+            console.error("Error cleaning up leads:", err);
+            alert("Ocurrió un error al intentar eliminar los leads.");
+        }
+    };
+
     const filteredClients = clients.filter(c =>
         c.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.phone?.includes(searchTerm) ||
@@ -94,7 +120,7 @@ export default function ClientsDashboard() {
     return (
         <div className="space-y-6">
             <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
-                <div className="p-6 border-b border-slate-50 flex items-center bg-slate-50/30">
+                <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
                     <div className="relative flex-1 max-w-lg">
                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                         <input
@@ -105,6 +131,15 @@ export default function ClientsDashboard() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
+                    
+                    <button
+                        onClick={handleCleanup2025}
+                        className="ml-4 inline-flex items-center gap-2 px-6 py-3 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white text-sm font-bold rounded-2xl transition-all shadow-sm border border-rose-100"
+                        title="Eliminar permanentemente leads del 2025"
+                    >
+                        <XCircle size={18} />
+                        Limpiar Leads 2025
+                    </button>
                 </div>
 
                 <div className="overflow-x-auto">
