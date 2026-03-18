@@ -76,7 +76,11 @@ def download_catalog_pdf(
         
     products = crud.get_products(db, in_stock=True, limit=1000)
     
-    pdf_bytes = generate_catalog_pdf(products)
+    # Obtener el tipo de cambio manual para los precios en ARS
+    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
+    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
+    
+    pdf_bytes = generate_catalog_pdf(products, exchange_rate=exchange_rate)
     
     return Response(
         content=pdf_bytes,

@@ -9,6 +9,8 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from PIL import Image as PILImage
 from reportlab.lib.utils import ImageReader
 from .. import models
+import requests
+from io import BytesIO
 
 def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     buffer = io.BytesIO()
@@ -144,10 +146,13 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     buffer.seek(0)
     return buffer.read()
 
-def generate_catalog_pdf(products) -> bytes:
+def generate_catalog_pdf(products, exchange_rate: float = 1450.0) -> bytes:
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
     elements = []
+    
+    # Store image buffers to prevent them from being closed before doc.build()
+    image_buffers = []
     
     styles = getSampleStyleSheet()
     normal_style = styles["Normal"]
@@ -195,30 +200,59 @@ def generate_catalog_pdf(products) -> bytes:
     products_sorted = sorted(products, key=lambda x: (str(x.category.name) if x.category and x.category.name else "", str(x.name) if x.name else ""))
     
     for p in products_sorted:
-        # Load Image
+        # 1. Precio Calculation (Prioritizing USD * Rate as seen in Admin UI)
+        # Handle decimal/float conversions safely
+        usd_price = float(p.price_usd) if p.price_usd is not None else 0.0
+        calculated_price = usd_price * exchange_rate
+        
+        # Fallback to wholesale if USD is 0 but wholesale exists (only if > 0)
+        if calculated_price <= 0:
+            wholesale = float(p.price_wholesale) if p.price_wholesale is not None else 0.0
+            if wholesale > 0:
+                calculated_price = wholesale
+            else:
+                continue
+            
+        price_str = f"${calculated_price:,.2f}"
+
+        # 2. Load Image
         img_element = ""
         if p.images and len(p.images) > 0:
-            filename = p.images[0].replace("/static/images/", "").strip("/")
-            img_path = os.path.join(IMAGES_DIR, filename)
-            if os.path.exists(img_path):
-                try:
-                    # Open with PIL to ensure RGB conversion (prevents black images for CMYK/etc)
-                    with PILImage.open(img_path) as pil_img:
-                        if pil_img.mode != "RGB":
-                            pil_img = pil_img.convert("RGB")
-                        
-                        # Use a temporary buffer or ImageReader for the converted image
-                        img_reader = ImageReader(pil_img)
-                        img_element = Image(img_reader, width=4.0*cm, height=4.0*cm)
-                except Exception as e:
-                    print(f"Error loading image {img_path}: {e}")
-                    img_element = ""
+            img_url = p.images[0]
+            try:
+                if img_url.startswith("http"):
+                    # Handle remote Supabase/External images
+                    response = requests.get(img_url, timeout=5)
+                    if response.status_code == 200:
+                        img_io = io.BytesIO(response.content)
+                        with PILImage.open(img_io) as pil_img:
+                            if pil_img.mode != "RGB":
+                                pil_img = pil_img.convert("RGB")
+                            
+                            final_io = io.BytesIO()
+                            pil_img.save(final_io, format='JPEG', quality=85)
+                            final_io.seek(0)
+                            image_buffers.append(final_io)
+                            img_element = Image(final_io, width=4.0*cm, height=4.0*cm)
+                else:
+                    # Handle local images
+                    filename = img_url.replace("/static/images/", "").strip("/")
+                    img_path = os.path.join(IMAGES_DIR, filename)
+                    if os.path.exists(img_path):
+                        with PILImage.open(img_path) as pil_img:
+                            if pil_img.mode != "RGB":
+                                pil_img = pil_img.convert("RGB")
+                            
+                            img_io = io.BytesIO()
+                            pil_img.save(img_io, format='JPEG', quality=85)
+                            img_io.seek(0)
+                            image_buffers.append(img_io)
+                            img_element = Image(img_io, width=4.0*cm, height=4.0*cm)
+            except Exception as e:
+                print(f"Error loading image {img_url}: {e}")
+                img_element = ""
                 
-        # Format Text Elements
-        price_val = p.price_wholesale if getattr(p, "price_wholesale", None) is not None else 0.0
-        if price_val == 0:
-            continue
-
+        # 3. Format Text Elements
         cat_name_val = p.category.name if p.category else "-"
         cat_para = Paragraph(cat_name_val, normal_style)
         
@@ -227,7 +261,6 @@ def generate_catalog_pdf(products) -> bytes:
         safe_desc = html.escape(str(p.description or ""))
         name_desc = f"<b>{safe_name}</b><br/><font size=8 color='#475569'>{safe_desc}</font>"
         prod_para = Paragraph(name_desc, normal_style)
-        price_str = f"${price_val:,.2f}"
         
         all_rows.append([
             img_element,
