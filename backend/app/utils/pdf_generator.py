@@ -1,6 +1,8 @@
 import io
 import os
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import cm
@@ -11,6 +13,40 @@ from reportlab.lib.utils import ImageReader
 from .. import models
 import requests
 from io import BytesIO
+
+def _process_and_resize_image(img_url, images_dir):
+    """
+    Helper to fetch, convert to RGB, and resize an image.
+    Returns (BytesIO_buffer, None) or (None, Error)
+    """
+    try:
+        if img_url.startswith("http"):
+            response = requests.get(img_url, timeout=10)
+            if response.status_code != 200:
+                return None, f"HTTP {response.status_code}"
+            img_data = response.content
+        else:
+            filename = img_url.replace("/static/images/", "").strip("/")
+            img_path = os.path.join(images_dir, filename)
+            if not os.path.exists(img_path):
+                return None, "File not found"
+            with open(img_path, "rb") as f:
+                img_data = f.read()
+
+        with PILImage.open(io.BytesIO(img_data)) as pil_img:
+            if pil_img.mode != "RGB":
+                pil_img = pil_img.convert("RGB")
+            
+            # Resize for catalog (keeping aspect ratio)
+            pil_img.thumbnail((300, 300), PILImage.Resampling.LANCZOS)
+            
+            out_io = io.BytesIO()
+            # Lower quality for significant weight reduction
+            pil_img.save(out_io, format='JPEG', quality=60, optimize=True)
+            out_io.seek(0)
+            return out_io, None
+    except Exception as e:
+        return None, str(e)
 
 def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     buffer = io.BytesIO()
@@ -199,60 +235,51 @@ def generate_catalog_pdf(products, exchange_rate: float = 1450.0) -> bytes:
     # Sort products by category name for better presentation
     products_sorted = sorted(products, key=lambda x: (str(x.category.name) if x.category and x.category.name else "", str(x.name) if x.name else ""))
     
+    # Step 1: Pre-calculate prices and filter
+    valid_products = []
     for p in products_sorted:
-        # 1. Precio Calculation (Prioritizing USD * Rate as seen in Admin UI)
-        # Handle decimal/float conversions safely
         usd_price = float(p.price_usd) if p.price_usd is not None else 0.0
         calculated_price = usd_price * exchange_rate
         
-        # Fallback to wholesale if USD is 0 but wholesale exists (only if > 0)
         if calculated_price <= 0:
             wholesale = float(p.price_wholesale) if p.price_wholesale is not None else 0.0
             if wholesale > 0:
                 calculated_price = wholesale
             else:
                 continue
-            
+        
         price_str = f"${calculated_price:,.2f}"
+        valid_products.append((p, price_str))
 
-        # 2. Load Image
+    # Step 2: Parallel Image Processing
+    print(f"Starting parallel image processing for {len(valid_products)} products...")
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        # Prepare list of (product, img_url)
+        tasks = []
+        for p, price_str in valid_products:
+            img_url = p.images[0] if (p.images and len(p.images) > 0) else None
+            tasks.append((p, price_str, img_url))
+        
+        # Map URLs to processing function
+        image_futures = []
+        for p, price_str, img_url in tasks:
+            if img_url:
+                image_futures.append(executor.submit(_process_and_resize_image, img_url, IMAGES_DIR))
+            else:
+                image_futures.append(None)
+
+    # Step 3: Assemble Rows
+    for i, (p, price_str, img_url) in enumerate(tasks):
         img_element = ""
-        if p.images and len(p.images) > 0:
-            img_url = p.images[0]
-            try:
-                if img_url.startswith("http"):
-                    # Handle remote Supabase/External images
-                    response = requests.get(img_url, timeout=5)
-                    if response.status_code == 200:
-                        img_io = io.BytesIO(response.content)
-                        with PILImage.open(img_io) as pil_img:
-                            if pil_img.mode != "RGB":
-                                pil_img = pil_img.convert("RGB")
-                            
-                            final_io = io.BytesIO()
-                            pil_img.save(final_io, format='JPEG', quality=85)
-                            final_io.seek(0)
-                            image_buffers.append(final_io)
-                            img_element = Image(final_io, width=4.0*cm, height=4.0*cm)
-                else:
-                    # Handle local images
-                    filename = img_url.replace("/static/images/", "").strip("/")
-                    img_path = os.path.join(IMAGES_DIR, filename)
-                    if os.path.exists(img_path):
-                        with PILImage.open(img_path) as pil_img:
-                            if pil_img.mode != "RGB":
-                                pil_img = pil_img.convert("RGB")
-                            
-                            img_io = io.BytesIO()
-                            pil_img.save(img_io, format='JPEG', quality=85)
-                            img_io.seek(0)
-                            image_buffers.append(img_io)
-                            img_element = Image(img_io, width=4.0*cm, height=4.0*cm)
-            except Exception as e:
-                print(f"Error loading image {img_url}: {e}")
-                img_element = ""
-                
-        # 3. Format Text Elements
+        future = image_futures[i]
+        if future:
+            img_io, error = future.result()
+            if img_io:
+                image_buffers.append(img_io)
+                img_element = Image(img_io, width=4.0*cm, height=4.0*cm)
+            elif error:
+                print(f"Error processing image for {p.sku}: {error}")
+
         cat_name_val = p.category.name if p.category else "-"
         cat_para = Paragraph(cat_name_val, normal_style)
         
