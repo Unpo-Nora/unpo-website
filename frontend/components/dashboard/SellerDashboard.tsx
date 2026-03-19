@@ -221,31 +221,6 @@ export default function SellerDashboard() {
         }
     };
 
-    const handleCleanup2025 = async () => {
-        if (!confirm("⚠️ ATENCIÓN: ¿Estás seguro de que quieres eliminar PERMANENTEMENTE todos los leads NUEVOS del año 2025? Esta acción no se puede deshacer.")) return;
-        
-        const secondConfirm = confirm("Por favor, confirma una segunda vez. Se borrarán solo los prospectos que nunca fueron contactados del 2025.");
-        if (!secondConfirm) return;
-
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/cleanup/2025`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-
-            const result = await res.json();
-            if (res.ok) {
-                alert(`✅ Éxito: ${result.message}`);
-                fetchLeads();
-            } else {
-                alert(`❌ Error: ${result.detail || "No se pudo completar la acción"}`);
-            }
-        } catch (err) {
-            console.error("Error cleaning up leads:", err);
-            alert("Ocurrió un error al intentar eliminar los leads.");
-        }
-    };
 
     const getWhatsAppLink = (lead: Lead) => {
         const base = "https://wa.me/" + lead.phone.replace(/\+/g, '').replace(/\s/g, '');
@@ -398,16 +373,6 @@ export default function SellerDashboard() {
                         <History size={18} />
                         Contactados ({leads.filter(l => l.status === 'CONTACTED').length})
                     </button>
-                    {currentUser?.role === 'admin' && (
-                        <button
-                            onClick={handleCleanup2025}
-                            className="ml-4 px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-100 shadow-sm"
-                            title="Eliminar leads NUEVOS de 2025"
-                        >
-                            <XCircle size={18} />
-                            Limpiar Leads 2025
-                        </button>
-                    )}
                 </div>
             </div>
 
