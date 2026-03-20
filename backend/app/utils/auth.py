@@ -8,6 +8,7 @@ import os
 SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey_change_me_in_production")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+ACCESS_TOKEN_EXPIRE_MINUTES_STAFF = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES_STAFF", "720")) # 12 hours
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 

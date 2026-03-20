@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from .. import database, crud, schemas_auth
 from ..utils import auth
+from datetime import timedelta
 from jose import JWTError, jwt
 import os
 
@@ -52,7 +53,16 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token = auth.create_access_token(data={"sub": user.email})
+    # Determinar expiración según el rol
+    if user.role in ["admin", "vendedor"]:
+        expires_delta = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES_STAFF)
+    else:
+        expires_delta = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+        
+    access_token = auth.create_access_token(
+        data={"sub": user.email}, 
+        expires_delta=expires_delta
+    )
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.get("/me", response_model=schemas_auth.UserResponse)
