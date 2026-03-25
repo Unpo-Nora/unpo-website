@@ -11,7 +11,8 @@ async def get_lead_data(leadgen_id: str, access_token: str) -> Optional[Dict[str
     """
     url = f"{GRAPH_URL}/{leadgen_id}"
     params = {
-        "access_token": access_token
+        "access_token": access_token,
+        "fields": "id,created_time,field_data,platform,ad_name,campaign_name"
     }
     
     async with httpx.AsyncClient() as client:
@@ -32,12 +33,22 @@ def transform_meta_lead_to_schemas(meta_data: Dict[str, Any]) -> Dict[str, Any]:
     Meta devuelve los campos en una lista 'field_data'.
     """
     field_data = meta_data.get("field_data", [])
+    
+    # Extract platform from Meta response payload (usually 'fb' or 'ig')
+    platform_val = str(meta_data.get("platform", "ig")).lower()
+    if platform_val == "fb" or platform_val == "facebook":
+        assigned_platform = "facebook"
+        assigned_source = "FACEBOOK_ADS"
+    else:
+        assigned_platform = "instagram"
+        assigned_source = "INSTAGRAM_ADS"
+
     transformed_data = {
         "full_name": "Unknown",
         "email": "unknown@example.com",
         "phone": None,
-        "source": "INSTAGRAM_ADS",
-        "platform": "instagram",
+        "source": assigned_source,
+        "platform": assigned_platform,
         "lead_date": meta_data.get("created_time")
     }
     
