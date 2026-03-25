@@ -73,7 +73,7 @@ export default function WaitlistForm() {
     }
 
     return (
-        <section className="py-24 bg-slate-900">
+        <section id="waitlist" className="py-24 bg-slate-900">
             <div className="max-w-xl mx-auto px-6">
                 <div className="text-center mb-12">
                     <span className="text-blue-400 text-sm font-bold tracking-widest uppercase mb-2 block">Premium Waitlist</span>

@@ -193,7 +193,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 overflow-x-hidden overflow-y-auto">
             <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm fixed" onClick={onClose}></div>
-            <div className="relative bg-white w-full max-w-5xl h-[95vh] sm:h-[90vh] rounded-2xl sm:rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col my-4">
+            <div className="relative bg-white w-full max-w-[95vw] xl:max-w-7xl h-[95vh] sm:h-[90vh] rounded-2xl sm:rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col my-4">
 
                 {/* Header */}
                 <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
@@ -238,7 +238,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                         onChange={e => setSearchTerm(e.target.value)}
                                     />
                                 </div>
-                                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                                <div className="flex-1 overflow-y-auto space-y-3 pr-4 sm:pr-6 custom-scrollbar">
                                     {filteredProducts.map(p => {
                                         const imgUrl = p.images && p.images.length > 0 ? p.images[0] : null;
                                         return (

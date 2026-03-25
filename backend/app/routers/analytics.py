@@ -278,6 +278,15 @@ def get_analytics_summary(
         models.PageView.created_at >= current_month_start
     ).count()
 
+    # E. Monto Vendido (Mes Actual)
+    raw_monthly_sales_amount = db.query(
+        func.sum(models.SaleOrder.total_amount)
+    ).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
+        models.SaleOrder.created_at >= current_month_start
+    ).scalar()
+    monthly_total_sales = float(raw_monthly_sales_amount or 0)
+
     return {
         "visitors": {
             "total": total_unique_visitors,
@@ -299,6 +308,7 @@ def get_analytics_summary(
         "monthly_metrics": {
             "leads_per_day": leads_per_day_data,
             "top_products_interest": monthly_product_data,
-            "top_products_sold": monthly_top_sold_data
+            "top_products_sold": monthly_top_sold_data,
+            "total_amount_sold": monthly_total_sales
         }
     }

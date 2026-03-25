@@ -13,7 +13,8 @@ import {
     Award,
     Star,
     CalendarDays,
-    Download
+    Download,
+    DollarSign
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -45,6 +46,7 @@ interface AnalyticsData {
         leads_per_day: { day: string; leads: number }[];
         top_products_interest: { product: string; count: number }[];
         top_products_sold: { product_name: string; quantity_sold: number }[];
+        total_amount_sold?: number;
     };
 }
 
@@ -274,7 +276,17 @@ export default function AnalyticsDashboard() {
                 )}
 
                 {activeTab === 'MENSUAL' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-right-4 fade-in duration-500">
+                    <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-500">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <StatCard 
+                                title="Ventas del Mes" 
+                                value={`$ ${(data.monthly_metrics?.total_amount_sold || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`} 
+                                subtitle="Monto total procesado" 
+                                icon={<DollarSign className="text-emerald-600" />} 
+                                color="bg-emerald-50" 
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         {/* Leads per day */}
                         <div className="bg-white p-8 rounded-[32px] shadow-md shadow-blue-200/20 border border-blue-50 lg:col-span-2">
                             <div className="flex items-center justify-between mb-8">
@@ -350,6 +362,7 @@ export default function AnalyticsDashboard() {
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
+                        </div>
                         </div>
                     </div>
                 )}
