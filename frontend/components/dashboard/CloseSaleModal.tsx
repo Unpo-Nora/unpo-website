@@ -262,7 +262,10 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                                                 {p.stock_quantity > 0 ? `${p.stock_quantity} EN STOCK` : 'SIN STOCK'}
                                                             </span>
                                                         </div>
-                                                        <span className="text-sm font-black text-emerald-600">${getProductPrice(p).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                                        <div className="flex items-center gap-3 mt-1">
+                                                            <span className="text-sm font-black text-emerald-600">${getProductPrice(p).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">SKU {p.sku}</span>
+                                                        </div>
                                                     </div>
                                                 </div>
                                                 <button
