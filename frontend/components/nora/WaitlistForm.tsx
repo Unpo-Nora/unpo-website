@@ -40,6 +40,10 @@ export default function WaitlistForm() {
             });
 
             if (response.ok) {
+                const text = `Hola! Me acabo de sumar a la Premium Waitlist de NORA. Mi nombre es *${formData.full_name}* y me interesó la opción: *${formData.product_interest}*.`;
+                const encodedText = encodeURIComponent(text);
+                window.open(`https://wa.me/5491131488378?text=${encodedText}`, '_blank');
+
                 setIsSuccess(true);
                 setFormData({
                     full_name: '',
