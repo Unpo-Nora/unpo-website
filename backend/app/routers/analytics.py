@@ -155,7 +155,8 @@ def get_analytics_summary(
         models.Lead.product_interest != ""
     ).group_by(models.Lead.product_interest).all()
 
-    product_data = _group_product_stats(raw_product_stats)[:5]
+    all_product_data = _group_product_stats(raw_product_stats)
+    product_data = all_product_data[:5]
 
     # 6. Ventas por Vendedor (Montos y Cantidades)
     raw_seller_sales = db.query(
@@ -287,6 +288,94 @@ def get_analytics_summary(
     ).scalar()
     monthly_total_sales = float(raw_monthly_sales_amount or 0)
 
+    # 9. Stock Valuation
+    raw_stock_value = db.query(
+        models.Product.name,
+        models.Product.stock_quantity,
+        models.Product.price_retail
+    ).filter(
+        models.Product.stock_quantity > 0,
+        models.Product.is_active == True
+    ).all()
+    
+    stock_value_data = []
+    total_inventory_value = 0.0
+    for name, stock, price in raw_stock_value:
+        p_price = float(price or 0)
+        value = stock * p_price
+        total_inventory_value += value
+        stock_value_data.append({
+            "product_name": name,
+            "stock_value": value
+        })
+    stock_value_data = sorted(stock_value_data, key=lambda x: x["stock_value"], reverse=True)[:15]
+
+    # 10. Least Requested Products (Bottom 10 Active Products)
+    active_products = db.query(models.Product.name).filter(models.Product.is_active == True).all()
+    active_product_names = [p[0].strip().upper() for p in active_products]
+    
+    product_interest_counts = {str(p["product"]).upper(): int(p["count"]) for p in all_product_data}
+    for p_name in active_product_names:
+        if p_name not in product_interest_counts:
+             product_interest_counts[p_name] = 0
+             
+    least_requested_sorted = sorted(
+        [{"product_name": k.title(), "count": v} for k, v in product_interest_counts.items() if k not in ["TODO", "HUMIDIFICADOR", "DECORACIÓN", "LUNCHERA", "VARIOS", "CATALOGO", "NADA"]],
+        key=lambda x: x["count"]
+    )
+    least_requested_data = least_requested_sorted[:10]
+
+    # 11. Lead Feedback
+    raw_feedback = db.query(
+        models.Lead.feedback_status,
+        func.count(models.Lead.id)
+    ).filter(
+        models.Lead.feedback_status != None
+    ).group_by(models.Lead.feedback_status).all()
+    
+    feedback_counts = {}
+    for status, count in raw_feedback:
+        if not status: continue
+        if status.startswith("Respondio - "):
+            options = status.replace("Respondio - ", "").split(", ")
+            for opt in options:
+                clean_opt = opt.split("(")[0].strip()
+                feedback_counts[clean_opt] = feedback_counts.get(clean_opt, 0) + count
+        else:
+            feedback_counts[status] = feedback_counts.get(status, 0) + count
+            
+    feedback_data = [{"status": k, "count": v} for k, v in feedback_counts.items()]
+    feedback_data = sorted(feedback_data, key=lambda x: x["count"], reverse=True)
+
+    # 12. Website visits per day (Mes Actual)
+    visits_per_day_data = []
+    if total_unique_visitors > 0:
+        visits_by_day = {str(d): 0 for d in range(1, month_days + 1)}
+        monthly_visits_q = db.query(models.PageView.created_at).filter(
+            models.PageView.created_at >= current_month_start
+        ).all()
+        for (v_date,) in monthly_visits_q:
+            if v_date:
+                visits_by_day[str(v_date.day)] += 1
+        visits_per_day_data = [{"day": k, "visits": v} for k, v in visits_by_day.items()]
+
+    # 13. Origin / Platform
+    raw_platforms = db.query(
+        models.Lead.platform,
+        func.count(models.Lead.id)
+    ).group_by(models.Lead.platform).all()
+    
+    final_platform = {}
+    for plat, count in raw_platforms:
+        p_name = plat or "Página Web"
+        p_lower = str(p_name).lower()
+        if "ig" in p_lower or "instagram" in p_lower: p_name = "Instagram"
+        elif "fb" in p_lower or "facebook" in p_lower: p_name = "Facebook"
+        elif "web" in p_lower: p_name = "Página Web"
+        
+        final_platform[p_name] = final_platform.get(p_name, 0) + count
+    platform_data = [{"platform": k, "count": v} for k, v in final_platform.items()]
+
     return {
         "visitors": {
             "total": total_unique_visitors,
@@ -305,8 +394,16 @@ def get_analytics_summary(
         "seller_sales": seller_sales_data,
         "top_clients": top_clients_data,
         "top_products_sold": top_products_sold_data,
+        "stock_valuation": {
+            "total_value": total_inventory_value,
+            "top_products": stock_value_data
+        },
+        "least_requested_products": least_requested_data,
+        "lead_feedback": feedback_data,
+        "lead_origins": platform_data,
         "monthly_metrics": {
             "leads_per_day": leads_per_day_data,
+            "visits_per_day": visits_per_day_data,
             "top_products_interest": monthly_product_data,
             "top_products_sold": monthly_top_sold_data,
             "total_amount_sold": monthly_total_sales

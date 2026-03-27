@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-    LineChart, Line
+    LineChart, Line, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -42,8 +42,16 @@ interface AnalyticsData {
     seller_sales: { seller: string; sales_count: number; total_amount: number }[];
     top_clients: { client_name: string; purchases: number; total_amount: number }[];
     top_products_sold: { product_name: string; category: string; quantity_sold: number }[];
+    stock_valuation: {
+        total_value: number;
+        top_products: { product_name: string; stock_value: number }[];
+    };
+    least_requested_products: { product_name: string; count: number }[];
+    lead_feedback: { status: string; count: number }[];
+    lead_origins: { platform: string; count: number }[];
     monthly_metrics: {
         leads_per_day: { day: string; leads: number }[];
+        visits_per_day: { day: string; visits: number }[];
         top_products_interest: { product: string; count: number }[];
         top_products_sold: { product_name: string; quantity_sold: number }[];
         total_amount_sold?: number;
@@ -133,6 +141,8 @@ export default function AnalyticsDashboard() {
             setIsExporting(false);
         }
     };
+
+    const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#ef4444', '#64748b', '#06b6d4'];
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
@@ -272,6 +282,70 @@ export default function AnalyticsDashboard() {
                                 {data.top_clients.length === 0 && <p className="text-slate-400 italic text-sm">Sin compras.</p>}
                             </div>
                         </div>
+
+                        {/* Origen de los Leads */}
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-pink-200/20 border border-pink-50">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                        <Users size={20} className="text-pink-600" />
+                                        Origen de Tráfico
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium mt-1">Procedencia de los clientes potenciales.</p>
+                                </div>
+                            </div>
+                            <div className="h-[250px] w-full mt-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={data.lead_origins}
+                                            innerRadius={60}
+                                            outerRadius={90}
+                                            paddingAngle={5}
+                                            dataKey="count"
+                                            nameKey="platform"
+                                        >
+                                            {data.lead_origins.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                        <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Lead Feedback */}
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-blue-200/20 border border-blue-50 lg:col-span-1">
+                            <div className="flex items-center justify-between mb-6">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                        <MessageSquare size={20} className="text-blue-600" />
+                                        Feedback de Contactos
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium mt-1">Motivos de respuesta de los prospectos.</p>
+                                </div>
+                            </div>
+                            <div className="h-[250px] w-full mt-4">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <PieChart>
+                                        <Pie
+                                            data={data.lead_feedback}
+                                            innerRadius={0}
+                                            outerRadius={90}
+                                            dataKey="count"
+                                            nameKey="status"
+                                        >
+                                            {data.lead_feedback.map((entry, index) => (
+                                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                            ))}
+                                        </Pie>
+                                        <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                    </PieChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -288,19 +362,19 @@ export default function AnalyticsDashboard() {
                         </div>
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         {/* Leads per day */}
-                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-blue-200/20 border border-blue-50 lg:col-span-2">
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-blue-200/20 border border-blue-50 lg:col-span-1">
                             <div className="flex items-center justify-between mb-8">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                         <CalendarDays size={20} className="text-blue-600" />
-                                        Ingreso de Leads por Día (Mes Actual)
+                                        Nuevos Contactos (Mes Actual)
                                     </h3>
                                     <p className="text-sm text-slate-500 font-medium mt-1">
-                                        Flujo de tráfico y alcance de las campañas.
+                                        Prospectos obtenidos por día.
                                     </p>
                                 </div>
                             </div>
-                            <div className="h-[350px] w-full">
+                            <div className="h-[250px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={data.monthly_metrics?.leads_per_day || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
@@ -311,6 +385,35 @@ export default function AnalyticsDashboard() {
                                             cursor={{ fill: '#f8fafc', strokeWidth: 2 }}
                                         />
                                         <Line type="monotone" dataKey="leads" name="Nuevos Leads" stroke="#2563eb" strokeWidth={4} dot={{ r: 4, fill: '#2563eb', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Visits per day */}
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-purple-200/20 border border-purple-50 lg:col-span-1">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                        <TrendingUp size={20} className="text-purple-600" />
+                                        Visitas Únicas a la Web (Mes)
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium mt-1">
+                                        Tráfico diario del sitio web.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="h-[250px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={data.monthly_metrics?.visits_per_day || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
+                                        <RechartsTooltip
+                                            contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                                            cursor={{ fill: '#f8fafc', strokeWidth: 2 }}
+                                        />
+                                        <Line type="monotone" dataKey="visits" name="Visitas" stroke="#9333ea" strokeWidth={4} dot={{ r: 4, fill: '#9333ea', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -391,7 +494,7 @@ export default function AnalyticsDashboard() {
                         </div>
 
                         {/* Stock Alerts Table */}
-                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-red-200/20 border border-red-50">
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-red-200/20 border border-red-50 lg:col-span-2">
                             <div className="flex items-center justify-between mb-8">
                                 <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                     <AlertTriangle size={20} className="text-red-600" />
@@ -424,6 +527,67 @@ export default function AnalyticsDashboard() {
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+
+                        {/* Total Money Left */}
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-emerald-200/20 border border-emerald-50 lg:col-span-1">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                        <DollarSign size={20} className="text-emerald-600" />
+                                        Capital en Inventario
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium mt-1">Valorización mercadería en stock.</p>
+                                </div>
+                            </div>
+                            <div className="mb-6 p-5 bg-emerald-50 rounded-2xl flex items-center justify-between border border-emerald-100">
+                                <span className="font-bold text-emerald-800 uppercase text-xs tracking-wider">Total</span>
+                                <span className="text-2xl font-black text-emerald-700">
+                                    $ {(data.stock_valuation?.total_value || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                </span>
+                            </div>
+                            <div className="h-[250px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart data={data.stock_valuation?.top_products || []} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                        <XAxis dataKey="product_name" tick={false} axisLine={false} tickLine={false} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} />
+                                        <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                        <Bar dataKey="stock_value" name="Capital ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        {/* Least Requested Products */}
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-rose-200/20 border border-rose-50 lg:col-span-1">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                        <Package size={20} className="text-rose-600" />
+                                        Menos Solicitados
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium mt-1">Bajo o nulo interés.</p>
+                                </div>
+                            </div>
+                            <div className="h-[320px] w-full mt-2 overflow-y-auto pr-2 custom-scrollbar">
+                                <div className="space-y-3">
+                                    {data.least_requested_products?.map((item, idx) => (
+                                        <div key={idx} className="flex items-center justify-between p-3 bg-rose-50/50 rounded-xl hover:bg-rose-100 transition-colors">
+                                            <span className="font-bold text-slate-800 text-xs truncate max-w-[150px]" title={item.product_name}>
+                                                {item.product_name}
+                                            </span>
+                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                <span className={`text-sm font-black ${item.count === 0 ? 'text-rose-600' : 'text-slate-600'}`}>{item.count}</span>
+                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Consultas</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {(!data.least_requested_products || data.least_requested_products.length === 0) && (
+                                        <p className="text-slate-400 italic text-sm text-center mt-10">No hay datos.</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>

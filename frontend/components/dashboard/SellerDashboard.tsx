@@ -52,6 +52,8 @@ export default function SellerDashboard() {
     const [showFeedbackModal, setShowFeedbackModal] = useState(false);
     const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
     const [feedbackResult, setFeedbackResult] = useState("Respondio");
+    const [respondioChecklist, setRespondioChecklist] = useState<string[]>([]);
+    const [otrosProductosText, setOtrosProductosText] = useState("");
     const [feedbackNotes, setFeedbackNotes] = useState("");
 
     // Close Sale state
@@ -129,13 +131,47 @@ export default function SellerDashboard() {
 
     const handleOpenFeedbackModal = (lead: Lead) => {
         setSelectedLead(lead);
-        setFeedbackResult(lead.feedback_status || "Respondio");
+        let status = lead.feedback_status || "Respondio";
+        let checklist: string[] = [];
+        let otrosTexto = "";
+
+        if (status.startsWith("Respondio - ")) {
+            const optionsStr = status.replace("Respondio - ", "");
+            if (optionsStr.includes("Quiere otros productos (")) {
+                 const match = optionsStr.match(/Quiere otros productos \((.*?)\)/);
+                 if (match) otrosTexto = match[1];
+                 checklist.push("Quiere otros productos");
+            } else if (optionsStr.includes("Quiere otros productos")) {
+                 checklist.push("Quiere otros productos");
+            }
+            
+            const simpleOptions = ["Pidio Catalogo", "Precios muy altos", "Poco stock", "Poca variedad de productos"];
+            simpleOptions.forEach(opt => {
+                if (optionsStr.includes(opt)) checklist.push(opt);
+            });
+            status = "Respondio";
+        }
+        
+        setRespondioChecklist(checklist);
+        setOtrosProductosText(otrosTexto);
+        setFeedbackResult(status);
         setFeedbackNotes(lead.notes || "");
         setShowFeedbackModal(true);
     };
 
     const handleSaveFeedback = async () => {
         if (!selectedLead) return;
+
+        let finalFeedbackStatus = feedbackResult;
+
+        if (feedbackResult === "Respondio" && respondioChecklist.length > 0) {
+            const formattedOptions = respondioChecklist.map(opt => 
+                opt === "Quiere otros productos" && otrosProductosText.trim() 
+                    ? `Quiere otros productos (${otrosProductosText.trim()})` 
+                    : opt
+            );
+            finalFeedbackStatus = `Respondio - ${formattedOptions.join(', ')}`;
+        }
 
         try {
             const token = localStorage.getItem('token');
@@ -146,7 +182,7 @@ export default function SellerDashboard() {
                     'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
-                    feedback_status: feedbackResult,
+                    feedback_status: finalFeedbackStatus,
                     notes: feedbackNotes
                 })
             });
@@ -155,7 +191,7 @@ export default function SellerDashboard() {
                 // Update local state
                 setLeads(leads.map(l =>
                     l.id === selectedLead.id
-                        ? { ...l, feedback_status: feedbackResult, notes: feedbackNotes }
+                        ? { ...l, feedback_status: finalFeedbackStatus, notes: feedbackNotes }
                         : l
                 ));
                 setShowFeedbackModal(false);
@@ -327,9 +363,20 @@ export default function SellerDashboard() {
     );
 
     const getFeedbackBadge = (status: string) => {
+        if (!status) return <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-50 text-slate-400 border border-slate-100 uppercase">Pendiente</span>;
+        
+        if (status.startsWith('Respondio')) {
+            return <div className="flex flex-col gap-1">
+                <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase inline-block w-fit">Respondió</span>
+                {status !== 'Respondio' && (
+                    <span className="text-[9px] text-slate-500 font-bold max-w-[200px] truncate" title={status.replace('Respondio - ', '')}>
+                        {status.replace('Respondio - ', '')}
+                    </span>
+                )}
+            </div>;
+        }
+
         switch (status) {
-            case 'Respondio':
-                return <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-100 uppercase">Respondió</span>;
             case 'No responde':
                 return <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-100 uppercase">Sin respuesta</span>;
             case 'Numero erroneo':
@@ -620,6 +667,50 @@ export default function SellerDashboard() {
                                             ))}
                                         </div>
                                     </div>
+
+                                    {feedbackResult === "Respondio" && (
+                                        <div className="animate-in slide-in-from-top-2 fade-in duration-300">
+                                            <label className="block text-[11px] font-black text-slate-400 uppercase tracking-[0.15em] mb-4">¿Qué respondió el cliente?</label>
+                                            <div className="space-y-3">
+                                                {[
+                                                    "Pidio Catalogo",
+                                                    "Precios muy altos",
+                                                    "Poco stock",
+                                                    "Poca variedad de productos",
+                                                    "Quiere otros productos"
+                                                ].map((opt) => (
+                                                    <div key={opt} className="flex flex-col gap-2">
+                                                        <label className="flex items-center gap-3 cursor-pointer group">
+                                                            <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-all ${respondioChecklist.includes(opt) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-300 group-hover:border-blue-400'}`}>
+                                                                {respondioChecklist.includes(opt) && <CheckCircle size={16} strokeWidth={3} />}
+                                                            </div>
+                                                            <span className={`text-sm font-bold transition-all ${respondioChecklist.includes(opt) ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900'}`}>{opt}</span>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="hidden" 
+                                                                checked={respondioChecklist.includes(opt)}
+                                                                onChange={(e) => {
+                                                                    if (e.target.checked) setRespondioChecklist([...respondioChecklist, opt]);
+                                                                    else setRespondioChecklist(respondioChecklist.filter(item => item !== opt));
+                                                                }} 
+                                                            />
+                                                        </label>
+                                                        {opt === "Quiere otros productos" && respondioChecklist.includes(opt) && (
+                                                            <div className="pl-9 animate-in slide-in-from-top-1 fade-in duration-200">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="¿Qué productos solicitó?"
+                                                                    value={otrosProductosText}
+                                                                    onChange={(e) => setOtrosProductosText(e.target.value)}
+                                                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-400 outline-none transition-all text-sm text-slate-700"
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div>
                                         <label className="block text-[11px] font-black text-slate-400 uppercase tracking-[0.15em] mb-4">Comentarios Adicionales</label>
