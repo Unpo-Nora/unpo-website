@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from .. import models, database
+from .. import models, database, crud
 from .auth import get_current_user
 from pydantic import BaseModel
 from typing import List, Dict, Any
@@ -289,10 +289,14 @@ def get_analytics_summary(
     monthly_total_sales = float(raw_monthly_sales_amount or 0)
 
     # 9. Stock Valuation
+    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
+    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
+
     raw_stock_value = db.query(
         models.Product.name,
         models.Product.stock_quantity,
-        models.Product.price_retail
+        models.Product.price_retail,
+        models.Product.price_usd
     ).filter(
         models.Product.stock_quantity > 0,
         models.Product.is_active == True
@@ -300,13 +304,20 @@ def get_analytics_summary(
     
     stock_value_data = []
     total_inventory_value = 0.0
-    for name, stock, price in raw_stock_value:
-        p_price = float(price or 0)
+    for name, stock, p_retail, p_usd in raw_stock_value:
+        usd_val = float(p_usd or 0)
+        retail_val = float(p_retail or 0)
+        
+        if usd_val > 0:
+            p_price = usd_val * exchange_rate
+        else:
+            p_price = retail_val
+            
         value = stock * p_price
         total_inventory_value += value
         stock_value_data.append({
             "product_name": name,
-            "stock_value": value
+            "stock_value": float(value)
         })
     stock_value_data = sorted(stock_value_data, key=lambda x: x["stock_value"], reverse=True)[:15]
 
