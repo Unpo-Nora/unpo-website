@@ -146,12 +146,20 @@ export default function ClientsDashboard() {
                                     </td>
                                     <td className="px-8 py-6 text-right">
                                         <div className="flex flex-col items-end gap-3">
-                                            <button
-                                                onClick={() => setClientToCloseSale(client)}
-                                                className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-blue-100 mb-2"
-                                            >
-                                                <ShoppingCart size={14} /> Nueva Venta
-                                            </button>
+                                            <div className="flex gap-2 mb-2">
+                                                <button
+                                                    onClick={() => window.open(`https://wa.me/${client.phone?.replace(/[^0-9]/g, '')}`, 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes')}
+                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-green-100"
+                                                >
+                                                    <MessageCircle size={14} /> Ver Chat
+                                                </button>
+                                                <button
+                                                    onClick={() => setClientToCloseSale(client)}
+                                                    className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-blue-100"
+                                                >
+                                                    <ShoppingCart size={14} /> Nueva Venta
+                                                </button>
+                                            </div>
                                             <ClientHistory leadId={client.id} onDownload={handleDownloadPDF} onCancel={handleCancelOrder} />
                                         </div>
                                     </td>

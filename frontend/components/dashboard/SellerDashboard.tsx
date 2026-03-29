@@ -545,6 +545,13 @@ export default function SellerDashboard() {
                                             ) : (
                                                 <>
                                                     <button
+                                                        onClick={() => window.open(getWhatsAppLink(lead), 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes')}
+                                                        className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-green-100"
+                                                    >
+                                                        <MessageCircle size={14} />
+                                                        Ver Chat
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleOpenFeedbackModal(lead)}
                                                         className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-blue-100"
                                                     >
