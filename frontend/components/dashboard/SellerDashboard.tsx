@@ -97,8 +97,8 @@ export default function SellerDashboard() {
     };
 
     const handleWhatsAppClick = async (lead: Lead) => {
-        // Open link immediately
-        window.open(getWhatsAppLink(lead), '_blank');
+        // Open link immediately in a popup window
+        window.open(getWhatsAppLink(lead), 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes');
 
         // Move to contacted automatically if it was new
         if (lead.status === 'NEW' && currentUser?.email) {

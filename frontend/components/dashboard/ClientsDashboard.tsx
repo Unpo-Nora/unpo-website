@@ -138,9 +138,9 @@ export default function ClientsDashboard() {
                                         <div className="text-sm font-medium text-slate-700 flex items-center gap-3">
                                             {client.phone}
                                             {client.phone && (
-                                                <a href={`https://wa.me/${client.phone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noreferrer" className="p-1.5 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white rounded-md transition-colors shadow-sm" title="Contactar por WhatsApp">
+                                                <button onClick={() => window.open(`https://wa.me/${client.phone.replace(/[^0-9]/g, '')}`, 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes')} className="p-1.5 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white rounded-md transition-colors shadow-sm" title="Contactar por WhatsApp">
                                                     <MessageCircle size={16} />
-                                                </a>
+                                                </button>
                                             )}
                                         </div>
                                     </td>

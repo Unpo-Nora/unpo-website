@@ -7,7 +7,7 @@ import ContactForm from '../../components/unpo/ContactForm';
 
 export default function Home() {
     return (
-        <main className="min-h-screen bg-white">
+        <main className="min-h-[100dvh] bg-white">
             <Navbar />
             <Hero />
             <Features />

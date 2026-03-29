@@ -288,6 +288,32 @@ def get_analytics_summary(
     ).scalar()
     monthly_total_sales = float(raw_monthly_sales_amount or 0)
 
+    # F. Historical Sales
+    all_completed_sales = db.query(
+        models.SaleOrder.created_at,
+        models.SaleOrder.total_amount,
+        models.SaleOrder.id
+    ).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED
+    ).all()
+
+    monthly_sales_dict = {}
+    for created_at, amount, s_id in all_completed_sales:
+        if not created_at: continue
+        month_key = created_at.strftime("%Y-%m")
+        if month_key not in monthly_sales_dict:
+            monthly_sales_dict[month_key] = {"amount": 0.0, "count": 0}
+        monthly_sales_dict[month_key]["amount"] += float(amount or 0)
+        monthly_sales_dict[month_key]["count"] += 1
+
+    historical_monthly_sales = [
+        {
+            "month": k, 
+            "total_amount": v["amount"], 
+            "sales_count": v["count"]
+        } for k, v in sorted(monthly_sales_dict.items())
+    ][-12:] # Las 12 months
+
     # 9. Stock Valuation
     rate_setting = crud.get_setting(db, key="manual_exchange_rate")
     exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
@@ -417,6 +443,7 @@ def get_analytics_summary(
             "visits_per_day": visits_per_day_data,
             "top_products_interest": monthly_product_data,
             "top_products_sold": monthly_top_sold_data,
-            "total_amount_sold": monthly_total_sales
+            "total_amount_sold": monthly_total_sales,
+            "historical_monthly_sales": historical_monthly_sales
         }
     }
