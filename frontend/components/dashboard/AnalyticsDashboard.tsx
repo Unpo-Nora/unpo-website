@@ -62,8 +62,15 @@ interface AnalyticsData {
 export default function AnalyticsDashboard() {
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'GENERAL' | 'MENSUAL' | 'PRODUCTOS'>('GENERAL');
+    const [activeTab, setActiveTab] = useState<'GENERAL' | 'MENSUAL' | 'PRODUCTOS' | 'HISTORICOS'>('GENERAL');
     const [isExporting, setIsExporting] = useState(false);
+    
+    // Historical States
+    const [historicalYear, setHistoricalYear] = useState(new Date().getFullYear());
+    const [historicalMonth, setHistoricalMonth] = useState(new Date().getMonth() + 1);
+    const [historicalData, setHistoricalData] = useState<any>(null);
+    const [historicalLoading, setHistoricalLoading] = useState(false);
+
     const { user } = useAuth();
 
     useEffect(() => {
@@ -91,6 +98,29 @@ export default function AnalyticsDashboard() {
 
         fetchAnalytics();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'HISTORICOS') {
+            const fetchHistorical = async () => {
+                setHistoricalLoading(true);
+                try {
+                    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/historical?year=${historicalYear}&month=${historicalMonth}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) {
+                        const result = await response.json();
+                        setHistoricalData(result);
+                    }
+                } catch (error) {
+                    console.error("Error fetching historical analytics:", error);
+                } finally {
+                    setHistoricalLoading(false);
+                }
+            };
+            fetchHistorical();
+        }
+    }, [activeTab, historicalYear, historicalMonth]);
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-[400px]">
@@ -174,6 +204,12 @@ export default function AnalyticsDashboard() {
                             className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'PRODUCTOS' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                         >
                             Productos & Stock
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('HISTORICOS')}
+                            className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'HISTORICOS' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            Históricos
                         </button>
                     </div>
 
@@ -654,6 +690,147 @@ export default function AnalyticsDashboard() {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                )}
+
+                {activeTab === 'HISTORICOS' && (
+                    <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-500">
+                        <div className="flex items-center gap-4 bg-white p-4 rounded-3xl shadow-sm border border-slate-100 mb-6">
+                            <span className="text-sm font-bold text-slate-500 uppercase flex items-center gap-2"><CalendarDays size={18} /> Seleccionar Período:</span>
+                            <select 
+                                value={historicalMonth} 
+                                onChange={(e) => setHistoricalMonth(Number(e.target.value))}
+                                className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700 focus:ring-2 focus:ring-orange-100 focus:border-orange-500 transition-all cursor-pointer"
+                            >
+                                {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                                    <option key={m} value={m}>{new Date(2000, m - 1).toLocaleString('es-AR', { month: 'long' }).toUpperCase()}</option>
+                                ))}
+                            </select>
+                            <select 
+                                value={historicalYear} 
+                                onChange={(e) => setHistoricalYear(Number(e.target.value))}
+                                className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700 focus:ring-2 focus:ring-orange-100 focus:border-orange-500 transition-all cursor-pointer"
+                            >
+                                {[2024, 2025, 2026, 2027, 2028].map(y => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
+                            </select>
+                        </div>
+                        
+                        {historicalLoading ? (
+                            <div className="text-center py-20 text-slate-400 font-medium">Consultando registros históricos...</div>
+                        ) : historicalData ? (
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                    <StatCard title="Total Vendido" value={`$ ${(historicalData.sales.amount || 0).toLocaleString('es-AR', { minimumFractionDigits: 0 })}`} subtitle={`${historicalData.sales.count} órdenes cerradas`} icon={<DollarSign className="text-emerald-600" />} color="bg-emerald-50" />
+                                    <StatCard title="Leads Ingresados" value={historicalData.leads.entered.toString()} subtitle="Adquiridos en total" icon={<Users className="text-blue-600" />} color="bg-blue-50" />
+                                    <StatCard title="Leads Contactados" value={historicalData.leads.contacted.toString()} subtitle="Iniciaron conversación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />
+                                    <StatCard title="Nuevos Clientes" value={historicalData.leads.converted_clients.toString()} subtitle={`Conversión (sobre contactados): ${historicalData.leads.contacted > 0 ? Math.round((historicalData.leads.converted_clients / historicalData.leads.contacted) * 100) : 0}%`} icon={<Award className="text-indigo-600" />} color="bg-indigo-50" />
+                                </div>
+                                
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    {/* Top Sellers */}
+                                    <div className="bg-white p-8 rounded-[32px] shadow-md shadow-slate-200/40 border border-slate-100">
+                                        <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2 mb-6">
+                                            <Award size={20} className="text-indigo-600" />
+                                            Rendimiento de Vendedores
+                                        </h3>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left">
+                                                <thead>
+                                                    <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-50">
+                                                        <th className="pb-4 px-4">Vendedor</th>
+                                                        <th className="pb-4 px-4 text-center">Ventas</th>
+                                                        <th className="pb-4 px-4 text-right">Monto</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-50">
+                                                    {historicalData.sellers_performance.map((s: any, idx: number) => (
+                                                        <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                                            <td className="py-4 px-4 font-bold text-slate-900">{s.seller}</td>
+                                                            <td className="py-4 px-4 text-center font-medium text-slate-600">{s.sales_count}</td>
+                                                            <td className="py-4 px-4 text-right font-black text-indigo-600">
+                                                                $ {s.total_amount.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                    {historicalData.sellers_performance.length === 0 && (
+                                                        <tr><td colSpan={3} className="py-6 text-slate-400 italic text-sm text-center">Sin ventas este mes.</td></tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                     {/* Lead Platforms */}
+                                     <div className="bg-white p-8 rounded-[32px] shadow-md shadow-pink-200/20 border border-pink-50">
+                                         <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2 mb-6">
+                                             <Users size={20} className="text-pink-600" />
+                                             Origen de Tráfico
+                                         </h3>
+                                         <div className="h-[250px] w-full">
+                                             {historicalData.platforms.length > 0 ? (
+                                             <ResponsiveContainer width="100%" height="100%">
+                                                 <PieChart>
+                                                     <Pie data={historicalData.platforms} innerRadius={60} outerRadius={90} paddingAngle={5} dataKey="count" nameKey="platform">
+                                                         {historicalData.platforms.map((entry: any, index: number) => (
+                                                             <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                                         ))}
+                                                     </Pie>
+                                                     <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                     <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }} />
+                                                 </PieChart>
+                                             </ResponsiveContainer>
+                                             ) : (
+                                                 <div className="w-full h-full flex items-center justify-center text-slate-400 italic text-sm">Sin datos de tráfico registrados.</div>
+                                             )}
+                                         </div>
+                                     </div>
+
+                                    {/* Products + Sold */}
+                                    <div className="bg-white p-8 rounded-[32px] shadow-md shadow-emerald-200/20 border border-emerald-50">
+                                        <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2 mb-6">
+                                            <Package size={20} className="text-emerald-600" />
+                                            Productos Más Vendidos
+                                        </h3>
+                                        <div className="h-[300px] w-full">
+                                            {historicalData.top_products.length > 0 ? (
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={historicalData.top_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                                                    <XAxis type="number" hide />
+                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={120} />
+                                                    <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                    <Bar dataKey="quantity_sold" name="Unidades" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-slate-400 italic text-sm">Sin ventas registradas.</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Products - Sold */}
+                                    <div className="bg-white p-8 rounded-[32px] shadow-md shadow-rose-200/20 border border-rose-50">
+                                        <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2 mb-6">
+                                            <Package size={20} className="text-rose-600" />
+                                            Productos Menos Vendidos (Activos)
+                                        </h3>
+                                        <div className="h-[300px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <BarChart data={historicalData.bottom_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                                                    <XAxis type="number" hide />
+                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={120} />
+                                                    <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                                                    <Bar dataKey="quantity_sold" name="Unidades" fill="#e11d48" radius={[0, 4, 4, 0]} barSize={20} />
+                                                </BarChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        ) : null}
                     </div>
                 )}
             </div>

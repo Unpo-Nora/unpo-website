@@ -447,3 +447,143 @@ def get_analytics_summary(
             "historical_monthly_sales": historical_monthly_sales
         }
     }
+
+@router.get("/historical")
+def get_historical_analytics(
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        return {"error": "Unauthorized"}
+    
+    start_date = datetime(year, month, 1)
+    month_days = calendar.monthrange(year, month)[1]
+    end_date = datetime(year, month, month_days, 23, 59, 59, 999999)
+
+    # 1. Ventas: Total amount y count
+    sales_q = db.query(
+        func.count(models.SaleOrder.id),
+        func.sum(models.SaleOrder.total_amount)
+    ).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
+        models.SaleOrder.created_at >= start_date,
+        models.SaleOrder.created_at <= end_date
+    ).first()
+    sales_count = sales_q[0] or 0
+    sales_amount = float(sales_q[1] or 0)
+
+    # 2. Leads ingresados
+    leads_entered = db.query(models.Lead).filter(
+        models.Lead.created_at >= start_date,
+        models.Lead.created_at <= end_date
+    ).count()
+
+    # 3. Leads contactados y que pasaron a clientes
+    leads_contacted = db.query(models.Lead).filter(
+        models.Lead.created_at >= start_date,
+        models.Lead.created_at <= end_date,
+        models.Lead.status.in_([models.LeadStatus.CONTACTED, models.LeadStatus.NEGOTIATION, models.LeadStatus.CLOSED, models.LeadStatus.CLIENT])
+    ).count()
+    
+    leads_clients = db.query(models.Lead).filter(
+        models.Lead.created_at >= start_date,
+        models.Lead.created_at <= end_date,
+        models.Lead.status == models.LeadStatus.CLIENT
+    ).count()
+
+    # 4. Top Sellers in that month
+    raw_seller_sales = db.query(
+        models.Lead.seller,
+        func.count(models.SaleOrder.id),
+        func.sum(models.SaleOrder.total_amount)
+    ).join(
+        models.SaleOrder, models.SaleOrder.lead_id == models.Lead.id
+    ).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
+        models.SaleOrder.created_at >= start_date,
+        models.SaleOrder.created_at <= end_date
+    ).group_by(models.Lead.seller).order_by(
+        func.sum(models.SaleOrder.total_amount).desc()
+    ).all()
+
+    seller_sales_data = [
+        {
+            "seller": s[0] or "Sin Asignar",
+            "sales_count": s[1],
+            "total_amount": float(s[2] or 0)
+        } for s in raw_seller_sales
+    ]
+
+    # 5. Productos más y menos vendidos
+    raw_monthly_products = db.query(
+        models.Product.name,
+        func.sum(models.OrderItem.quantity)
+    ).join(
+        models.OrderItem, models.OrderItem.product_sku == models.Product.sku
+    ).join(
+        models.SaleOrder, models.SaleOrder.id == models.OrderItem.order_id
+    ).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
+        models.SaleOrder.created_at >= start_date,
+        models.SaleOrder.created_at <= end_date
+    ).group_by(models.Product.name).order_by(
+        func.sum(models.OrderItem.quantity).desc()
+    ).all()
+
+    product_sales_dict = {p[0]: int(p[1] or 0) for p in raw_monthly_products}
+    top_products = [{"product_name": k, "quantity_sold": v} for k, v in list(product_sales_dict.items())[:10]]
+    
+    # 6. Productos menos vendidos
+    active_products = db.query(models.Product.name).filter(models.Product.is_active == True).all()
+    active_product_names = [p[0] for p in active_products]
+
+    bottom_products = []
+    for p_name in active_product_names:
+        qty = product_sales_dict.get(p_name, 0)
+        bottom_products.append({"product_name": p_name, "quantity_sold": qty})
+    
+    bottom_products.sort(key=lambda x: x["quantity_sold"])
+    bottom_products = bottom_products[:10]
+
+    # 7. Plataforma Origen
+    raw_platforms = db.query(
+        models.Lead.platform,
+        func.count(models.Lead.id)
+    ).filter(
+        models.Lead.created_at >= start_date,
+        models.Lead.created_at <= end_date
+    ).group_by(models.Lead.platform).all()
+    
+    final_platform = {}
+    for plat, count in raw_platforms:
+        p_name = plat or "Página Web"
+        p_lower = str(p_name).lower()
+        if "ig" in p_lower or "instagram" in p_lower: p_name = "Instagram"
+        elif "fb" in p_lower or "facebook" in p_lower: p_name = "Facebook"
+        elif "web" in p_lower: p_name = "Página Web"
+        
+        final_platform[p_name] = final_platform.get(p_name, 0) + count
+        
+    platform_data = [{"platform": k, "count": v} for k, v in final_platform.items()]
+
+    return {
+        "sales": {
+            "amount": sales_amount,
+            "count": sales_count
+        },
+        "leads": {
+            "entered": leads_entered,
+            "contacted": leads_contacted,
+            "converted_clients": leads_clients
+        },
+        "sellers_performance": seller_sales_data,
+        "top_products": top_products,
+        "bottom_products": bottom_products,
+        "platforms": platform_data,
+        "period": {
+            "year": year,
+            "month": month
+        }
+    }

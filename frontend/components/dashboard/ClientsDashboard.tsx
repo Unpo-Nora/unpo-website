@@ -246,33 +246,56 @@ function ClientHistory({ leadId, onDownload, onCancel }: { leadId: number, onDow
 
     if (orders.length === 0) return <span className="text-xs text-slate-400 italic">No hay órdenes registadas (Error interno)</span>;
 
+    // Group orders by Month and Year
+    const groupedOrders = orders.reduce<{ [key: string]: any[] }>((acc, order) => {
+        const dateStr = order.created_at || order.date;
+        let monthYear = "Fecha Desconocida";
+        if (dateStr) {
+            const date = new Date(dateStr);
+            const formatter = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' });
+            monthYear = formatter.format(date);
+            monthYear = monthYear.charAt(0).toUpperCase() + monthYear.slice(1);
+        }
+        
+        if (!acc[monthYear]) acc[monthYear] = [];
+        acc[monthYear].push(order);
+        return acc;
+    }, {});
+
     return (
-        <div className="flex flex-col items-end gap-2">
-            {orders.map(order => (
-                <div key={order.id} className="flex items-center gap-3 bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg">
-                    <div className="text-right pr-3 border-r border-slate-100">
-                        <span className="block text-xs font-black text-slate-800">Orden #{order.id}</span>
-                        <span className={`text-[10px] font-bold ${order.status === 'COMPLETED' ? 'text-emerald-500' : 'text-rose-500'}`}>{order.status}</span>
+        <div className="flex flex-col items-end gap-5">
+            {Object.entries(groupedOrders).map(([monthYear, monthOrders], idx) => (
+                <div key={idx} className="flex flex-col items-end gap-2 w-full">
+                    <div className="text-[10px] font-black tracking-widest uppercase text-slate-400 bg-slate-100 px-3 py-1 rounded-full w-fit self-end">
+                        {monthYear}
                     </div>
-                    <span className="text-sm font-black text-slate-700 w-24 text-right">${order.total_amount?.toLocaleString()}</span>
+                    {monthOrders.map(order => (
+                        <div key={order.id} className="flex items-center gap-3 bg-white border border-slate-200 shadow-sm px-3 py-1.5 rounded-lg">
+                            <div className="text-right pr-3 border-r border-slate-100">
+                                <span className="block text-xs font-black text-slate-800">Orden #{order.id}</span>
+                                <span className={`text-[10px] font-bold ${order.status === 'COMPLETED' ? 'text-emerald-500' : 'text-rose-500'}`}>{order.status}</span>
+                            </div>
+                            <span className="text-sm font-black text-slate-700 w-24 text-right">${order.total_amount?.toLocaleString()}</span>
 
-                    <button
-                        onClick={() => onDownload(order.id)}
-                        className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md transition-colors"
-                        title="Descargar Remito"
-                    >
-                        <FileText size={16} />
-                    </button>
+                            <button
+                                onClick={() => onDownload(order.id)}
+                                className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md transition-colors"
+                                title="Descargar Remito"
+                            >
+                                <FileText size={16} />
+                            </button>
 
-                    {order.status === 'COMPLETED' && (
-                        <button
-                            onClick={() => onCancel(order.id)}
-                            className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-md transition-colors"
-                            title="Cancelar Venta y Devolver Stock"
-                        >
-                            <XCircle size={16} />
-                        </button>
-                    )}
+                            {order.status === 'COMPLETED' && (
+                                <button
+                                    onClick={() => onCancel(order.id)}
+                                    className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-md transition-colors"
+                                    title="Cancelar Venta y Devolver Stock"
+                                >
+                                    <XCircle size={16} />
+                                </button>
+                            )}
+                        </div>
+                    ))}
                 </div>
             ))}
         </div>

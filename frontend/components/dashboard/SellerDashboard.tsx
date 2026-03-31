@@ -47,6 +47,8 @@ export default function SellerDashboard() {
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState<"NEW" | "CONTACTED">("NEW");
     const [currentPage, setCurrentPage] = useState(1);
+    const [filterFeedback, setFilterFeedback] = useState("TODOS");
+    const [filterSeller, setFilterSeller] = useState("TODOS");
 
     // Modal state
     const [showFeedbackModal, setShowFeedbackModal] = useState(false);
@@ -353,7 +355,21 @@ export default function SellerDashboard() {
             l.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             l.phone?.includes(searchTerm) ||
             l.email?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+        )
+        .filter(l => {
+            if (activeTab === "NEW") return true;
+            if (filterFeedback === "TODOS") return true;
+            if (filterFeedback === "PENDIENTE") return !l.feedback_status;
+            if (filterFeedback === "RESPONDIO") return l.feedback_status?.startsWith("Respondio");
+            if (filterFeedback === "NO_RESPONDE") return l.feedback_status === "No responde";
+            if (filterFeedback === "NUMERO_ERRONEO") return l.feedback_status === "Numero erroneo";
+            return true;
+        })
+        .filter(l => {
+            if (activeTab === "NEW") return true;
+            if (filterSeller === "TODOS") return true;
+            return l.seller === filterSeller;
+        });
 
     // Pagination
     const totalPages = Math.ceil(filteredLeads.length / ITEMS_PER_PAGE);
@@ -427,15 +443,43 @@ export default function SellerDashboard() {
             <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
                 {/* Tools Bar */}
                 <div className="p-6 border-b border-slate-50 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50/30">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Buscar por nombre, email o tel..."
-                            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all text-slate-700"
-                            value={searchTerm}
-                            onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-                        />
+                    <div className="relative flex-1 flex flex-col sm:flex-row gap-4">
+                        <div className="relative flex-1 md:flex-[2]">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                            <input
+                                type="text"
+                                placeholder="Buscar por nombre, email o tel..."
+                                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all text-slate-700"
+                                value={searchTerm}
+                                onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
+                            />
+                        </div>
+                        {activeTab === "CONTACTED" && (
+                            <>
+                                <select
+                                    value={filterFeedback}
+                                    onChange={(e) => { setFilterFeedback(e.target.value); setCurrentPage(1); }}
+                                    className="flex-1 py-3 px-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all text-slate-700 font-medium appearance-none"
+                                >
+                                    <option value="TODOS">Cualquier Feedbacks</option>
+                                    <option value="PENDIENTE">Pendiente</option>
+                                    <option value="RESPONDIO">Respondió</option>
+                                    <option value="NO_RESPONDE">No responde</option>
+                                    <option value="NUMERO_ERRONEO">Número erróneo</option>
+                                </select>
+                                
+                                <select
+                                    value={filterSeller}
+                                    onChange={(e) => { setFilterSeller(e.target.value); setCurrentPage(1); }}
+                                    className="flex-1 py-3 px-4 bg-white border border-slate-200 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all text-slate-700 font-medium appearance-none"
+                                >
+                                    <option value="TODOS">Todos los Vendedores</option>
+                                    {Array.from(new Set(leads.filter(l => l.seller).map(l => l.seller))).map(seller => (
+                                        <option key={seller || 'unknown'} value={seller || 'unknown'}>{seller ? seller.split('@')[0] : 'Desconocido'}</option>
+                                    ))}
+                                </select>
+                            </>
+                        )}
                     </div>
                     {activeTab === "CONTACTED" && (
                         <button
