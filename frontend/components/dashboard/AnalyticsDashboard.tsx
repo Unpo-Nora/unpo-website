@@ -51,6 +51,7 @@ interface AnalyticsData {
     lead_origins: { platform: string; count: number }[];
     monthly_metrics: {
         leads_per_day: { day: string; leads: number }[];
+        contacts_per_day: { day: string; contacts: number }[];
         visits_per_day: { day: string; visits: number }[];
         top_products_interest: { product: string; count: number }[];
         top_products_sold: { product_name: string; quantity_sold: number }[];
@@ -226,9 +227,8 @@ export default function AnalyticsDashboard() {
             {/* Content Container (For PDF Export Targeting) */}
             <div id="analytics-content" className="space-y-8 bg-slate-50 p-4 -m-4 rounded-3xl">
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <StatCard title="Visitas Únicas" value={data.visitors?.total?.toString() || "0"} subtitle={`${data.visitors?.monthly || 0} este mes`} icon={<TrendingUp className="text-purple-600" />} color="bg-purple-50" />
-                    <StatCard title="Leads Totales" value={data.leads.total.toString()} icon={<Users className="text-blue-600" />} color="bg-blue-50" />
                     <StatCard title="Tasa de Contacto" value={`${data.leads.conversion_rate}%`} subtitle={`${data.leads.contacted} contactados`} icon={<TrendingUp className="text-emerald-600" />} color="bg-emerald-50" />
                     <StatCard title="Nuevos Leads" value={data.leads.new.toString()} subtitle="Pendientes de asignación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />
                     <StatCard title="Alertas de Stock" value={data.stock_alerts.length.toString()} subtitle="Productos bajo crítico" icon={<AlertTriangle className="text-red-600" />} color="bg-red-50" />
@@ -456,6 +456,32 @@ export default function AnalyticsDashboard() {
                             </div>
                         </div>
 
+                        {/* Contacts per day */}
+                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-emerald-200/20 border border-emerald-50 lg:col-span-1">
+                            <div className="flex items-center justify-between mb-8">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                        <MessageSquare size={20} className="text-emerald-600" />
+                                        Tasa de Contacto (Mes Actual)
+                                    </h3>
+                                    <p className="text-sm text-slate-500 font-medium mt-1">
+                                        Interacciones iniciadas por día.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="h-[250px] w-full">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart data={data.monthly_metrics?.contacts_per_day || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
+                                        <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} cursor={{ fill: '#f8fafc', strokeWidth: 2 }} />
+                                        <Line type="monotone" dataKey="contacts" name="Contactados" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
                         {/* Top Monthly Interests */}
                         <div className="bg-white p-8 rounded-[32px] shadow-md shadow-orange-200/20 border border-orange-50">
                             <div className="flex items-center justify-between mb-8">
@@ -472,7 +498,7 @@ export default function AnalyticsDashboard() {
                                     <BarChart data={data.monthly_metrics?.top_products_interest || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                         <XAxis type="number" hide />
-                                        <YAxis dataKey="product" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 11, fontWeight: '900' }} width={120} />
+                                        <YAxis dataKey="product" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
                                         <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                         <Bar dataKey="count" name="Consultas" fill="#f97316" radius={[0, 4, 4, 0]} barSize={24} />
                                     </BarChart>
@@ -496,7 +522,7 @@ export default function AnalyticsDashboard() {
                                     <BarChart data={data.monthly_metrics?.top_products_sold || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                         <XAxis type="number" hide />
-                                        <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 11, fontWeight: '900' }} width={150} />
+                                        <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
                                         <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                         <Bar dataKey="quantity_sold" name="Unidades" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={24} />
                                     </BarChart>
@@ -529,7 +555,7 @@ export default function AnalyticsDashboard() {
                                             formatter={(value: number) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, 'Monto Total']}
                                             labelFormatter={(label) => `Mes: ${label}`}
                                         />
-                                        <Bar dataKey="total_amount" name="Monto Total" fill="#10b981" radius={[4, 4, 0, 0]} />
+                                        <Bar dataKey="total_amount" name="Monto Total" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={60} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -647,17 +673,17 @@ export default function AnalyticsDashboard() {
                                     $ {(data.stock_valuation?.total_value || 0).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                 </span>
                             </div>
-                            <div className="h-[250px] w-full">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={data.stock_valuation?.top_products || []} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
-                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="product_name" tick={false} axisLine={false} tickLine={false} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} />
-                                        <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                                        <Bar dataKey="stock_value" name="Capital ($)" fill="#10b981" radius={[4, 4, 0, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
+                            <div className="h-[400px] w-full mt-4">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={data.stock_valuation?.top_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                                                <XAxis type="number" tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
+                                                <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
+                                                <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$${val.toLocaleString('es-AR')}`} />
+                                                <Bar dataKey="stock_value" name="Capital ($)" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
                         </div>
 
                         {/* Least Requested Products */}
@@ -675,7 +701,7 @@ export default function AnalyticsDashboard() {
                                 <div className="space-y-3">
                                     {data.least_requested_products?.map((item, idx) => (
                                         <div key={idx} className="flex items-center justify-between p-3 bg-rose-50/50 rounded-xl hover:bg-rose-100 transition-colors">
-                                            <span className="font-bold text-slate-800 text-xs truncate max-w-[150px]" title={item.product_name}>
+                                            <span className="font-bold text-slate-800 text-xs pr-4 leading-tight" title={item.product_name}>
                                                 {item.product_name}
                                             </span>
                                             <div className="flex items-center gap-1.5 shrink-0">
@@ -761,6 +787,34 @@ export default function AnalyticsDashboard() {
                                             </table>
                                         </div>
                                     </div>
+
+                                    {/* Visits and Contacts Históricos */}
+                                    <div className="bg-white p-8 rounded-[32px] shadow-md shadow-purple-200/20 border border-purple-50 lg:col-span-2">
+                                        <div className="flex items-center justify-between mb-8">
+                                            <div>
+                                                <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                                    <TrendingUp size={20} className="text-purple-600" />
+                                                    Evolución Diaria del Período
+                                                </h3>
+                                                <p className="text-sm text-slate-500 font-medium mt-1">
+                                                    Tendencia de tráfico y tasa de generación de conversaciones por día.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="h-[300px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <LineChart data={historicalData.daily_metrics?.visits_per_day?.map((v: any, idx: number) => ({ day: v.day, visits: v.visits, contacts: historicalData.daily_metrics.contacts_per_day[idx]?.contacts || 0 })) || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                    <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
+                                                    <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} cursor={{ fill: '#f8fafc', strokeWidth: 2 }} />
+                                                    <Legend verticalAlign="top" height={36} wrapperStyle={{ fontSize: '12px', fontWeight: 'bold' }} />
+                                                    <Line type="monotone" dataKey="visits" name="Visitas Únicas" stroke="#9333ea" strokeWidth={4} dot={{ r: 4, fill: '#9333ea', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
+                                                    <Line type="monotone" dataKey="contacts" name="Contactos Iniciados" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
+                                                </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
                                     
                                      {/* Lead Platforms */}
                                      <div className="bg-white p-8 rounded-[32px] shadow-md shadow-pink-200/20 border border-pink-50">
@@ -799,7 +853,7 @@ export default function AnalyticsDashboard() {
                                                 <BarChart data={historicalData.top_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                                     <XAxis type="number" hide />
-                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={120} />
+                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
                                                     <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                                     <Bar dataKey="quantity_sold" name="Unidades" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
                                                 </BarChart>
@@ -821,7 +875,7 @@ export default function AnalyticsDashboard() {
                                                 <BarChart data={historicalData.bottom_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                                     <XAxis type="number" hide />
-                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={120} />
+                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
                                                     <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                                     <Bar dataKey="quantity_sold" name="Unidades" fill="#e11d48" radius={[0, 4, 4, 0]} barSize={20} />
                                                 </BarChart>

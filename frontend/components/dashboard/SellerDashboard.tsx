@@ -15,7 +15,8 @@ import {
     CheckCircle,
     Trash2,
     Download,
-    XCircle
+    XCircle,
+    Users
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import CloseSaleModal from './CloseSaleModal';
@@ -407,7 +408,14 @@ export default function SellerDashboard() {
             {/* Header & Stats */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">Gestión de Leads</h2>
+                    <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-4">
+                        Gestión de Leads
+                        {!loading && (
+                            <span className="text-sm px-4 py-1.5 bg-blue-50 text-blue-600 rounded-full font-bold border border-blue-100 shadow-sm flex items-center gap-2">
+                                <Users size={16} /> {leads.length} Totales
+                            </span>
+                        )}
+                    </h2>
                     <p className="text-slate-500">Administra y contacta a tus potenciales clientes de UNPO</p>
                 </div>
 

@@ -228,18 +228,23 @@ def get_analytics_summary(
     current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     month_days = calendar.monthrange(now.year, now.month)[1]
 
-    # A. Leads por día (Mes Actual)
-    monthly_leads_query = db.query(models.Lead.created_at).filter(
+    # A. Leads y Contactos por día (Mes Actual)
+    monthly_leads_query = db.query(models.Lead.created_at, models.Lead.status).filter(
         models.Lead.created_at >= current_month_start
     ).all()
 
     leads_by_day = {str(d): 0 for d in range(1, month_days + 1)}
-    for (lead_date,) in monthly_leads_query:
+    contacts_by_day = {str(d): 0 for d in range(1, month_days + 1)}
+    
+    for lead_date, lead_status in monthly_leads_query:
         if lead_date:
             day_str = str(lead_date.day)
             leads_by_day[day_str] += 1
+            if lead_status in [models.LeadStatus.CONTACTED, models.LeadStatus.NEGOTIATION, models.LeadStatus.CLOSED, models.LeadStatus.CLIENT]:
+                contacts_by_day[day_str] += 1
             
     leads_per_day_data = [{"day": k, "leads": v} for k, v in leads_by_day.items()]
+    contacts_per_day_data = [{"day": k, "contacts": v} for k, v in contacts_by_day.items()]
 
     # B. Interés por Producto (Mes Actual)
     raw_monthly_product_stats = db.query(
@@ -347,8 +352,11 @@ def get_analytics_summary(
         })
     stock_value_data = sorted(stock_value_data, key=lambda x: x["stock_value"], reverse=True)[:15]
 
-    # 10. Least Requested Products (Bottom 10 Active Products)
-    active_products = db.query(models.Product.name).filter(models.Product.is_active == True).all()
+    # 10. Least Requested Products (Bottom active products with stock > 0)
+    active_products = db.query(models.Product.name).filter(
+        models.Product.is_active == True,
+        models.Product.stock_quantity > 0
+    ).all()
     active_product_names = [p[0].strip().upper() for p in active_products]
     
     product_interest_counts = {str(p["product"]).upper(): int(p["count"]) for p in all_product_data}
@@ -407,8 +415,8 @@ def get_analytics_summary(
         p_name = plat or "Página Web"
         p_lower = str(p_name).lower()
         if "ig" in p_lower or "instagram" in p_lower: p_name = "Instagram"
-        elif "fb" in p_lower or "facebook" in p_lower: p_name = "Facebook"
-        elif "web" in p_lower: p_name = "Página Web"
+        elif p_lower in ["f", "fb"] or "facebook" in p_lower: p_name = "Facebook"
+        elif p_lower in ["g", "web"] or "página web" in p_lower or "pagina web" in p_lower: p_name = "Página Web"
         
         final_platform[p_name] = final_platform.get(p_name, 0) + count
     platform_data = [{"platform": k, "count": v} for k, v in final_platform.items()]
@@ -440,6 +448,7 @@ def get_analytics_summary(
         "lead_origins": platform_data,
         "monthly_metrics": {
             "leads_per_day": leads_per_day_data,
+            "contacts_per_day": contacts_per_day_data,
             "visits_per_day": visits_per_day_data,
             "top_products_interest": monthly_product_data,
             "top_products_sold": monthly_top_sold_data,
@@ -535,8 +544,11 @@ def get_historical_analytics(
     product_sales_dict = {p[0]: int(p[1] or 0) for p in raw_monthly_products}
     top_products = [{"product_name": k, "quantity_sold": v} for k, v in list(product_sales_dict.items())[:10]]
     
-    # 6. Productos menos vendidos
-    active_products = db.query(models.Product.name).filter(models.Product.is_active == True).all()
+    # 6. Productos menos vendidos (Solo con stock actual)
+    active_products = db.query(models.Product.name).filter(
+        models.Product.is_active == True,
+        models.Product.stock_quantity > 0
+    ).all()
     active_product_names = [p[0] for p in active_products]
 
     bottom_products = []
@@ -561,12 +573,32 @@ def get_historical_analytics(
         p_name = plat or "Página Web"
         p_lower = str(p_name).lower()
         if "ig" in p_lower or "instagram" in p_lower: p_name = "Instagram"
-        elif "fb" in p_lower or "facebook" in p_lower: p_name = "Facebook"
-        elif "web" in p_lower: p_name = "Página Web"
+        elif p_lower in ["f", "fb"] or "facebook" in p_lower: p_name = "Facebook"
+        elif p_lower in ["g", "web"] or "página web" in p_lower or "pagina web" in p_lower: p_name = "Página Web"
         
         final_platform[p_name] = final_platform.get(p_name, 0) + count
         
     platform_data = [{"platform": k, "count": v} for k, v in final_platform.items()]
+
+    # 8. Visitas y Contactos Diarios para el mes histórico
+    visits_by_day = {str(d): 0 for d in range(1, month_days + 1)}
+    monthly_visits_q = db.query(models.PageView.created_at).filter(
+        models.PageView.created_at >= start_date,
+        models.PageView.created_at <= end_date
+    ).all()
+    for (v_date,) in monthly_visits_q:
+        if v_date: visits_by_day[str(v_date.day)] += 1
+    visits_per_day_data = [{"day": k, "visits": v} for k, v in visits_by_day.items()]
+
+    contacts_by_day = {str(d): 0 for d in range(1, month_days + 1)}
+    historical_contacts_q = db.query(models.Lead.created_at).filter(
+        models.Lead.created_at >= start_date,
+        models.Lead.created_at <= end_date,
+        models.Lead.status.in_([models.LeadStatus.CONTACTED, models.LeadStatus.NEGOTIATION, models.LeadStatus.CLOSED, models.LeadStatus.CLIENT])
+    ).all()
+    for (c_date,) in historical_contacts_q:
+        if c_date: contacts_by_day[str(c_date.day)] += 1
+    contacts_per_day_data = [{"day": k, "contacts": v} for k, v in contacts_by_day.items()]
 
     return {
         "sales": {
@@ -582,6 +614,10 @@ def get_historical_analytics(
         "top_products": top_products,
         "bottom_products": bottom_products,
         "platforms": platform_data,
+        "daily_metrics": {
+            "visits_per_day": visits_per_day_data,
+            "contacts_per_day": contacts_per_day_data
+        },
         "period": {
             "year": year,
             "month": month
