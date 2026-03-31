@@ -352,23 +352,29 @@ def get_analytics_summary(
         })
     stock_value_data = sorted(stock_value_data, key=lambda x: x["stock_value"], reverse=True)[:15]
 
-    # 10. Least Requested Products (Bottom active products with stock > 0)
-    active_products = db.query(models.Product.name).filter(
+    # 10. Least Sold Products (Bottom active products with stock > 0)
+    raw_sales_per_product = db.query(
+        models.OrderItem.product_sku,
+        func.sum(models.OrderItem.quantity)
+    ).join(
+        models.SaleOrder, models.SaleOrder.id == models.OrderItem.order_id
+    ).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED
+    ).group_by(models.OrderItem.product_sku).all()
+    
+    sales_dict = {sku: int(qty or 0) for sku, qty in raw_sales_per_product}
+    
+    active_stock_prods = db.query(models.Product.sku, models.Product.name).filter(
         models.Product.is_active == True,
         models.Product.stock_quantity > 0
     ).all()
-    active_product_names = [p[0].strip().upper() for p in active_products]
     
-    product_interest_counts = {str(p["product"]).upper(): int(p["count"]) for p in all_product_data}
-    for p_name in active_product_names:
-        if p_name not in product_interest_counts:
-             product_interest_counts[p_name] = 0
-             
-    least_requested_sorted = sorted(
-        [{"product_name": k.title(), "count": v} for k, v in product_interest_counts.items() if k not in ["TODO", "HUMIDIFICADOR", "DECORACIÓN", "LUNCHERA", "VARIOS", "CATALOGO", "NADA"]],
-        key=lambda x: x["count"]
-    )
-    least_requested_data = least_requested_sorted[:10]
+    least_sold_list = []
+    for sku, name in active_stock_prods:
+        qty = sales_dict.get(sku, 0)
+        least_sold_list.append({"product_name": name, "count": qty}) # Use "count" key for compatibility
+    
+    least_sold_data = sorted(least_sold_list, key=lambda x: x["count"])[:10]
 
     # 11. Lead Feedback
     raw_feedback = db.query(
@@ -443,7 +449,7 @@ def get_analytics_summary(
             "total_value": total_inventory_value,
             "top_products": stock_value_data
         },
-        "least_requested_products": least_requested_data,
+        "least_sold_products": least_sold_data,
         "lead_feedback": feedback_data,
         "lead_origins": platform_data,
         "monthly_metrics": {
@@ -527,6 +533,7 @@ def get_historical_analytics(
 
     # 5. Productos más y menos vendidos
     raw_monthly_products = db.query(
+        models.Product.sku,
         models.Product.name,
         func.sum(models.OrderItem.quantity)
     ).join(
@@ -537,27 +544,27 @@ def get_historical_analytics(
         models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
         models.SaleOrder.created_at >= start_date,
         models.SaleOrder.created_at <= end_date
-    ).group_by(models.Product.name).order_by(
+    ).group_by(models.Product.sku, models.Product.name).order_by(
         func.sum(models.OrderItem.quantity).desc()
     ).all()
 
-    product_sales_dict = {p[0]: int(p[1] or 0) for p in raw_monthly_products}
-    top_products = [{"product_name": k, "quantity_sold": v} for k, v in list(product_sales_dict.items())[:10]]
+    top_products = [{"product_name": p[1], "quantity_sold": int(p[2] or 0)} for p in raw_monthly_products[:10]]
     
     # 6. Productos menos vendidos (Solo con stock actual)
-    active_products = db.query(models.Product.name).filter(
+    active_stock_prods = db.query(models.Product.sku, models.Product.name).filter(
         models.Product.is_active == True,
         models.Product.stock_quantity > 0
     ).all()
-    active_product_names = [p[0] for p in active_products]
-
-    bottom_products = []
-    for p_name in active_product_names:
-        qty = product_sales_dict.get(p_name, 0)
-        bottom_products.append({"product_name": p_name, "quantity_sold": qty})
     
-    bottom_products.sort(key=lambda x: x["quantity_sold"])
-    bottom_products = bottom_products[:10]
+    sold_dict = {p[0]: int(p[2] or 0) for p in raw_monthly_products}
+    
+    least_sold_list = []
+    for sku, name in active_stock_prods:
+        qty = sold_dict.get(sku, 0)
+        least_sold_list.append({"product_name": name, "quantity_sold": qty})
+    
+    least_sold_list.sort(key=lambda x: x["quantity_sold"])
+    bottom_products = least_sold_list[:10]
 
     # 7. Plataforma Origen
     raw_platforms = db.query(

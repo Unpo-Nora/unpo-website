@@ -46,7 +46,7 @@ interface AnalyticsData {
         total_value: number;
         top_products: { product_name: string; stock_value: number }[];
     };
-    least_requested_products: { product_name: string; count: number }[];
+    least_sold_products: { product_name: string; count: number }[];
     lead_feedback: { status: string; count: number }[];
     lead_origins: { platform: string; count: number }[];
     monthly_metrics: {
@@ -415,8 +415,8 @@ export default function AnalyticsDashboard() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={data.monthly_metrics?.leads_per_day || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc', strokeWidth: 2 }}
@@ -444,8 +444,8 @@ export default function AnalyticsDashboard() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={data.monthly_metrics?.visits_per_day || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc', strokeWidth: 2 }}
@@ -473,8 +473,8 @@ export default function AnalyticsDashboard() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={data.monthly_metrics?.contacts_per_day || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} />
                                         <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} cursor={{ fill: '#f8fafc', strokeWidth: 2 }} />
                                         <Line type="monotone" dataKey="contacts" name="Contactados" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
                                     </LineChart>
@@ -498,7 +498,7 @@ export default function AnalyticsDashboard() {
                                     <BarChart data={data.monthly_metrics?.top_products_interest || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                         <XAxis type="number" hide />
-                                        <YAxis dataKey="product" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
+                                        <YAxis dataKey="product" type="category" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: '900' }} width={220} />
                                         <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                         <Bar dataKey="count" name="Consultas" fill="#f97316" radius={[0, 4, 4, 0]} barSize={24} />
                                     </BarChart>
@@ -522,7 +522,7 @@ export default function AnalyticsDashboard() {
                                     <BarChart data={data.monthly_metrics?.top_products_sold || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                         <XAxis type="number" hide />
-                                        <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
+                                        <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: '900' }} width={220} />
                                         <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                         <Bar dataKey="quantity_sold" name="Unidades" fill="#9333ea" radius={[0, 4, 4, 0]} barSize={24} />
                                     </BarChart>
@@ -547,8 +547,8 @@ export default function AnalyticsDashboard() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={data.monthly_metrics?.historical_monthly_sales || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc' }}
@@ -578,8 +578,8 @@ export default function AnalyticsDashboard() {
                                 <ResponsiveContainer width="100%" height="100%">
                                     <LineChart data={data.monthly_metrics?.historical_monthly_sales || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 12, fontWeight: 'bold' }} />
+                                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc', strokeWidth: 2 }}
@@ -678,7 +678,7 @@ export default function AnalyticsDashboard() {
                                             <BarChart data={data.stock_valuation?.top_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                                 <XAxis type="number" tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 10, fontWeight: 'bold' }} />
-                                                <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
+                                                <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: '900' }} width={220} />
                                                 <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$${val.toLocaleString('es-AR')}`} />
                                                 <Bar dataKey="stock_value" name="Capital ($)" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
                                             </BarChart>
@@ -686,31 +686,31 @@ export default function AnalyticsDashboard() {
                                     </div>
                         </div>
 
-                        {/* Least Requested Products */}
+                        {/* Least Sold Products */}
                         <div className="bg-white p-8 rounded-[32px] shadow-md shadow-rose-200/20 border border-rose-50 lg:col-span-1">
                             <div className="flex items-center justify-between mb-8">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                         <Package size={20} className="text-rose-600" />
-                                        Menos Solicitados
+                                        Menos vendidos
                                     </h3>
-                                    <p className="text-sm text-slate-500 font-medium mt-1">Bajo o nulo interés.</p>
+                                    <p className="text-sm text-slate-600 font-bold mt-1">Rotación nula o baja con stock disponible.</p>
                                 </div>
                             </div>
                             <div className="h-[320px] w-full mt-2 overflow-y-auto pr-2 custom-scrollbar">
                                 <div className="space-y-3">
-                                    {data.least_requested_products?.map((item, idx) => (
+                                    {data.least_sold_products?.map((item, idx) => (
                                         <div key={idx} className="flex items-center justify-between p-3 bg-rose-50/50 rounded-xl hover:bg-rose-100 transition-colors">
-                                            <span className="font-bold text-slate-800 text-xs pr-4 leading-tight" title={item.product_name}>
+                                            <span className="font-bold text-slate-900 text-xs pr-4 leading-tight" title={item.product_name}>
                                                 {item.product_name}
                                             </span>
                                             <div className="flex items-center gap-1.5 shrink-0">
-                                                <span className={`text-sm font-black ${item.count === 0 ? 'text-rose-600' : 'text-slate-600'}`}>{item.count}</span>
-                                                <span className="text-[9px] font-bold text-slate-400 uppercase">Consultas</span>
+                                                <span className={`text-sm font-black ${item.count === 0 ? 'text-rose-600' : 'text-slate-900'}`}>{item.count}</span>
+                                                <span className="text-[9px] font-black text-slate-500 uppercase">Ventas</span>
                                             </div>
                                         </div>
                                     ))}
-                                    {(!data.least_requested_products || data.least_requested_products.length === 0) && (
+                                    {(!data.least_sold_products || data.least_sold_products.length === 0) && (
                                         <p className="text-slate-400 italic text-sm text-center mt-10">No hay datos.</p>
                                     )}
                                 </div>
@@ -853,7 +853,7 @@ export default function AnalyticsDashboard() {
                                                 <BarChart data={historicalData.top_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                                     <XAxis type="number" hide />
-                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
+                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: '900' }} width={220} />
                                                     <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                                     <Bar dataKey="quantity_sold" name="Unidades" fill="#10b981" radius={[0, 4, 4, 0]} barSize={20} />
                                                 </BarChart>
@@ -875,7 +875,7 @@ export default function AnalyticsDashboard() {
                                                 <BarChart data={historicalData.bottom_products || []} layout="vertical" margin={{ top: 0, right: 30, left: -20, bottom: 0 }}>
                                                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
                                                     <XAxis type="number" hide />
-                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#475569', fontSize: 10, fontWeight: '900' }} width={220} />
+                                                    <YAxis dataKey="product_name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: '900' }} width={220} />
                                                     <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
                                                     <Bar dataKey="quantity_sold" name="Unidades" fill="#e11d48" radius={[0, 4, 4, 0]} barSize={20} />
                                                 </BarChart>

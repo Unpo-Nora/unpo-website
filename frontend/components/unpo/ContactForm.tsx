@@ -111,7 +111,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                 value={formData.full_name}
                                 onChange={handleChange}
                                 type="text"
-                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-slate-900 placeholder:text-slate-500 bg-white"
                                 placeholder="Juan Pérez"
                             />
                         </div>
@@ -123,7 +123,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                 value={formData.email}
                                 onChange={handleChange}
                                 type="email"
-                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-slate-900 placeholder:text-slate-500 bg-white"
                                 placeholder="juan@empresa.com"
                             />
                         </div>
@@ -138,7 +138,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                 value={formData.phone}
                                 onChange={handleChange}
                                 type="tel"
-                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-slate-900 placeholder:text-slate-500 bg-white"
                                 placeholder="+54 9 11..."
                             />
                         </div>
@@ -149,7 +149,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                 name="business_type"
                                 value={formData.business_type}
                                 onChange={handleChange}
-                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all bg-white"
+                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all bg-white text-slate-900 font-bold"
                             >
                                 <option value="">Selecciona una opción</option>
                                 <option value="Local físico (Bazar/Deco)">Local físico (Bazar/Deco)</option>
@@ -169,7 +169,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                 name="category_interest"
                                 value={formData.category_interest}
                                 onChange={handleChange}
-                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all bg-white"
+                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all bg-white text-slate-900 font-bold"
                             >
                                 <option value="">Selecciona una opción</option>
                                 <option value="Tecnología">Tecnología</option>
@@ -185,7 +185,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                 name="purchase_volume"
                                 value={formData.purchase_volume}
                                 onChange={handleChange}
-                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all bg-white"
+                                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all bg-white text-slate-900 font-bold"
                             >
                                 <option value="">Selecciona una opción</option>
                                 <option value="Menos de $500.000">Menos de $500.000</option>
@@ -207,7 +207,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                     onChange={handleChange}
                                     className="text-blue-600 focus:ring-blue-500"
                                 />
-                                <span>Soy nuevo</span>
+                                <span className="text-slate-900 font-bold">Soy nuevo</span>
                             </label>
                             <label className="flex items-center space-x-2 cursor-pointer">
                                 <input
@@ -219,7 +219,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                     onChange={handleChange}
                                     className="text-blue-600 focus:ring-blue-500"
                                 />
-                                <span>Menos de 2 años</span>
+                                <span className="text-slate-900 font-bold">Menos de 2 años</span>
                             </label>
                             <label className="flex items-center space-x-2 cursor-pointer">
                                 <input
@@ -231,7 +231,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                                     onChange={handleChange}
                                     className="text-blue-600 focus:ring-blue-500"
                                 />
-                                <span>Más de 2 años</span>
+                                <span className="text-slate-900 font-bold">Más de 2 años</span>
                             </label>
                         </div>
                     </div>
@@ -244,7 +244,7 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                             value={formData.notes}
                             onChange={handleChange}
                             rows={4}
-                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all"
+                            className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent outline-none transition-all text-slate-900 placeholder:text-slate-500 bg-white"
                             placeholder="Cuéntanos más sobre tu negocio o qué productos estás buscando..."
                         ></textarea>
                     </div>
