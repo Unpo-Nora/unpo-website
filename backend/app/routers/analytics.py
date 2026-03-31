@@ -107,8 +107,8 @@ def get_analytics_summary(
     # 3. Alertas de Stock (<= 5 o Agotado)
     stock_alerts = db.query(models.Product).filter(
         models.Product.stock_quantity <= 5,
-        models.Product.is_active == True
-    ).order_by(models.Product.stock_quantity.asc()).limit(15).all()
+        models.Product.is_active != False
+    ).order_by(models.Product.stock_quantity.asc()).limit(30).all()
     
     alert_data = [
         {
@@ -330,7 +330,7 @@ def get_analytics_summary(
         models.Product.price_usd
     ).filter(
         models.Product.stock_quantity > 0,
-        models.Product.is_active == True
+        models.Product.is_active != False
     ).all()
     
     stock_value_data = []
@@ -365,8 +365,8 @@ def get_analytics_summary(
     sales_dict = {sku: int(qty or 0) for sku, qty in raw_sales_per_product}
     
     active_stock_prods = db.query(models.Product.sku, models.Product.name).filter(
-        models.Product.is_active == True,
-        models.Product.stock_quantity > 0
+        models.Product.is_active != False,
+        (models.Product.stock_quantity > 0) | (models.Product.stock_quantity == None)
     ).all()
     
     least_sold_list = []
@@ -374,7 +374,7 @@ def get_analytics_summary(
         qty = sales_dict.get(sku, 0)
         least_sold_list.append({"product_name": name, "count": qty}) # Use "count" key for compatibility
     
-    least_sold_data = sorted(least_sold_list, key=lambda x: x["count"])[:10]
+    least_sold_data = sorted(least_sold_list, key=lambda x: x["count"])[:20]
 
     # 11. Lead Feedback
     raw_feedback = db.query(
@@ -552,8 +552,8 @@ def get_historical_analytics(
     
     # 6. Productos menos vendidos (Solo con stock actual)
     active_stock_prods = db.query(models.Product.sku, models.Product.name).filter(
-        models.Product.is_active == True,
-        models.Product.stock_quantity > 0
+        models.Product.is_active != False,
+        (models.Product.stock_quantity > 0) | (models.Product.stock_quantity == None)
     ).all()
     
     sold_dict = {p[0]: int(p[2] or 0) for p in raw_monthly_products}
@@ -564,7 +564,7 @@ def get_historical_analytics(
         least_sold_list.append({"product_name": name, "quantity_sold": qty})
     
     least_sold_list.sort(key=lambda x: x["quantity_sold"])
-    bottom_products = least_sold_list[:10]
+    bottom_products = least_sold_list[:20]
 
     # 7. Plataforma Origen
     raw_platforms = db.query(
