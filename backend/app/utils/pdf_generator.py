@@ -84,7 +84,11 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     else:
         logo = Paragraph("<b>UNPO</b>", ParagraphStyle(name="Title", fontSize=24, parent=styles["Normal"]))
         
-    company_info = Paragraph("Razón Social<br/>CUIT<br/>WEB", normal_style)
+    company_info_text = """<b>UNPO Oficial</b><br/>
+    Venta Mayorista<br/>
+    Sitio Web: unpo.com.ar<br/>
+    Atención al Cliente: +54 9 11 1234-5678"""
+    company_info = Paragraph(company_info_text, normal_style)
     remito_number = Paragraph(f"<b>REMITO N° {order.id}</b>", normal_style)
     
     t_company = Table([[logo, company_info, remito_number]], colWidths=[5*cm, 8*cm, 5*cm])
@@ -118,25 +122,33 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     elements.append(Spacer(1, 0.5*cm))
     
     # 4. Products Table
-    table_data = [["BULTO", "UNIDAD", "DESCRIPCIÓN", "PRECIO", "PRECIO TOTAL"]]
+    table_data = [[
+        Paragraph("<b>BULTO</b>", normal_style), 
+        Paragraph("<b>UNIDAD</b>", normal_style), 
+        Paragraph("<b>DESCRIPCIÓN</b>", normal_style), 
+        Paragraph("<b>PRECIO<br/>(sin IVA)</b>", normal_style), 
+        Paragraph("<b>PRECIO TOTAL<br/>(sin IVA)</b>", normal_style)
+    ]]
     
     for item in order.items:
+        desc_text = str(item.product.name if item.product else item.product_sku)
         table_data.append([
             "1",  # BULTO (simplificado)
             str(int(item.quantity)), # UNIDAD
-            str(item.product.name if item.product else item.product_sku),
+            Paragraph(desc_text, normal_style),
             f"${item.unit_price:,.2f}",
             f"${item.total_price:,.2f}"
         ])
         
     # Table Total
-    table_data.append(["", "", "", "", f"${order.total_amount:,.2f}"])
+    table_data.append(["", "", "", "SUBTOTAL:", f"${order.total_amount:,.2f}"])
         
-    t_products = Table(table_data, colWidths=[2*cm, 2*cm, 8*cm, 3*cm, 3*cm])
+    t_products = Table(table_data, colWidths=[1.8*cm, 1.8*cm, 8.4*cm, 3*cm, 3*cm])
     t_products.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")), # Slate-900 header
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (2,1), (2,-1), 'LEFT'),
         ('ALIGN', (3,1), (-1,-1), 'RIGHT'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
@@ -248,7 +260,7 @@ def generate_catalog_pdf(products, exchange_rate: float = 1450.0) -> bytes:
             else:
                 continue
         
-        price_str = f"${calculated_price:,.2f}"
+        price_str = f"${calculated_price:,.2f} + IVA"
         valid_products.append((p, price_str))
 
     # Step 2: Parallel Image Processing

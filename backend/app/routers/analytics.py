@@ -293,6 +293,13 @@ def get_analytics_summary(
     ).scalar()
     monthly_total_sales = float(raw_monthly_sales_amount or 0)
 
+    raw_monthly_expenses = db.query(
+        func.sum(models.Expense.amount)
+    ).filter(
+        models.Expense.date >= current_month_start
+    ).scalar()
+    monthly_total_expenses = float(raw_monthly_expenses or 0)
+
     # F. Historical Sales
     all_completed_sales = db.query(
         models.SaleOrder.created_at,
@@ -459,6 +466,7 @@ def get_analytics_summary(
             "top_products_interest": monthly_product_data,
             "top_products_sold": monthly_top_sold_data,
             "total_amount_sold": monthly_total_sales,
+            "total_expenses": monthly_total_expenses,
             "historical_monthly_sales": historical_monthly_sales
         }
     }
@@ -488,6 +496,15 @@ def get_historical_analytics(
     ).first()
     sales_count = sales_q[0] or 0
     sales_amount = float(sales_q[1] or 0)
+
+    # Gastos en ese mes historico
+    raw_hist_expenses = db.query(
+        func.sum(models.Expense.amount)
+    ).filter(
+        models.Expense.date >= start_date,
+        models.Expense.date <= end_date
+    ).scalar()
+    historical_expenses = float(raw_hist_expenses or 0)
 
     # 2. Leads ingresados
     leads_entered = db.query(models.Lead).filter(
@@ -610,7 +627,8 @@ def get_historical_analytics(
     return {
         "sales": {
             "amount": sales_amount,
-            "count": sales_count
+            "count": sales_count,
+            "expenses": historical_expenses
         },
         "leads": {
             "entered": leads_entered,
@@ -630,3 +648,44 @@ def get_historical_analytics(
             "month": month
         }
     }
+
+from ..schemas import Expense, ExpenseCreate
+from .. import crud
+
+@router.get("/expenses", response_model=List[Expense])
+def get_expenses(
+    year: int = None,
+    month: int = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return crud.get_expenses(db, year, month)
+
+@router.post("/expenses", response_model=Expense)
+def create_expense(
+    expense: ExpenseCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    return crud.create_expense(db, expense)
+
+@router.delete("/expenses/{expense_id}")
+def delete_expense(
+    expense_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    success = crud.delete_expense(db, expense_id)
+    if not success:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return {"status": "success"}

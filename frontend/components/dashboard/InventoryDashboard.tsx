@@ -50,35 +50,50 @@ export default function InventoryDashboard() {
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
     // ... (fetchProducts, useEffect, fetchExchangeRate, handleUpdateRate, handleSync, handleEditProduct, handleCreateProduct, handleModalSave remain the same) ...
+    // Batch Update State
+    const [pendingStock, setPendingStock] = useState<Record<string, number>>({});
+    const [pendingPrice, setPendingPrice] = useState<Record<string, number>>({});
+    const [auditLogs, setAuditLogs] = useState<any[]>([]);
+
+    const hasPendingChanges = Object.keys(pendingStock).length > 0 || Object.keys(pendingPrice).length > 0 || (newExchangeRate !== exchangeRate && newExchangeRate !== '');
+
     const fetchProducts = async () => {
         try {
             const token = localStorage.getItem('token');
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/`;
-
-            console.log("Fetching inventory from:", apiUrl);
             const response = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             const data = await response.json();
-            console.log("Inventory data received:", data.length, "items");
             setProducts(data);
             setLoading(false);
         } catch (error) {
-            console.error("Error fetching products:", error);
             setLoading(false);
         }
+    };
+
+    const fetchAuditLogs = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/audit_logs?limit=5`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setAuditLogs(data);
+            }
+        } catch (error) {}
     };
 
     useEffect(() => {
         fetchProducts();
         fetchExchangeRate();
+        fetchAuditLogs();
     }, []);
 
     const fetchExchangeRate = async () => {
         try {
             const token = localStorage.getItem('token');
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -87,35 +102,42 @@ export default function InventoryDashboard() {
                 setExchangeRate(data.value);
                 setNewExchangeRate(data.value);
             }
-        } catch (error) {
-            console.error("Error fetching exchange rate:", error);
-        }
+        } catch (error) {}
     };
 
-    const handleUpdateRate = async () => {
-        const password = window.prompt("Por seguridad, ingresá tu contraseña para confirmar el cambio de Dólar:");
-        if (!password) return;
+    const handleBatchSave = async () => {
+        if (!confirm("¿Estás seguro de guardar todos los cambios pendientes?")) return;
 
         setSavingRate(true);
         try {
             const token = localStorage.getItem('token');
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
-                method: 'PUT',
+            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/batch_update`;
+            
+            const payload = {
+                stock_adjustments: pendingStock,
+                price_updates: pendingPrice,
+                new_exchange_rate: newExchangeRate !== exchangeRate ? newExchangeRate : null
+            };
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ value: newExchangeRate, password })
+                body: JSON.stringify(payload)
             });
 
             if (response.ok) {
-                const data = await response.json();
-                setExchangeRate(data.value);
-                setMessage({ type: 'success', text: 'Cotización actualizada correctamente.' });
+                setMessage({ type: 'success', text: 'Cambios guardados correctamente.' });
+                setPendingStock({});
+                setPendingPrice({});
+                fetchProducts();
+                fetchExchangeRate();
+                fetchAuditLogs();
             } else {
                 const errorData = await response.json();
-                setMessage({ type: 'error', text: errorData.detail || "Error al actualizar." });
+                setMessage({ type: 'error', text: errorData.detail || "Error al guardar." });
             }
         } catch (error) {
             setMessage({ type: 'error', text: "Error de red" });
@@ -167,37 +189,39 @@ export default function InventoryDashboard() {
         fetchProducts(); // Refresh list after save or archive
     };
 
-    const handleStockAdjust = async (e: React.MouseEvent, sku: string, adjustment: number) => {
+    const handleStockAdjust = (e: React.MouseEvent, sku: string, adjustment: number) => {
         e.stopPropagation();
         
-        // Optimistic update
-        setProducts(prev => prev.map(p => {
-            if (p.sku === sku) {
-                return { ...p, stock_quantity: Math.max(0, p.stock_quantity + adjustment) };
-            }
-            return p;
-        }));
+        setPendingStock(prev => {
+            const currentDelta = prev[sku] || 0;
+            const p = products.find(x => x.sku === sku);
+            const originalStock = p?.stock_quantity || 0;
+            
+            const newDelta = currentDelta + adjustment;
+            
+            // Prevent visual negative stock
+            if (originalStock + newDelta < 0) return prev;
+            
+            const next = {...prev, [sku]: newDelta};
+            if (newDelta === 0) delete next[sku];
+            return next;
+        });
+    };
 
-        try {
-            const token = localStorage.getItem('token');
-            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${sku}/stock`;
-            const response = await fetch(apiUrl, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ adjustment })
+    const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>, sku: string) => {
+        const val = parseFloat(e.target.value);
+        if (!isNaN(val)) {
+            setPendingPrice(prev => {
+                const p = products.find(x => x.sku === sku);
+                if (p && val === p.price_usd) {
+                    const next = {...prev};
+                    delete next[sku];
+                    return next;
+                }
+                return {...prev, [sku]: val};
             });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                fetchProducts(); // Revert
-                setMessage({ type: 'error', text: errorData.detail || 'Error al actualizar stock' });
-            }
-        } catch (error) {
-            fetchProducts(); // Revert
-            setMessage({ type: 'error', text: 'Error de red al actualizar stock' });
+        } else if (e.target.value === '') {
+            // Allow temporary empty string during typing
         }
     };
 
@@ -233,6 +257,61 @@ export default function InventoryDashboard() {
 
     return (
         <div className="space-y-6">
+            {/* Pending Changes Action Bar */}
+            {hasPendingChanges && (
+                <div className="sticky top-4 z-40 bg-blue-600 rounded-2xl p-4 shadow-xl shadow-blue-200/50 flex flex-col md:flex-row items-center justify-between gap-4 border border-blue-500 text-white animate-in slide-in-from-top-4">
+                    <div className="flex items-center gap-3">
+                        <AlertTriangle className="text-blue-200" size={24} />
+                        <div>
+                            <h3 className="font-bold text-lg">Tienes cambios sin guardar</h3>
+                            <p className="text-blue-100 text-sm">Hay ajustes de stock, precios o cotización del dólar pendientes de confirmación.</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => {
+                                setPendingStock({});
+                                setPendingPrice({});
+                                setNewExchangeRate(exchangeRate);
+                            }}
+                            className="px-4 py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-bold transition-all"
+                        >
+                            Descartar
+                        </button>
+                        <button
+                            onClick={handleBatchSave}
+                            disabled={savingRate}
+                            className="px-6 py-3 bg-white text-blue-600 rounded-xl font-black hover:bg-blue-50 shadow-md transition-all disabled:opacity-50"
+                        >
+                            {savingRate ? 'Guardando...' : 'GUARDAR CAMBIOS'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Audit Logs Box */}
+            {auditLogs.length > 0 && (
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col gap-4">
+                    <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                        <Layers size={20} className="text-slate-400" />
+                        Últimos Movimientos en el Inventario
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {auditLogs.map((log: any) => (
+                            <div key={log.id} className="flex flex-col gap-1.5 p-3 bg-slate-50 hover:bg-slate-100/80 transition-colors rounded-xl border border-slate-100/50">
+                                <div className="text-[13px] font-bold text-slate-700 leading-tight">{log.details}</div>
+                                <div className="flex items-center justify-between mt-1">
+                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wide truncate max-w-[120px]" title={log.user_email}>{log.user_email}</div>
+                                    <div className="text-[10px] font-bold text-slate-400">
+                                        {new Date(log.created_at).toLocaleString('es-AR', {dateStyle: 'short', timeStyle: 'short'})}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {/* Settings Card: Exchange Rate */}
             <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
@@ -257,11 +336,10 @@ export default function InventoryDashboard() {
                         />
                     </div>
                     <button
-                        onClick={handleUpdateRate}
                         disabled={savingRate || newExchangeRate === exchangeRate}
-                        className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed transition-all whitespace-nowrap"
+                        className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-bold disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed transition-all whitespace-nowrap"
                     >
-                        {savingRate ? '...' : 'Actualizar'}
+                        {newExchangeRate !== exchangeRate ? 'Pendiente' : 'Al día'}
                     </button>
                 </div>
             </div>
@@ -369,19 +447,19 @@ export default function InventoryDashboard() {
                                             <button
                                                 type="button"
                                                 onClick={(e) => handleStockAdjust(e, p.sku, -1)}
-                                                disabled={p.stock_quantity <= 0}
+                                                disabled={p.stock_quantity + (pendingStock[p.sku] || 0) <= 0}
                                                 className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold disabled:opacity-50 transition-colors"
                                             >
                                                 -
                                             </button>
-                                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${p.stock_quantity > 10
+                                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${p.stock_quantity + (pendingStock[p.sku] || 0) > 10
                                                 ? 'bg-emerald-50 text-emerald-600'
-                                                : p.stock_quantity > 0
+                                                : p.stock_quantity + (pendingStock[p.sku] || 0) > 0
                                                     ? 'bg-amber-50 text-amber-600'
                                                     : 'bg-red-50 text-red-600'
                                                 }`}>
                                                 <Box size={14} />
-                                                {p.stock_quantity}
+                                                {p.stock_quantity + (pendingStock[p.sku] || 0)}
                                             </div>
                                             <button
                                                 type="button"
@@ -392,14 +470,22 @@ export default function InventoryDashboard() {
                                             </button>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-5 text-right">
-                                        <div className="text-sm font-bold text-slate-900 group-hover:text-green-600 transition-colors">
-                                            US$ {p.price_usd ? Number(p.price_usd).toLocaleString() : 'N/A'}
+                                    <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
+                                        <div className="relative flex items-center justify-end font-bold">
+                                            <span className="text-slate-400 mr-1">US$</span>
+                                            <input 
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={pendingPrice[p.sku] !== undefined ? pendingPrice[p.sku] : p.price_usd}
+                                                onChange={(e) => handlePriceChange(e, p.sku)}
+                                                className={`w-20 text-right bg-transparent border-b-2 outline-none transition-colors ${pendingPrice[p.sku] !== undefined ? 'border-amber-400 text-amber-600' : 'border-transparent text-slate-900 focus:border-blue-300'}`}
+                                            />
                                         </div>
                                     </td>
                                     <td className="px-6 py-5 text-right">
                                         <div className="text-sm font-bold text-slate-500">
-                                            ${p.price_usd && !isNaN(Number(exchangeRate)) ? (Number(p.price_usd) * Number(exchangeRate)).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : 'N/A'}
+                                            ${p.price_usd && !isNaN(Number(newExchangeRate)) ? (Number(pendingPrice[p.sku] !== undefined ? pendingPrice[p.sku] : p.price_usd) * Number(newExchangeRate)).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : 'N/A'}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5 text-center">

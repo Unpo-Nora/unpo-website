@@ -166,3 +166,33 @@ class SettingsUpdate(BaseModel):
 class Settings(SettingsBase):
     class Config:
         from_attributes = True
+
+# --- Analytics / Expenses ---
+
+class ExpenseBase(BaseModel):
+    amount: Decimal
+    description: str
+    date: Optional[datetime] = None
+
+class ExpenseCreate(ExpenseBase):
+    pass
+
+class Expense(ExpenseBase):
+    id: int
+    
+    class Config:
+        from_attributes = True
+
+# --- Inventory Audit Log ---
+
+class InventoryAuditLogBase(BaseModel):
+    user_email: str
+    action: str
+    details: str
+
+class InventoryAuditLog(InventoryAuditLogBase):
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True

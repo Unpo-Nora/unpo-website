@@ -170,3 +170,20 @@ class PageView(Base):
     visitor_id = Column(String, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class Expense(Base):
+    __tablename__ = "expenses"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    description = Column(String, nullable=False)
+    date = Column(DateTime(timezone=True), server_default=func.now())
+
+class InventoryAuditLog(Base):
+    __tablename__ = "inventory_audit_logs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_email = Column(String, index=True)
+    action = Column(String) # e.g. "STOCK_UPDATE", "PRICE_UPDATE", "NEW_PRODUCT", "EXCHANGE_RATE"
+    details = Column(String)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+

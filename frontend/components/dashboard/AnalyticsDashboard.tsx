@@ -23,6 +23,7 @@ import {
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import { useAuth } from '@/context/AuthContext';
+import ExpenseModal from './ExpenseModal';
 
 interface AnalyticsData {
     visitors?: {
@@ -56,7 +57,8 @@ interface AnalyticsData {
         top_products_interest: { product: string; count: number }[];
         top_products_sold: { product_name: string; quantity_sold: number }[];
         total_amount_sold?: number;
-        historical_monthly_sales?: { month: string; total_amount: number; sales_count: number }[];
+        total_expenses?: number;
+        historical_monthly_sales?: { month: string; total_amount: number; sales_count: number; expenses?: number }[];
     };
 }
 
@@ -65,6 +67,7 @@ export default function AnalyticsDashboard() {
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'GENERAL' | 'MENSUAL' | 'PRODUCTOS' | 'HISTORICOS'>('GENERAL');
     const [isExporting, setIsExporting] = useState(false);
+    const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     
     // Historical States
     const [historicalYear, setHistoricalYear] = useState(new Date().getFullYear());
@@ -214,13 +217,21 @@ export default function AnalyticsDashboard() {
                         </button>
                     </div>
 
-                    <button
-                        onClick={handleExportPDF}
-                        disabled={isExporting}
-                        className="px-5 py-2 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm tracking-wide rounded-2xl transition-all shadow-sm disabled:opacity-50"
-                    >
-                        {isExporting ? 'Procesando...' : <><Download size={18} /> Exportar PDF</>}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setIsExpenseModalOpen(true)}
+                            className="px-5 py-2 flex items-center justify-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-sm tracking-wide rounded-2xl transition-all shadow-sm"
+                        >
+                            <DollarSign size={18} /> Egresos
+                        </button>
+                        <button
+                            onClick={handleExportPDF}
+                            disabled={isExporting}
+                            className="px-5 py-2 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm tracking-wide rounded-2xl transition-all shadow-sm disabled:opacity-50"
+                        >
+                            {isExporting ? 'Procesando...' : <><Download size={18} /> Exportar PDF</>}
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -530,32 +541,35 @@ export default function AnalyticsDashboard() {
                             </div>
                         </div>
                         
-                        {/* Historical Monthly Sales Amount */}
+                        {/* Historical Monthly Sales Amount & Expenses */}
                         <div className="bg-white p-8 rounded-[32px] shadow-md shadow-emerald-200/20 border border-emerald-50 lg:col-span-1">
                             <div className="flex items-center justify-between mb-8">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                         <DollarSign size={20} className="text-emerald-600" />
-                                        Monto Vendido por Mes
+                                        Rentabilidad por Mes (Ingresos vs Egresos)
                                     </h3>
                                     <p className="text-sm text-slate-500 font-medium mt-1">
-                                        Histórico de facturación (Últimos 12 meses).
+                                        Histórico de facturación menos gastos fijos (Últimos 12 meses).
                                     </p>
                                 </div>
                             </div>
                             <div className="h-[250px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={data.monthly_metrics?.historical_monthly_sales || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <BarChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                         <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc' }}
-                                            formatter={(value: number) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, 'Monto Total']}
+                                            formatter={(value: number, name: string) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'total_amount' ? 'Total Ingresos' : name === 'expenses' ? 'Total Egresos' : 'Rentabilidad Neta']}
                                             labelFormatter={(label) => `Mes: ${label}`}
                                         />
-                                        <Bar dataKey="total_amount" name="Monto Total" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={60} />
+                                        <Legend />
+                                        <Bar dataKey="total_amount" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="expenses" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="rentabilidad" name="Rentabilidad Neta" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
                                     </BarChart>
                                 </ResponsiveContainer>
                             </div>
@@ -888,6 +902,12 @@ export default function AnalyticsDashboard() {
                     </div>
                 )}
             </div>
+            
+            <ExpenseModal isOpen={isExpenseModalOpen} onClose={() => {
+                setIsExpenseModalOpen(false);
+                // Refresh data when closing the modal to see updated expenses in chart
+                window.location.reload(); 
+            }} />
         </div>
     );
 }

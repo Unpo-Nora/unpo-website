@@ -338,3 +338,82 @@ async def upload_product_image(
     crud.update_product(db, sku=sku, product_data={"images": current_images})
     
     return {"status": "success", "url": image_url, "images": current_images}
+
+from pydantic import BaseModel
+from typing import Dict, Any
+
+class BatchUpdateRequest(BaseModel):
+    stock_adjustments: Dict[str, int] = {}
+    price_updates: Dict[str, float] = {}
+    new_exchange_rate: Optional[str] = None
+    new_products: List[schemas.ProductCreate] = []
+
+@router.post("/batch_update")
+def batch_update_inventory(
+    request: BatchUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+        raise HTTPException(status_code=403, detail="No tiene permisos")
+    
+    actions_taken = []
+    
+    if request.new_exchange_rate:
+        crud.update_setting(db, "manual_exchange_rate", request.new_exchange_rate)
+        actions_taken.append(f"Dólar actualizado a: ${request.new_exchange_rate}")
+        crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+            user_email=current_user.email,
+            action="EXCHANGE_RATE",
+            details=f"Actualizó cotización del dólar a ${request.new_exchange_rate}"
+        ))
+
+    for sku, adjustment in request.stock_adjustments.items():
+        if adjustment == 0: continue
+        product = crud.get_product(db, sku)
+        if product:
+            product.stock_quantity = max(0, (product.stock_quantity or 0) + adjustment)
+            crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+                user_email=current_user.email,
+                action="STOCK_UPDATE",
+                details=f"Stock de {sku} ajustado en {adjustment} (Quedan: {product.stock_quantity})"
+            ))
+            actions_taken.append(f"Stock {sku}: {adjustment}")
+            
+    for sku, new_price in request.price_updates.items():
+        product = crud.get_product(db, sku)
+        if product and float(product.price_usd or 0) != float(new_price):
+            product.price_usd = new_price
+            crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+                user_email=current_user.email,
+                action="PRICE_UPDATE",
+                details=f"Precio USD de {sku} actualizado a ${new_price}"
+            ))
+            actions_taken.append(f"Precio {sku} actualizado")
+
+    for new_prod in request.new_products:
+        existing = crud.get_product(db, sku=new_prod.sku)
+        if not existing:
+            # We don't use crud.create_product because it does db.commit itself, 
+            # modifying state. Let's do it safely.
+            db_product = models.Product(**new_prod.model_dump())
+            db.add(db_product)
+            crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+                user_email=current_user.email,
+                action="NEW_PRODUCT",
+                details=f"Producto nuevo creado: {new_prod.sku} ({new_prod.name})"
+            ))
+            actions_taken.append(f"Producto {new_prod.sku} creado")
+            
+    db.commit()
+    return {"status": "success", "messages": actions_taken}
+
+@router.get("/audit_logs", response_model=List[schemas.InventoryAuditLog])
+def get_audit_logs(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+        raise HTTPException(status_code=403, detail="No tiene permisos")
+    return crud.get_recent_audit_logs(db, limit)

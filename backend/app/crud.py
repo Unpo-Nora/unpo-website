@@ -74,6 +74,9 @@ def update_setting(db: Session, key: str, value: str):
 def create_lead(db: Session, lead: schemas.LeadCreate):
     db_lead = models.Lead(**lead.model_dump())
     
+    if db_lead.source == "WEB_UNPO":
+        db_lead.status = "CONTACTED"
+    
     if db_lead.status == "CONTACTED" and not getattr(db_lead, "contacted_at", None):
         from datetime import datetime, timezone
         db_lead.contacted_at = datetime.now(timezone.utc)
@@ -240,3 +243,37 @@ def create_user(db: Session, user_data: dict):
     db.commit()
     db.refresh(db_user)
     return db_user
+
+# --- Expenses ---
+def create_expense(db: Session, expense: schemas.ExpenseCreate):
+    db_expense = models.Expense(**expense.model_dump())
+    db.add(db_expense)
+    db.commit()
+    db.refresh(db_expense)
+    return db_expense
+
+def get_expenses(db: Session, year: int = None, month: int = None):
+    query = db.query(models.Expense)
+    if year and month:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', models.Expense.date) == year, extract('month', models.Expense.date) == month)
+    return query.order_by(models.Expense.date.desc()).all()
+
+def delete_expense(db: Session, expense_id: int):
+    db_expense = db.query(models.Expense).filter(models.Expense.id == expense_id).first()
+    if db_expense:
+        db.delete(db_expense)
+        db.commit()
+        return True
+    return False
+
+# --- Inventory Audit Logs ---
+def create_audit_log(db: Session, log: schemas.InventoryAuditLogBase):
+    db_log = models.InventoryAuditLog(**log.model_dump())
+    db.add(db_log)
+    db.commit()
+    db.refresh(db_log)
+    return db_log
+
+def get_recent_audit_logs(db: Session, limit: int = 20):
+    return db.query(models.InventoryAuditLog).order_by(models.InventoryAuditLog.created_at.desc()).limit(limit).all()
