@@ -214,7 +214,14 @@ def create_product(
     db_product = crud.get_product(db, sku=product.sku)
     if db_product:
         raise HTTPException(status_code=400, detail="Product already exists")
-    return crud.create_product(db=db, product=product)
+    
+    new_product = crud.create_product(db=db, product=product)
+    crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+        user_email=current_user.email,
+        action="NEW_PRODUCT",
+        details=f"Producto creado: {new_product.sku} ({new_product.name})"
+    ))
+    return new_product
 
 @router.put("/{sku}", response_model=schemas.Product)
 def update_product(
@@ -229,6 +236,12 @@ def update_product(
     db_product = crud.update_product(db, sku=sku, product_data=product.model_dump(exclude_unset=True))
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
+        
+    crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+        user_email=current_user.email,
+        action="PRODUCT_EDITED",
+        details=f"Producto editado: {sku}"
+    ))
     return db_product
 
 @router.patch("/{sku}/stock", response_model=schemas.Product)
@@ -251,6 +264,12 @@ def adjust_stock(
         
     db.commit()
     db.refresh(db_product)
+    
+    crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+        user_email=current_user.email,
+        action="STOCK_ADJUSTMENT",
+        details=f"Stock de {sku} ajustado: {adjustment_data.adjustment:+d}. Nuevo total: {db_product.stock_quantity}"
+    ))
     return db_product
 
 @router.delete("/{sku}", response_model=schemas.Product)
@@ -265,6 +284,12 @@ def archive_product(
     db_product = crud.archive_product(db, sku=sku)
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
+        
+    crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+        user_email=current_user.email,
+        action="ARCHIVE_PRODUCT",
+        details=f"Producto archivado: {sku}"
+    ))
     return db_product
 
 @router.delete("/{sku}/hard")

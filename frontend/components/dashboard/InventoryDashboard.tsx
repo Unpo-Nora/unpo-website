@@ -31,7 +31,7 @@ interface Product {
 export default function InventoryDashboard() {
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
-    const [syncing, setSyncing] = useState(false);
+
     // Search and Filter State
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState<'con_stock' | 'sin_stock'>('con_stock');
@@ -146,34 +146,7 @@ export default function InventoryDashboard() {
         }
     };
 
-    const handleSync = async () => {
-        if (!confirm("¿Estás seguro de sincronizar con el Excel maestro? Esto actualizará todos los precios y stocks.")) return;
 
-        setSyncing(true);
-        setMessage(null);
-        try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/sync`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            const result = await response.json();
-
-            if (response.ok) {
-                setMessage({
-                    type: 'success',
-                    text: `Sincronización exitosa: ${result.counts.created} nuevos, ${result.counts.updated} actualizados.`
-                });
-                fetchProducts();
-            } else {
-                setMessage({ type: 'error', text: result.detail || "Error en la sincronización" });
-            }
-        } catch (error) {
-            setMessage({ type: 'error', text: "Error de conexión con el servidor" });
-        } finally {
-            setSyncing(false);
-        }
-    };
 
     const handleEditProduct = (product: Product) => {
         setEditingProduct(product);
@@ -366,17 +339,7 @@ export default function InventoryDashboard() {
                         Nuevo Producto
                     </button>
 
-                    <button
-                        onClick={handleSync}
-                        disabled={syncing}
-                        className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold transition-all ${syncing
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200'
-                            }`}
-                    >
-                        <RefreshCcw size={18} className={syncing ? 'animate-spin' : ''} />
-                        {syncing ? 'Sincronizando...' : 'Excel'}
-                    </button>
+
                 </div>
             </div>
 

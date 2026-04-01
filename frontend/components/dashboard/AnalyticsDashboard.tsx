@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-    LineChart, Line, PieChart, Pie, Cell, Legend
+    LineChart, Line, PieChart, Pie, Cell, Legend, ComposedChart, Area
 } from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
@@ -556,7 +556,7 @@ export default function AnalyticsDashboard() {
                             </div>
                             <div className="h-[250px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <ComposedChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                         <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
@@ -566,11 +566,11 @@ export default function AnalyticsDashboard() {
                                             formatter={(value: number, name: string) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'total_amount' ? 'Total Ingresos' : name === 'expenses' ? 'Total Egresos' : 'Rentabilidad Neta']}
                                             labelFormatter={(label) => `Mes: ${label}`}
                                         />
-                                        <Legend />
+                                        <Legend wrapperStyle={{ paddingTop: "20px" }} />
                                         <Bar dataKey="total_amount" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
                                         <Bar dataKey="expenses" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                        <Bar dataKey="rentabilidad" name="Rentabilidad Neta" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                    </BarChart>
+                                        <Line type="monotone" dataKey="rentabilidad" name="Rentabilidad Neta" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
+                                    </ComposedChart>
                                 </ResponsiveContainer>
                             </div>
                         </div>
@@ -826,6 +826,40 @@ export default function AnalyticsDashboard() {
                                                     <Line type="monotone" dataKey="visits" name="Visitas Únicas" stroke="#9333ea" strokeWidth={4} dot={{ r: 4, fill: '#9333ea', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
                                                     <Line type="monotone" dataKey="contacts" name="Contactos Iniciados" stroke="#10b981" strokeWidth={4} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
                                                 </LineChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Rentabilidad Neta Historica */}
+                                    <div className="bg-white p-8 rounded-[32px] shadow-md shadow-blue-200/20 border border-blue-50 lg:col-span-2">
+                                        <div className="flex items-center justify-between mb-8">
+                                            <div>
+                                                <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                                    <DollarSign size={20} className="text-blue-600" />
+                                                    Rentabilidad Histórica (Ingresos vs Egresos)
+                                                </h3>
+                                                <p className="text-sm text-slate-500 font-medium mt-1">
+                                                    Comparativa de flujos de dinero mes a mes en histórico.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="h-[300px] w-full">
+                                            <ResponsiveContainer width="100%" height="100%">
+                                                <ComposedChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                                    <RechartsTooltip
+                                                        contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
+                                                        cursor={{ fill: '#f8fafc' }}
+                                                        formatter={(value: number, name: string) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'total_amount' ? 'Total Ingresos' : name === 'expenses' ? 'Total Egresos' : 'Rentabilidad Neta']}
+                                                        labelFormatter={(label) => `Mes: ${label}`}
+                                                    />
+                                                    <Legend wrapperStyle={{ paddingTop: "20px" }} />
+                                                    <Bar dataKey="total_amount" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                                    <Bar dataKey="expenses" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                                    <Line type="monotone" dataKey="rentabilidad" name="Rentabilidad Neta" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
+                                                </ComposedChart>
                                             </ResponsiveContainer>
                                         </div>
                                     </div>

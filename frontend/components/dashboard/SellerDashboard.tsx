@@ -362,6 +362,11 @@ export default function SellerDashboard() {
             if (filterFeedback === "TODOS") return true;
             if (filterFeedback === "PENDIENTE") return !l.feedback_status;
             if (filterFeedback === "RESPONDIO") return l.feedback_status?.startsWith("Respondio");
+            if (filterFeedback === "PIDIO_CATALOGO") return l.feedback_status?.includes("Pidio Catalogo");
+            if (filterFeedback === "PRECIOS_ALTOS") return l.feedback_status?.includes("Precios muy altos");
+            if (filterFeedback === "POCO_STOCK") return l.feedback_status?.includes("Poco stock");
+            if (filterFeedback === "POCA_VARIEDAD") return l.feedback_status?.includes("Poca variedad de productos");
+            if (filterFeedback === "OTROS_PRODUCTOS") return l.feedback_status?.includes("Quiere otros productos");
             if (filterFeedback === "NO_RESPONDE") return l.feedback_status === "No responde";
             if (filterFeedback === "NUMERO_ERRONEO") return l.feedback_status === "Numero erroneo";
             return true;
@@ -471,7 +476,12 @@ export default function SellerDashboard() {
                                 >
                                     <option value="TODOS">Cualquier Feedbacks</option>
                                     <option value="PENDIENTE">Pendiente</option>
-                                    <option value="RESPONDIO">Respondió</option>
+                                    <option value="RESPONDIO">Respondió (Cualquiera)</option>
+                                    <option value="PIDIO_CATALOGO">- Pidió Catálogo</option>
+                                    <option value="PRECIOS_ALTOS">- Precios muy altos</option>
+                                    <option value="POCO_STOCK">- Poco stock</option>
+                                    <option value="POCA_VARIEDAD">- Poca variedad</option>
+                                    <option value="OTROS_PRODUCTOS">- Quiere otros productos</option>
                                     <option value="NO_RESPONDE">No responde</option>
                                     <option value="NUMERO_ERRONEO">Número erróneo</option>
                                 </select>
