@@ -738,6 +738,7 @@ def create_expense(
     if current_user.role != "admin":
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Unauthorized")
+    expense.user_email = current_user.email
     return crud.create_expense(db, expense)
 
 @router.delete("/expenses/{expense_id}")

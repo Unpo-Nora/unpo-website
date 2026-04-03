@@ -240,7 +240,7 @@ def update_product(
     crud.create_audit_log(db, schemas.InventoryAuditLogBase(
         user_email=current_user.email,
         action="PRODUCT_EDITED",
-        details=f"Producto editado: {sku}"
+        details=f"Producto editado: {db_product.name} (SKU: {sku})"
     ))
     return db_product
 
@@ -401,7 +401,7 @@ def batch_update_inventory(
             crud.create_audit_log(db, schemas.InventoryAuditLogBase(
                 user_email=current_user.email,
                 action="STOCK_UPDATE",
-                details=f"Stock de {sku} ajustado en {adjustment} (Quedan: {product.stock_quantity})"
+                details=f"Stock de {product.name} (SKU: {sku}) ajustado en {adjustment} (Quedan: {product.stock_quantity})"
             ))
             actions_taken.append(f"Stock {sku}: {adjustment}")
             
@@ -412,7 +412,7 @@ def batch_update_inventory(
             crud.create_audit_log(db, schemas.InventoryAuditLogBase(
                 user_email=current_user.email,
                 action="PRICE_UPDATE",
-                details=f"Precio USD de {sku} actualizado a ${new_price}"
+                details=f"Precio USD de {product.name} (SKU: {sku}) actualizado a ${new_price}"
             ))
             actions_taken.append(f"Precio {sku} actualizado")
 

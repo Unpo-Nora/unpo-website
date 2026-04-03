@@ -178,6 +178,7 @@ class Expense(Base):
     amount = Column(Numeric(12, 2), nullable=False)
     description = Column(String, nullable=False)
     date = Column(DateTime(timezone=True), server_default=func.now())
+    user_email = Column(String, nullable=True)
 
 class InventoryAuditLog(Base):
     __tablename__ = "inventory_audit_logs"

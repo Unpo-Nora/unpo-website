@@ -145,7 +145,10 @@ export default function PurchasesDashboard() {
                         <div key={e.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-slate-100 transition-colors">
                             <div>
                                 <div className="font-bold text-slate-800 text-base">{e.description}</div>
-                                <div className="text-xs text-slate-400 font-medium">{new Date(e.date).toLocaleString('es-AR')}</div>
+                                <div className="text-xs text-slate-400 font-medium whitespace-nowrap">
+                                    {new Date(e.date).toLocaleString('es-AR')}
+                                    {e.user_email && <span className="ml-2 text-indigo-400">por {e.user_email}</span>}
+                                </div>
                             </div>
                             <div className="flex items-center gap-6">
                                 <div className="font-black text-red-600 text-lg">-$ {Number(e.amount).toLocaleString('es-AR')}</div>

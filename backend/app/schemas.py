@@ -173,6 +173,7 @@ class ExpenseBase(BaseModel):
     amount: Decimal
     description: str
     date: Optional[datetime] = None
+    user_email: Optional[str] = None
 
 class ExpenseCreate(ExpenseBase):
     pass
