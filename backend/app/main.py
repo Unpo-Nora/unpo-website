@@ -122,3 +122,15 @@ def debug_audit_logs(db: Session = Depends(get_db)):
         return [{"id": l.id, "action": l.action, "details": l.details} for l in logs]
     except Exception as e:
         return {"error_type": type(e).__name__, "error": str(e)}
+
+@app.get("/force_debug_log")
+def force_debug_log(db: Session = Depends(get_db)):
+    try:
+        from . import crud, schemas
+        log = crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+            action="DEBUG_FORCE",
+            details="Forced log directly into Postgres via Route bypass"
+        ))
+        return {"status": "success", "inserted": log.id}
+    except Exception as e:
+        return {"error_type": type(e).__name__, "error": str(e)}
