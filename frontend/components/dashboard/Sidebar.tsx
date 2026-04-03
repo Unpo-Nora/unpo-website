@@ -13,7 +13,8 @@ import {
     UserCircle,
     Star,
     MonitorSmartphone,
-    X
+    X,
+    Briefcase
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -54,13 +55,25 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
             roles: ['admin']
         },
         {
+            title: 'Compras y Egresos',
+            path: '/admin/purchases',
+            icon: <FileUp size={20} />, // Can change icon later if needed, FileUp is used in Import, we can use DollarSign but it's not imported. Let's just use Settings or something imported? Wait, FileUp is already used.
+            roles: ['admin']
+        },
+        {
+            title: 'Recursos Humanos',
+            path: '/admin/hr',
+            icon: <Briefcase size={20} />,
+            roles: ['admin']
+        },
+        {
             title: 'Importar Leads',
             path: '/admin/import',
             icon: <FileUp size={20} />,
             roles: ['admin', 'vendedor']
         },
         {
-            title: 'Personal y Seguridad',
+            title: 'Usuarios y Accesos',
             path: '/admin/users',
             icon: <Users size={20} />,
             roles: ['admin', 'vendedor']

@@ -15,9 +15,58 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
         category_id: 1, // Fallback category (General)
         description: '',
         stock_quantity: 0,
+        cost_price: 0,
         price_usd: 0,
-        is_active: true
+        iva_percent: 21,
+        is_active: true,
+        price_breakdown: {} as any
     });
+
+    const [priceOrigin, setPriceOrigin] = useState<'argentina' | 'importado'>('argentina');
+    const [purchaseCost, setPurchaseCost] = useState(0);
+    const [importTaxes, setImportTaxes] = useState(0);
+    const [profitMargin, setProfitMargin] = useState(30);
+    const [exchangeRate, setExchangeRate] = useState(1);
+
+    useEffect(() => {
+        const fetchExchange = async () => {
+             const token = localStorage.getItem('token');
+             try {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if(res.ok) {
+                    const data = await res.json();
+                    setExchangeRate(Number(data.value) || 1);
+                }
+             } catch(e) {}
+        };
+        fetchExchange();
+    }, []);
+
+    // Calculator useEffect
+    useEffect(() => {
+        let baseCost = purchaseCost;
+        if (priceOrigin === 'importado') {
+            baseCost += importTaxes;
+        }
+        
+        const finalArs = baseCost * (1 + formData.iva_percent / 100) * (1 + profitMargin / 100);
+        const calcUsd = finalArs / exchangeRate;
+
+        if (purchaseCost > 0) {
+            setFormData(prev => ({
+                ...prev,
+                cost_price: baseCost,
+                price_usd: Number(calcUsd.toFixed(2)),
+                price_breakdown: {
+                    origin: priceOrigin,
+                    purchase_cost: purchaseCost,
+                    import_taxes: importTaxes,
+                    profit_margin: profitMargin,
+                    exchange_rate_used: exchangeRate
+                }
+            }));
+        }
+    }, [priceOrigin, purchaseCost, importTaxes, profitMargin, formData.iva_percent, exchangeRate]);
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -36,12 +85,21 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                 category_id: product.category_id || 1,
                 description: product.description || '',
                 stock_quantity: product.stock_quantity,
+                cost_price: product.cost_price || 0,
                 price_usd: product.price_usd || 0,
-                is_active: product.is_active !== false
+                iva_percent: product.iva_percent || 21,
+                is_active: product.is_active !== false,
+                price_breakdown: product.price_breakdown || {}
             });
+            if (product.price_breakdown) {
+                 setPriceOrigin(product.price_breakdown.origin || 'argentina');
+                 setPurchaseCost(product.price_breakdown.purchase_cost || 0);
+                 setImportTaxes(product.price_breakdown.import_taxes || 0);
+                 setProfitMargin(product.price_breakdown.profit_margin || 30);
+            }
             setExistingImages(product.images || []);
         } else {
-            setFormData({ sku: '', name: '', category_id: 1, description: '', stock_quantity: 0, price_usd: 0, is_active: true });
+            setFormData({ sku: '', name: '', category_id: 1, description: '', stock_quantity: 0, cost_price: 0, price_usd: 0, iva_percent: 21, is_active: true, price_breakdown: {} });
             setExistingImages([]);
         }
         setSelectedFiles([]);
@@ -255,21 +313,65 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                     className="w-full px-4 py-3 bg-white border border-blue-200 rounded-xl focus:border-blue-500 outline-none text-slate-700 font-bold text-lg"
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-green-600 uppercase tracking-wider flex items-center gap-1">
-                                    <DollarSign size={14} /> Precio Base (USD)
-                                </label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                            <div className="col-span-2 space-y-4 pt-4 border-t border-blue-200">
+                                <h3 className="font-bold text-blue-800 flex items-center gap-2">
+                                    <DollarSign size={18} /> Construcción del Precio final
+                                </h3>
+                                
+                                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                     <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Origen</label>
+                                        <select value={priceOrigin} onChange={e => setPriceOrigin(e.target.value as any)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none">
+                                            <option value="argentina">Argentina</option>
+                                            <option value="importado">Importado</option>
+                                        </select>
+                                     </div>
+                                     <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Costo Compra (ARS)</label>
+                                        <input type="number" min="0" value={purchaseCost} onChange={e => setPurchaseCost(parseFloat(e.target.value)||0)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
+                                     </div>
+                                     {priceOrigin === 'importado' && (
+                                         <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Impuestos Imp. (ARS)</label>
+                                            <input type="number" min="0" value={importTaxes} onChange={e => setImportTaxes(parseFloat(e.target.value)||0)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
+                                         </div>
+                                     )}
+                                     <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Ganancia (%)</label>
+                                        <input type="number" min="0" value={profitMargin} onChange={e => setProfitMargin(parseFloat(e.target.value)||0)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
+                                     </div>
+                                </div>
+                            </div>
+                            
+                            <div className="col-span-2 grid grid-cols-2 gap-6 mt-2">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">IVA (%)</label>
                                     <input
                                         required
                                         type="number"
                                         min="0"
-                                        step="0.01"
-                                        value={formData.price_usd}
-                                        onChange={(e) => setFormData({ ...formData, price_usd: parseFloat(e.target.value) || 0 })}
-                                        className="w-full pl-8 pr-4 py-3 bg-white border border-green-200 rounded-xl focus:border-green-500 outline-none text-slate-700 font-bold text-lg"
+                                        value={formData.iva_percent}
+                                        onChange={(e) => setFormData({ ...formData, iva_percent: parseFloat(e.target.value) || 0 })}
+                                        className="w-full px-4 py-3 bg-white border border-blue-200 rounded-xl focus:border-blue-500 outline-none text-slate-700 font-bold"
                                     />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-green-600 uppercase tracking-wider flex items-center gap-1">
+                                        <DollarSign size={14} /> Precio Final Venta (USD)
+                                    </label>
+                                    <div className="relative">
+                                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-500 font-bold">U$D</span>
+                                        <input
+                                            required
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={formData.price_usd}
+                                            onChange={(e) => setFormData({ ...formData, price_usd: parseFloat(e.target.value) || 0 })}
+                                            className="w-full pl-12 pr-4 py-3 bg-white border border-green-300 shadow-inner rounded-xl focus:border-green-500 outline-none text-green-700 font-black text-lg"
+                                        />
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 text-right mt-1 font-medium">Cotización Actual Dólar: ${exchangeRate}</p>
                                 </div>
                             </div>
                         </div>

@@ -11,7 +11,10 @@ import {
     Box,
     Layers,
     Plus,
-    Edit
+    Edit,
+    History,
+    TrendingUp,
+    Wallet
 } from 'lucide-react';
 import ProductModal from './ProductModal';
 
@@ -34,7 +37,7 @@ export default function InventoryDashboard() {
 
     // Search and Filter State
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState<'con_stock' | 'sin_stock'>('con_stock');
+    const [activeTab, setActiveTab] = useState<'con_stock' | 'stock_bajo' | 'sin_stock' | 'historial'>('con_stock');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
 
@@ -75,7 +78,7 @@ export default function InventoryDashboard() {
     const fetchAuditLogs = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/audit_logs?limit=5`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/audit_logs?limit=50`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
@@ -205,9 +208,12 @@ export default function InventoryDashboard() {
     );
 
     // Filter by tab
-    const tabFilteredProducts = searchedProducts.filter(p =>
-        activeTab === 'con_stock' ? p.stock_quantity > 0 : p.stock_quantity <= 0
-    );
+    const tabFilteredProducts = searchedProducts.filter(p => {
+        if (activeTab === 'con_stock') return p.stock_quantity >= 10;
+        if (activeTab === 'stock_bajo') return p.stock_quantity > 0 && p.stock_quantity < 10;
+        if (activeTab === 'sin_stock') return p.stock_quantity <= 0;
+        return false;
+    });
 
     // Pagination
     const totalPages = Math.ceil(tabFilteredProducts.length / ITEMS_PER_PAGE) || 1;
@@ -228,8 +234,32 @@ export default function InventoryDashboard() {
         </div>
     );
 
+    const totalCostValue = products.reduce((acc, p) => acc + ((p.cost_price || 0) * (p.stock_quantity > 0 ? p.stock_quantity : 0)), 0);
+    const totalSaleValue = products.reduce((acc, p) => acc + ((p.price_usd || 0) * (p.stock_quantity > 0 ? p.stock_quantity : 0)), 0);
+
     return (
         <div className="space-y-6">
+            {/* Value Check Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Valor de Costo Invertido</p>
+                        <h3 className="text-3xl font-black text-slate-800">U$D {totalCostValue.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</h3>
+                    </div>
+                    <div className="w-14 h-14 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center">
+                        <Wallet size={28} />
+                    </div>
+                </div>
+                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between">
+                    <div>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Valor de Venta Estimado</p>
+                        <h3 className="text-3xl font-black text-emerald-600">U$D {totalSaleValue.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</h3>
+                    </div>
+                    <div className="w-14 h-14 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
+                        <TrendingUp size={28} />
+                    </div>
+                </div>
+            </div>
             {/* Pending Changes Action Bar */}
             {hasPendingChanges && (
                 <div className="sticky top-4 z-40 bg-blue-600 rounded-2xl p-4 shadow-xl shadow-blue-200/50 flex flex-col md:flex-row items-center justify-between gap-4 border border-blue-500 text-white animate-in slide-in-from-top-4">
@@ -262,28 +292,7 @@ export default function InventoryDashboard() {
                 </div>
             )}
 
-            {/* Audit Logs Box */}
-            {auditLogs.length > 0 && (
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col gap-4">
-                    <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
-                        <Layers size={20} className="text-slate-400" />
-                        Últimos Movimientos en el Inventario
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {auditLogs.map((log: any) => (
-                            <div key={log.id} className="flex flex-col gap-1.5 p-3 bg-slate-50 hover:bg-slate-100/80 transition-colors rounded-xl border border-slate-100/50">
-                                <div className="text-[13px] font-bold text-slate-700 leading-tight">{log.details}</div>
-                                <div className="flex items-center justify-between mt-1">
-                                    <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wide truncate max-w-[120px]" title={log.user_email}>{log.user_email}</div>
-                                    <div className="text-[10px] font-bold text-slate-400">
-                                        {new Date(log.created_at).toLocaleString('es-AR', {dateStyle: 'short', timeStyle: 'short'})}
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
+            {/* Audit Logs Box - Removed from top, moved to tab */}
 
             {/* Settings Card: Exchange Rate */}
             <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
@@ -332,14 +341,13 @@ export default function InventoryDashboard() {
 
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={handleCreateProduct}
-                        className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200 transition-all"
+                        onClick={fetchProducts}
+                        className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
                     >
-                        <Plus size={18} />
-                        Nuevo Producto
+                        <RefreshCcw size={18} />
+                        Actualizar
                     </button>
-
-
+                    {/* Boton Nuevo Producto movido a Compras */}
                 </div>
             </div>
 
@@ -352,24 +360,75 @@ export default function InventoryDashboard() {
             )}
 
             {/* Tabs */}
-            <div className="flex border-b border-slate-200 gap-6 px-2">
+            <div className="flex border-b border-slate-200 gap-6 px-2 overflow-x-auto shrink-0">
                 <button
                     onClick={() => setActiveTab('con_stock')}
-                    className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'con_stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                    className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'con_stock' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
                     <Box size={16} />
-                    Con Stock ({searchedProducts.filter(p => p.stock_quantity > 0).length})
+                    Con Stock ({searchedProducts.filter(p => p.stock_quantity >= 10).length})
+                </button>
+                <button
+                    onClick={() => setActiveTab('stock_bajo')}
+                    className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'stock_bajo' ? 'border-amber-500 text-amber-500' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <AlertTriangle size={16} />
+                    Stock Bajo ({searchedProducts.filter(p => p.stock_quantity > 0 && p.stock_quantity < 10).length})
                 </button>
                 <button
                     onClick={() => setActiveTab('sin_stock')}
-                    className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'sin_stock' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                    className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'sin_stock' ? 'border-red-600 text-red-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
                     <AlertTriangle size={16} />
                     Sin Stock ({searchedProducts.filter(p => p.stock_quantity <= 0).length})
                 </button>
+                <button
+                    onClick={() => setActiveTab('historial')}
+                    className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'historial' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <History size={16} />
+                    Historial de Modificaciones
+                </button>
             </div>
 
-            {/* Inventory Table */}
+            {activeTab === 'historial' ? (
+                <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50/50 border-b border-slate-100">
+                                    <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Fecha</th>
+                                    <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Usuario</th>
+                                    <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Acción</th>
+                                    <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">Detalles</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {auditLogs.length > 0 ? auditLogs.map(log => (
+                                    <tr key={log.id} className="hover:bg-slate-50/50">
+                                        <td className="px-6 py-4 text-sm font-medium text-slate-500 whitespace-nowrap">
+                                            {new Date(log.created_at).toLocaleString('es-AR')}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm font-bold text-slate-700">
+                                            {log.user_email}
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-slate-100 text-slate-600">
+                                                {log.action}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-slate-700">
+                                            {log.details}
+                                        </td>
+                                    </tr>
+                                )) : (
+                                    <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-500">No hay registros recientes.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : (
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                 <div className="overflow-x-auto">
                     <table className="w-full text-left border-collapse">
@@ -511,6 +570,7 @@ export default function InventoryDashboard() {
                     </div>
                 </div>
             </div>
+            )}
 
             <ProductModal
                 isOpen={isModalOpen}

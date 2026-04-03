@@ -649,6 +649,71 @@ def get_historical_analytics(
         }
     }
 
+@router.get("/seller/{seller_email}/trends")
+def get_seller_trends(
+    seller_email: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin" and current_user.email != seller_email:
+        return {"error": "Unauthorized"}
+        
+    now = datetime.now()
+    current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_days = calendar.monthrange(now.year, now.month)[1]
+    
+    # 1. 12 months historical sales for THIS seller
+    sales = db.query(
+        models.SaleOrder.created_at,
+        models.SaleOrder.total_amount
+    ).join(models.Lead).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
+        models.Lead.seller == seller_email
+    ).all()
+    
+    monthly_sales_dict = {}
+    for created_at, amount in sales:
+        if not created_at: continue
+        month_key = created_at.strftime("%Y-%m")
+        if month_key not in monthly_sales_dict:
+            monthly_sales_dict[month_key] = {"amount": 0.0, "count": 0}
+        monthly_sales_dict[month_key]["amount"] += float(amount or 0)
+        monthly_sales_dict[month_key]["count"] += 1
+        
+    historical_monthly_sales = [
+        {"month": k, "total_amount": v["amount"], "sales_count": v["count"]} 
+        for k, v in sorted(monthly_sales_dict.items())
+    ][-12:]
+
+    # 2. Daily sales for current month for THIS seller
+    daily_sales_dict = {str(d): {"amount": 0.0, "count": 0} for d in range(1, month_days + 1)}
+    
+    current_month_sales = db.query(
+        models.SaleOrder.created_at,
+        models.SaleOrder.total_amount
+    ).join(models.Lead).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
+        models.Lead.seller == seller_email,
+        models.SaleOrder.created_at >= current_month_start
+    ).all()
+    
+    for created_at, amount in current_month_sales:
+        if not created_at: continue
+        day_str = str(created_at.day)
+        daily_sales_dict[day_str]["amount"] += float(amount or 0)
+        daily_sales_dict[day_str]["count"] += 1
+        
+    daily_current_month = [
+        {"day": k, "total_amount": v["amount"], "sales_count": v["count"]}
+        for k, v in daily_sales_dict.items()
+    ]
+
+    return {
+        "seller": seller_email,
+        "historical_monthly_sales": historical_monthly_sales,
+        "daily_current_month": daily_current_month
+    }
+
 from ..schemas import Expense, ExpenseCreate
 from .. import crud
 

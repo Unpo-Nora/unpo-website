@@ -41,8 +41,9 @@ app.include_router(auth.router)
 app.include_router(analytics.router)
 app.include_router(sales.router)
 app.include_router(settings.router)
-from .routers import users
+from .routers import users, hr
 app.include_router(users.router)
+app.include_router(hr.router)
 
 # Mount static images and videos
 images_path = "data/images"

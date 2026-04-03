@@ -50,3 +50,19 @@ def update_password(user_id: int, password_data: PasswordUpdate, db: Session = D
     user_to_update.hashed_password = get_password_hash(password_data.new_password)
     db.commit()
     return {"message": "Password updated successfully"}
+
+@router.delete("/{user_id}")
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    
+    # Prevenir que un admin se borre a si mismo por error (opcional, pero buena práctica)
+    if current_user.id == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+
+    from ..crud import delete_user as crud_delete_user
+    success = crud_delete_user(db, user_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    return {"message": "User deleted successfully"}

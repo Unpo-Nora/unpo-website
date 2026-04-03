@@ -51,6 +51,7 @@ class Product(Base):
     cost_price = Column(Numeric(12, 2), nullable=True)     # ARS
     price_usd = Column(Numeric(12, 2), nullable=True)      # New USD master price
     iva_percent = Column(Numeric(5, 2), default=21.0)      # Porcentaje de IVA
+    price_breakdown = Column(JSON, nullable=True)          # JSON object for constructed price details
     
     moq = Column(Integer, default=1) # Minimum Order Quantity
     stock_quantity = Column(Integer, default=0)
@@ -186,4 +187,25 @@ class InventoryAuditLog(Base):
     action = Column(String) # e.g. "STOCK_UPDATE", "PRICE_UPDATE", "NEW_PRODUCT", "EXCHANGE_RATE"
     details = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Employee(Base):
+    __tablename__ = "employees"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    address = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    email = Column(String, unique=True, index=True)
+    hire_date = Column(DateTime(timezone=True), nullable=True)
+    salary = Column(Numeric(12, 2), nullable=True)
+    role_function = Column(String, nullable=True)
+    
+    absent_days_this_month = Column(Integer, default=0)
+    vacation_days_available = Column(Integer, default=14)
+    
+    # Optional link to a system user
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    user = relationship("User", backref="employee_profile")
 

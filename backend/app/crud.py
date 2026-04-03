@@ -244,6 +244,14 @@ def create_user(db: Session, user_data: dict):
     db.refresh(db_user)
     return db_user
 
+def delete_user(db: Session, user_id: int):
+    db_user = db.query(models.User).filter(models.User.id == user_id).first()
+    if db_user:
+        db.delete(db_user)
+        db.commit()
+        return True
+    return False
+
 # --- Expenses ---
 def create_expense(db: Session, expense: schemas.ExpenseCreate):
     db_expense = models.Expense(**expense.model_dump())

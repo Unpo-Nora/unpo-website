@@ -65,7 +65,7 @@ interface AnalyticsData {
 export default function AnalyticsDashboard() {
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [activeTab, setActiveTab] = useState<'GENERAL' | 'MENSUAL' | 'PRODUCTOS' | 'HISTORICOS'>('GENERAL');
+    const [activeTab, setActiveTab] = useState<'GENERAL' | 'MENSUAL' | 'PRODUCTOS' | 'HISTORICOS' | 'VENDEDORES'>('GENERAL');
     const [isExporting, setIsExporting] = useState(false);
     const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
     
@@ -215,6 +215,12 @@ export default function AnalyticsDashboard() {
                         >
                             Históricos
                         </button>
+                        <button
+                            onClick={() => setActiveTab('VENDEDORES')}
+                            className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'VENDEDORES' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            Por Vendedor
+                        </button>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -244,6 +250,29 @@ export default function AnalyticsDashboard() {
                     <StatCard title="Nuevos Leads" value={data.leads.new.toString()} subtitle="Pendientes de asignación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />
                     <StatCard title="Alertas de Stock" value={data.stock_alerts.length.toString()} subtitle="Productos bajo crítico" icon={<AlertTriangle className="text-red-600" />} color="bg-red-50" />
                 </div>
+
+                {activeTab === 'VENDEDORES' && (
+                    <div className="bg-white p-8 rounded-[32px] shadow-md shadow-indigo-200/20 border border-indigo-50 animate-in slide-in-from-right-4 fade-in duration-500">
+                        <div className="flex items-center justify-between mb-8">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                    <Award size={20} className="text-indigo-600" />
+                                    Tendencias por Vendedor
+                                </h3>
+                                <p className="text-sm text-slate-500 font-medium mt-1">
+                                    Evalúa el progreso de un vendedor individual en el tiempo. Selecciona un vendedor a continuación.
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Since we don't have the new endpoint integrated yet, we map the historical data overall for now! */}
+                        <div className="p-10 mb-8 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center justify-center text-center">
+                            <Users size={32} className="text-indigo-300 mb-3" />
+                            <h4 className="text-lg font-bold text-slate-800">Sección en Desarrollo</h4>
+                            <p className="text-sm text-slate-500 mt-2 max-w-md">El gráfico individual por vendedor para ventas mensuales e históricas está siendo integrado. Vuelve a revisar pronto.</p>
+                        </div>
+                    </div>
+                )}
 
                 {activeTab === 'GENERAL' && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-left-4 fade-in duration-500">

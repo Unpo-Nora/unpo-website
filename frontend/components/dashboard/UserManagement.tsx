@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { UserPlus, Save, Users, Key, AlertCircle, RefreshCw } from 'lucide-react';
+import { UserPlus, Save, Users, Key, AlertCircle, RefreshCw, Trash } from 'lucide-react';
 
 interface StaffUser {
     id: number;
@@ -105,6 +105,30 @@ export default function UserManagement() {
             displayMessage("Error de conexión al crear usuario", true);
         } finally {
             setActionLoading(false);
+        }
+    };
+
+    const handleDeleteUser = async (userId: number) => {
+        if (!window.confirm("¿Estás seguro de que deseas eliminar a este usuario?")) return;
+        
+        try {
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/${userId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (res.ok) {
+                displayMessage("Usuario eliminado correctamente");
+                fetchUsers();
+            } else {
+                const errorData = await res.json();
+                displayMessage(errorData.detail || "Error al eliminar usuario", true);
+            }
+        } catch (error) {
+            displayMessage("Error de conexión al eliminar usuario", true);
         }
     };
 
@@ -284,6 +308,7 @@ export default function UserManagement() {
                                         <th className="px-6 py-4">Usuario</th>
                                         <th className="px-6 py-4">Rol en el Sistema</th>
                                         <th className="px-6 py-4 text-right">Contacto</th>
+                                        <th className="px-6 py-4 text-center">Acciones</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
@@ -303,6 +328,13 @@ export default function UserManagement() {
                                             </td>
                                             <td className="px-6 py-4 text-slate-500 text-sm font-medium text-right">
                                                 {u.email}
+                                            </td>
+                                            <td className="px-6 py-4 text-center">
+                                                {u.id !== currentUser.id && (
+                                                    <button onClick={() => handleDeleteUser(u.id)} className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 p-2 rounded-lg transition-colors">
+                                                        <Trash size={16} />
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
