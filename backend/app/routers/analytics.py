@@ -727,7 +727,11 @@ def get_expenses(
     if current_user.role != "admin":
         from fastapi import HTTPException
         raise HTTPException(status_code=403, detail="Unauthorized")
-    return crud.get_expenses(db, year, month)
+    try:
+        expenses = crud.get_expenses(db, year, month)
+        return [{"id": e.id, "amount": e.amount, "description": e.description, "date": e.date.isoformat() if e.date else None, "user_email": getattr(e, "user_email", None)} for e in expenses]
+    except Exception as exc:
+        return [{"description": f"Error: {str(exc)}", "amount": 0, "id": -1, "date": None, "user_email": None}]
 
 @router.post("/expenses", response_model=Expense)
 def create_expense(
