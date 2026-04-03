@@ -454,4 +454,4 @@ def get_audit_logs(
             for log in logs
         ]
     except Exception as e:
-        return {"error": str(e), "data": "crashed"}
+        return [{"id": -1, "user_email": "Error", "action": "ERROR", "details": str(e), "created_at": None}]
