@@ -9,6 +9,7 @@ export default function PurchasesDashboard() {
     const { user } = useAuth();
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
+    const [date, setDate] = useState('');
     const [expenses, setExpenses] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     
@@ -42,11 +43,12 @@ export default function PurchasesDashboard() {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ amount: parseFloat(amount), description })
+                body: JSON.stringify({ amount: parseFloat(amount), description, date: date ? new Date(date).toISOString() : undefined })
             });
             if (res.ok) {
                 setAmount('');
                 setDescription('');
+                setDate('');
                 fetchExpenses();
             }
         } catch (error) {}
@@ -114,6 +116,15 @@ export default function PurchasesDashboard() {
                             value={amount}
                             onChange={e => setAmount(e.target.value)}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-red-500 outline-none font-bold text-right"
+                        />
+                    </div>
+                    <div className="w-full sm:w-40 space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Fecha</label>
+                        <input 
+                            type="date"
+                            value={date}
+                            onChange={e => setDate(e.target.value)}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-red-500 outline-none font-medium text-slate-700"
                         />
                     </div>
                     <div className="flex items-end">

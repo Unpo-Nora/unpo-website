@@ -75,6 +75,11 @@ export default function AnalyticsDashboard() {
     const [historicalData, setHistoricalData] = useState<any>(null);
     const [historicalLoading, setHistoricalLoading] = useState(false);
 
+    // Vendedores States
+    const [selectedSeller, setSelectedSeller] = useState<string>('');
+    const [sellerTrends, setSellerTrends] = useState<any>(null);
+    const [sellerLoading, setSellerLoading] = useState(false);
+
     const { user } = useAuth();
 
     useEffect(() => {
@@ -125,6 +130,29 @@ export default function AnalyticsDashboard() {
             fetchHistorical();
         }
     }, [activeTab, historicalYear, historicalMonth]);
+
+    useEffect(() => {
+        if (activeTab === 'VENDEDORES' && selectedSeller) {
+            const fetchSellerData = async () => {
+                setSellerLoading(true);
+                try {
+                    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/seller/${selectedSeller}/trends`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (response.ok) {
+                        const result = await response.json();
+                        setSellerTrends(result);
+                    }
+                } catch (error) {
+                    console.error("Error fetching seller trends:", error);
+                } finally {
+                    setSellerLoading(false);
+                }
+            };
+            fetchSellerData();
+        }
+    }, [activeTab, selectedSeller]);
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-[400px]">
@@ -225,12 +253,6 @@ export default function AnalyticsDashboard() {
 
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => setIsExpenseModalOpen(true)}
-                            className="px-5 py-2 flex items-center justify-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-sm tracking-wide rounded-2xl transition-all shadow-sm"
-                        >
-                            <DollarSign size={18} /> Egresos
-                        </button>
-                        <button
                             onClick={handleExportPDF}
                             disabled={isExporting}
                             className="px-5 py-2 flex items-center justify-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-sm tracking-wide rounded-2xl transition-all shadow-sm disabled:opacity-50"
@@ -244,16 +266,9 @@ export default function AnalyticsDashboard() {
             {/* Content Container (For PDF Export Targeting) */}
             <div id="analytics-content" className="space-y-8 bg-slate-50 p-4 -m-4 rounded-3xl">
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <StatCard title="Visitas Únicas" value={data.visitors?.total?.toString() || "0"} subtitle={`${data.visitors?.monthly || 0} este mes`} icon={<TrendingUp className="text-purple-600" />} color="bg-purple-50" />
-                    <StatCard title="Tasa de Contacto" value={`${data.leads.conversion_rate}%`} subtitle={`${data.leads.contacted} contactados`} icon={<TrendingUp className="text-emerald-600" />} color="bg-emerald-50" />
-                    <StatCard title="Nuevos Leads" value={data.leads.new.toString()} subtitle="Pendientes de asignación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />
-                    <StatCard title="Alertas de Stock" value={data.stock_alerts.length.toString()} subtitle="Productos bajo crítico" icon={<AlertTriangle className="text-red-600" />} color="bg-red-50" />
-                </div>
-
                 {activeTab === 'VENDEDORES' && (
                     <div className="bg-white p-8 rounded-[32px] shadow-md shadow-indigo-200/20 border border-indigo-50 animate-in slide-in-from-right-4 fade-in duration-500">
-                        <div className="flex items-center justify-between mb-8">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
                             <div>
                                 <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                     <Award size={20} className="text-indigo-600" />
@@ -263,14 +278,58 @@ export default function AnalyticsDashboard() {
                                     Evalúa el progreso de un vendedor individual en el tiempo. Selecciona un vendedor a continuación.
                                 </p>
                             </div>
+                            <select 
+                                value={selectedSeller} 
+                                onChange={(e) => setSelectedSeller(e.target.value)}
+                                className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700 focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition-all cursor-pointer"
+                            >
+                                <option value="" disabled>Seleccione un vendedor...</option>
+                                {data.sellers.map(s => (
+                                    <option key={s.email} value={s.email}>{s.email}</option>
+                                ))}
+                            </select>
                         </div>
 
-                        {/* Since we don't have the new endpoint integrated yet, we map the historical data overall for now! */}
-                        <div className="p-10 mb-8 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center justify-center text-center">
-                            <Users size={32} className="text-indigo-300 mb-3" />
-                            <h4 className="text-lg font-bold text-slate-800">Sección en Desarrollo</h4>
-                            <p className="text-sm text-slate-500 mt-2 max-w-md">El gráfico individual por vendedor para ventas mensuales e históricas está siendo integrado. Vuelve a revisar pronto.</p>
-                        </div>
+                        {selectedSeller && sellerLoading ? (
+                            <div className="text-center py-20 text-slate-400 font-medium">Cargando tendencias...</div>
+                        ) : selectedSeller && sellerTrends ? (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                    <h4 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2"><ShoppingCart size={16} /> Ventas Diarias (Mes Actual)</h4>
+                                    <div className="h-[250px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <LineChart data={sellerTrends.daily_current_month || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val/1000}k`} />
+                                                <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$${val}`} />
+                                                <Line type="monotone" dataKey="total_amount" name="Ventas" stroke="#4f46e5" strokeWidth={4} dot={{ r: 4, fill: '#4f46e5', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                                <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                                    <h4 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2"><CalendarDays size={16} /> Ventas Históricas (12 Meses)</h4>
+                                    <div className="h-[250px] w-full">
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <BarChart data={sellerTrends.historical_monthly_sales || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: 'bold' }} dy={10} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val/1000}k`} />
+                                                <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$${val}`} />
+                                                <Bar dataKey="total_amount" name="Monto Vendido" fill="#818cf8" radius={[4, 4, 4, 4]} barSize={20} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="p-10 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center justify-center text-center">
+                                <Users size={32} className="text-indigo-300 mb-3" />
+                                <h4 className="text-lg font-bold text-slate-800">Seleccione un vendedor</h4>
+                                <p className="text-sm text-slate-500 mt-2 max-w-md">Elija un vendedor del menú desplegable para ver su rendimiento individual detallado.</p>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -640,8 +699,12 @@ export default function AnalyticsDashboard() {
                 )}
 
                 {activeTab === 'PRODUCTOS' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-right-4 fade-in duration-500">
-                        {/* Categories of Interest */}
+                    <div className="space-y-8 animate-in slide-in-from-right-4 fade-in duration-500">
+                        <div className="grid grid-cols-1 gap-6">
+                            <StatCard title="Alertas de Stock" value={data.stock_alerts.length.toString()} subtitle="Productos bajo crítico" icon={<AlertTriangle className="text-red-600" />} color="bg-red-50" />
+                        </div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Categories of Interest */}
                         <div className="bg-white p-8 rounded-[32px] shadow-md shadow-emerald-200/20 border border-emerald-50">
                             <div className="flex items-center justify-between mb-6">
                                 <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
@@ -759,6 +822,7 @@ export default function AnalyticsDashboard() {
                                 </div>
                             </div>
                         </div>
+                        </div>
                     </div>
                 )}
 
@@ -790,6 +854,11 @@ export default function AnalyticsDashboard() {
                             <div className="text-center py-20 text-slate-400 font-medium">Consultando registros históricos...</div>
                         ) : historicalData ? (
                             <>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                                    <StatCard title="Visitas Únicas" value={data.visitors?.total?.toString() || "0"} subtitle={`${data.visitors?.monthly || 0} este mes`} icon={<TrendingUp className="text-purple-600" />} color="bg-purple-50" />
+                                    <StatCard title="Tasa de Contacto" value={`${data.leads.conversion_rate}%`} subtitle={`${data.leads.contacted} contactados`} icon={<TrendingUp className="text-emerald-600" />} color="bg-emerald-50" />
+                                    <StatCard title="Nuevos Leads" value={data.leads.new.toString()} subtitle="Pendientes de asignación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />
+                                </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                     <StatCard title="Total Vendido" value={`$ ${(historicalData.sales.amount || 0).toLocaleString('es-AR', { minimumFractionDigits: 0 })}`} subtitle={`${historicalData.sales.count} órdenes cerradas`} icon={<DollarSign className="text-emerald-600" />} color="bg-emerald-50" />
                                     <StatCard title="Leads Ingresados" value={historicalData.leads.entered.toString()} subtitle="Adquiridos en total" icon={<Users className="text-blue-600" />} color="bg-blue-50" />

@@ -67,12 +67,6 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
             roles: ['admin']
         },
         {
-            title: 'Importar Leads',
-            path: '/admin/import',
-            icon: <FileUp size={20} />,
-            roles: ['admin', 'vendedor']
-        },
-        {
             title: 'Usuarios y Accesos',
             path: '/admin/users',
             icon: <Users size={20} />,

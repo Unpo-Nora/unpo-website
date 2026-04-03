@@ -24,6 +24,7 @@ class EmployeeCreate(BaseModel):
     salary: float = 0.0
     vacation_days_available: int = 14
     user_id: Optional[int] = None
+    hire_date: Optional[datetime] = None
 
 class EmployeeUpdate(BaseModel):
     first_name: Optional[str] = None
@@ -35,6 +36,7 @@ class EmployeeUpdate(BaseModel):
     salary: Optional[float] = None
     vacation_days_available: Optional[int] = None
     absent_days_this_month: Optional[int] = None
+    hire_date: Optional[datetime] = None
 
 @router.get("/employees")
 def get_employees(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
@@ -56,7 +58,7 @@ def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db), cur
         salary=employee.salary,
         vacation_days_available=employee.vacation_days_available,
         user_id=employee.user_id,
-        hire_date=datetime.now()
+        hire_date=employee.hire_date if employee.hire_date else datetime.now()
     )
     db.add(db_emp)
     db.commit()

@@ -36,6 +36,7 @@ export default function HRDashboard() {
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
     const [paymentDetails, setPaymentDetails] = useState<any>(null);
+    const [searchTerm, setSearchTerm] = useState('');
     
     // Form state
     const [formData, setFormData] = useState<any>({
@@ -47,6 +48,7 @@ export default function HRDashboard() {
         role_function: '',
         salary: 0,
         vacation_days_available: 14,
+        hire_date: new Date().toISOString().split('T')[0]
     });
 
     const { user } = useAuth();
@@ -138,7 +140,14 @@ export default function HRDashboard() {
         }
     };
 
-    const totalSalaries = employees.reduce((sum, emp) => sum + (emp.salary || 0), 0);
+    const filteredEmployees = employees.filter(emp => {
+        const searchLow = searchTerm.toLowerCase();
+        const role = emp.role_function?.toLowerCase() || '';
+        const name = `${emp.first_name} ${emp.last_name}`.toLowerCase();
+        return name.includes(searchLow) || role.includes(searchLow);
+    });
+
+    const totalSalaries = filteredEmployees.reduce((sum, emp) => sum + (emp.salary || 0), 0);
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
@@ -155,7 +164,7 @@ export default function HRDashboard() {
                     onClick={() => {
                         setSelectedEmployee(null);
                         setFormData({
-                            first_name: '', last_name: '', email: '', phone: '', address: '', role_function: '', salary: 0, vacation_days_available: 14
+                            first_name: '', last_name: '', email: '', phone: '', address: '', role_function: '', salary: 0, vacation_days_available: 14, hire_date: new Date().toISOString().split('T')[0]
                         });
                         setIsEmployeeModalOpen(true);
                     }}
@@ -166,6 +175,18 @@ export default function HRDashboard() {
                 </button>
             </div>
 
+            {/* Search */}
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-2">
+                <Users size={20} className="text-slate-400" />
+                <input 
+                    type="text" 
+                    placeholder="Buscar por nombre o rol del empleado..." 
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full outline-none font-medium text-slate-700 placeholder-slate-400"
+                />
+            </div>
+
             {/* Top Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100 flex items-center gap-4">
@@ -173,8 +194,8 @@ export default function HRDashboard() {
                         <Users size={24} />
                     </div>
                     <div>
-                        <p className="text-sm font-bold text-slate-500 uppercase">Plantilla Total</p>
-                        <h3 className="text-2xl font-black text-slate-900">{employees.length}</h3>
+                        <p className="text-sm font-bold text-slate-500 uppercase">Plantilla Filtrada</p>
+                        <h3 className="text-2xl font-black text-slate-900">{filteredEmployees.length}</h3>
                     </div>
                 </div>
                 <div className="bg-white p-6 rounded-[32px] shadow-sm border border-slate-100 flex items-center gap-4">
@@ -193,7 +214,7 @@ export default function HRDashboard() {
                     <div>
                         <p className="text-sm font-bold text-slate-500 uppercase">Ausentes Acum. Mes</p>
                         <h3 className="text-2xl font-black text-slate-900">
-                            {employees.reduce((sum, emp) => sum + (emp.absent_days_this_month || 0), 0)}
+                            {filteredEmployees.reduce((sum, emp) => sum + (emp.absent_days_this_month || 0), 0)}
                         </h3>
                     </div>
                 </div>
@@ -217,12 +238,12 @@ export default function HRDashboard() {
                                 <tr>
                                     <td colSpan={5} className="p-8 text-center text-slate-500">Cargando personal...</td>
                                 </tr>
-                            ) : employees.length === 0 ? (
+                            ) : filteredEmployees.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="p-8 text-center text-slate-500 italic">No hay empleados registrados.</td>
+                                    <td colSpan={5} className="p-8 text-center text-slate-500 italic">No hay empleados encontrados.</td>
                                 </tr>
                             ) : (
-                                employees.map((emp) => (
+                                filteredEmployees.map((emp) => (
                                     <tr key={emp.id} className="hover:bg-slate-50/50 transition-colors group">
                                         <td className="p-6">
                                             <div className="flex items-center gap-3">
@@ -231,7 +252,7 @@ export default function HRDashboard() {
                                                 </div>
                                                 <div>
                                                     <p className="font-bold text-slate-900">{emp.first_name} {emp.last_name}</p>
-                                                    <p className="text-xs font-medium text-slate-500">Ingreso: {new Date(emp.hire_date).toLocaleDateString('es-AR')}</p>
+                                                    <p className="text-xs font-medium text-slate-500">Ingreso: {emp.hire_date ? new Date(emp.hire_date).toLocaleDateString('es-AR') : '-'}</p>
                                                 </div>
                                             </div>
                                         </td>
@@ -270,7 +291,10 @@ export default function HRDashboard() {
                                                 <button
                                                     onClick={() => {
                                                         setSelectedEmployee(emp);
-                                                        setFormData(emp);
+                                                        setFormData({
+                                                            ...emp,
+                                                            hire_date: emp.hire_date ? new Date(emp.hire_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+                                                        });
                                                         setIsEmployeeModalOpen(true);
                                                     }}
                                                     className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-colors"
@@ -338,6 +362,10 @@ export default function HRDashboard() {
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Días Vacaciones Mín.</label>
                                     <input type="number" value={formData.vacation_days_available} onChange={e => setFormData({...formData, vacation_days_available: parseInt(e.target.value)})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-800" />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Fecha de Ingreso</label>
+                                    <input type="date" value={formData.hire_date} onChange={e => setFormData({...formData, hire_date: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-800" />
                                 </div>
                             </div>
                         </div>
