@@ -195,6 +195,29 @@ def trigger_image_optimization(
     background_tasks.add_task(optimize_all_images_bg)
     return {"status": "success", "message": "Image optimization started in background"}
 
+@router.get("/history")
+def get_audit_logs(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+        raise HTTPException(status_code=403, detail="No tiene permisos")
+    try:
+        logs = crud.get_recent_audit_logs(db, limit)
+        return [
+            {
+                "id": log.id,
+                "user_email": log.user_email,
+                "action": log.action,
+                "details": log.details,
+                "created_at": log.created_at.isoformat() if log.created_at else None
+            }
+            for log in logs
+        ]
+    except Exception as e:
+        return [{"id": -1, "user_email": "Error", "action": "ERROR", "details": str(e), "created_at": None}]
+
 @router.get("/{sku}", response_model=schemas.Product)
 def read_product(sku: str, db: Session = Depends(get_db)):
     db_product = crud.get_product(db, sku=sku)
@@ -432,26 +455,3 @@ def batch_update_inventory(
             
     db.commit()
     return {"status": "success", "messages": actions_taken}
-
-@router.get("/history")
-def get_audit_logs(
-    limit: int = 20,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
-):
-    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
-        raise HTTPException(status_code=403, detail="No tiene permisos")
-    try:
-        logs = crud.get_recent_audit_logs(db, limit)
-        return [
-            {
-                "id": log.id,
-                "user_email": log.user_email,
-                "action": log.action,
-                "details": log.details,
-                "created_at": log.created_at.isoformat() if log.created_at else None
-            }
-            for log in logs
-        ]
-    except Exception as e:
-        return [{"id": -1, "user_email": "Error", "action": "ERROR", "details": str(e), "created_at": None}]
