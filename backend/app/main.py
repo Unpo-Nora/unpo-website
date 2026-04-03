@@ -61,6 +61,27 @@ def read_root():
 def health_check():
     return {"status": "ok", "db": "connected"}
 
+@app.get("/fix_db_schema")
+def fix_db_schema(db: Session = Depends(get_db)):
+    try:
+        # Add price_breakdown column to products table
+        db.execute(text('ALTER TABLE products ADD COLUMN price_breakdown JSON;'))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        print("Column price_breakdown might already exist or error:", e)
+        
+    try:
+        # Just in case, try to create the employees table if metadata didn't catch it
+        from .models import Employee
+        Base.metadata.tables[Employee.__tablename__].create(engine, checkfirst=True)
+    except Exception as e:
+        print("Table employees creation error:", e)
+        
+    return {"status": "success", "message": "Database schema patch executed"}
+
+from sqlalchemy import text
+
 @app.get("/fix_production_10300028")
 def fix_production_10300028(db: Session = Depends(get_db)):
     from . import crud

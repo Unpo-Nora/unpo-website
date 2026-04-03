@@ -1,30 +1,32 @@
 "use client";
 
-import ProtectedRoute from '@/components/auth/ProtectedRoute';
-import Sidebar from '@/components/dashboard/Sidebar';
+import React from 'react';
 import HRDashboard from '@/components/dashboard/HRDashboard';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 
 export default function HRPage() {
-    const { user } = useAuth();
+    const { user, loading } = useAuth();
     const router = useRouter();
 
-    useEffect(() => {
-        if (user && user.role !== 'admin') {
-            router.push('/sales');
+    React.useEffect(() => {
+        if (!loading && (!user || user.role !== 'admin')) {
+            router.push('/login');
         }
-    }, [user, router]);
+    }, [user, loading, router]);
+
+    if (loading || !user) return <div className="flex items-center justify-center h-screen">Cargando...</div>;
 
     return (
-        <ProtectedRoute>
-            <div className="flex h-screen bg-slate-50">
-                <Sidebar />
-                <main className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
-                    <HRDashboard />
-                </main>
-            </div>
-        </ProtectedRoute>
+        <>
+            <header className="flex justify-between items-end mb-8">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Recursos Humanos</h1>
+                    <p className="text-slate-500 mt-1">Gestión de personal, salarios y asistencia.</p>
+                </div>
+            </header>
+
+            <HRDashboard />
+        </>
     );
 }
