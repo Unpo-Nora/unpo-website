@@ -187,7 +187,7 @@ class Expense(ExpenseBase):
 # --- Inventory Audit Log ---
 
 class InventoryAuditLogBase(BaseModel):
-    user_email: str
+    user_email: Optional[str] = None
     action: str
     details: str
 

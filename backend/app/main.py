@@ -63,23 +63,32 @@ def health_check():
 
 @app.get("/fix_db_schema")
 def fix_db_schema(db: Session = Depends(get_db)):
+    errors = []
+    
     try:
         # Add price_breakdown column to products table
         db.execute(text('ALTER TABLE products ADD COLUMN price_breakdown JSON;'))
         db.commit()
     except Exception as e:
         db.rollback()
-        print("Column price_breakdown might already exist or error:", e)
+        errors.append(f"products.price_breakdown error: {e}")
+
+    try:
+        # Add user_email column to expenses table
+        db.execute(text('ALTER TABLE expenses ADD COLUMN user_email VARCHAR;'))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        errors.append(f"expenses.user_email error: {e}")
         
     try:
-        # Just in case, try to create the employees table if metadata didn't catch it
         from .models import Employee, InventoryAuditLog
         Base.metadata.tables[Employee.__tablename__].create(engine, checkfirst=True)
         Base.metadata.tables[InventoryAuditLog.__tablename__].create(engine, checkfirst=True)
     except Exception as e:
-        print("Table creation error:", e)
+        errors.append(f"Table creation error: {e}")
         
-    return {"status": "success", "message": "Database schema patch executed"}
+    return {"status": "success", "message": "Database schema patch executed", "errors": str(errors)}
 
 from sqlalchemy import text
 
