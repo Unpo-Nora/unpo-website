@@ -73,10 +73,11 @@ def fix_db_schema(db: Session = Depends(get_db)):
         
     try:
         # Just in case, try to create the employees table if metadata didn't catch it
-        from .models import Employee
+        from .models import Employee, InventoryAuditLog
         Base.metadata.tables[Employee.__tablename__].create(engine, checkfirst=True)
+        Base.metadata.tables[InventoryAuditLog.__tablename__].create(engine, checkfirst=True)
     except Exception as e:
-        print("Table employees creation error:", e)
+        print("Table creation error:", e)
         
     return {"status": "success", "message": "Database schema patch executed"}
 

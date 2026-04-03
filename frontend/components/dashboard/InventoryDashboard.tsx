@@ -268,7 +268,7 @@ export default function InventoryDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Capital en Mercadería</p>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Capital en Mercadería Invertida</p>
                         <h3 className="text-3xl font-black text-slate-800">$ {totalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
                         {exchangeRate !== 'Cargando...' && (
                             <p className="text-xs font-bold text-slate-400 mt-1">U$D {totalCostValueUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
@@ -280,7 +280,7 @@ export default function InventoryDashboard() {
                 </div>
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Valor de Venta Estimado</p>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Capital de Mercadería en Venta</p>
                         <h3 className="text-3xl font-black text-emerald-600">$ {totalSaleValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
                         {exchangeRate !== 'Cargando...' && (
                             <p className="text-xs font-bold text-emerald-500/70 mt-1">U$D {totalSaleValueUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
