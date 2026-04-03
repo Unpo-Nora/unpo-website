@@ -79,7 +79,7 @@ export default function InventoryDashboard() {
     const fetchAuditLogs = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/audit_logs?limit=50`, {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/history?limit=50`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {

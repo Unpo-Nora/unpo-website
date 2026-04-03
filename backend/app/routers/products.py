@@ -433,7 +433,7 @@ def batch_update_inventory(
     db.commit()
     return {"status": "success", "messages": actions_taken}
 
-@router.get("/audit_logs")
+@router.get("/history")
 def get_audit_logs(
     limit: int = 20,
     db: Session = Depends(get_db),
