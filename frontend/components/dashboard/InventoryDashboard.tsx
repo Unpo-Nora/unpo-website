@@ -29,6 +29,7 @@ interface Product {
     price_usd: number;
     iva_percent: number;
     provider_name: string;
+    price_breakdown?: any;
 }
 
 export default function InventoryDashboard() {
@@ -234,8 +235,32 @@ export default function InventoryDashboard() {
         </div>
     );
 
-    const totalCostValue = products.reduce((acc, p) => acc + ((p.cost_price || 0) * (p.stock_quantity > 0 ? p.stock_quantity : 0)), 0);
-    const totalSaleValue = products.reduce((acc, p) => acc + ((p.price_usd || 0) * (p.stock_quantity > 0 ? p.stock_quantity : 0)), 0);
+    const numericExchangeRate = !isNaN(parseFloat(exchangeRate)) ? parseFloat(exchangeRate) : 1;
+
+    // Capital en Mercadería (costos) en ARS usando el desglose de precio "price_breakdown"
+    const totalCostValueARS = products.reduce((acc, p) => {
+        // Solo calculamos el stock de los productos que tengan el precio cargado con la nueva lógica (Costo de Compra + Impuestos)
+        if (!p.price_breakdown || typeof p.price_breakdown.purchase_cost === 'undefined') {
+            return acc; 
+        }
+        
+        const origin = p.price_breakdown.origin || 'argentina';
+        const purchaseCost = Number(p.price_breakdown.purchase_cost) || 0;
+        const importTaxes = Number(p.price_breakdown.import_taxes) || 0;
+        
+        let realCost = purchaseCost;
+        if (origin === 'importado') {
+            realCost += importTaxes;
+        }
+        
+        return acc + (realCost * (p.stock_quantity > 0 ? p.stock_quantity : 0));
+    }, 0);
+    
+    const totalCostValueUSD = totalCostValueARS / numericExchangeRate;
+
+    // Valor de venta estimado en USD de la base de datos
+    const totalSaleValueUSD = products.reduce((acc, p) => acc + ((p.price_usd || 0) * (p.stock_quantity > 0 ? p.stock_quantity : 0)), 0);
+    const totalSaleValueARS = totalSaleValueUSD * numericExchangeRate;
 
     return (
         <div className="space-y-6">
@@ -243,8 +268,11 @@ export default function InventoryDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between">
                     <div>
-                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Valor de Costo Invertido</p>
-                        <h3 className="text-3xl font-black text-slate-800">U$D {totalCostValue.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</h3>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Capital en Mercadería</p>
+                        <h3 className="text-3xl font-black text-slate-800">$ {totalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
+                        {exchangeRate !== 'Cargando...' && (
+                            <p className="text-xs font-bold text-slate-400 mt-1">U$D {totalCostValueUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
+                        )}
                     </div>
                     <div className="w-14 h-14 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center">
                         <Wallet size={28} />
@@ -253,7 +281,10 @@ export default function InventoryDashboard() {
                 <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between">
                     <div>
                         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Valor de Venta Estimado</p>
-                        <h3 className="text-3xl font-black text-emerald-600">U$D {totalSaleValue.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</h3>
+                        <h3 className="text-3xl font-black text-emerald-600">$ {totalSaleValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
+                        {exchangeRate !== 'Cargando...' && (
+                            <p className="text-xs font-bold text-emerald-500/70 mt-1">U$D {totalSaleValueUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
+                        )}
                     </div>
                     <div className="w-14 h-14 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
                         <TrendingUp size={28} />
