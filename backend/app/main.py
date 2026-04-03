@@ -113,3 +113,12 @@ def fix_admin_name(db: Session = Depends(get_db)):
         db.commit()
         return {"status": "success", "message": "Admin name updated to Julian."}
     return {"status": "error", "message": "Admin user not found"}
+
+@app.get("/debug_audit_logs")
+def debug_audit_logs(db: Session = Depends(get_db)):
+    try:
+        from . import crud
+        logs = crud.get_recent_audit_logs(db, 50)
+        return [{"id": l.id, "action": l.action, "details": l.details} for l in logs]
+    except Exception as e:
+        return {"error_type": type(e).__name__, "error": str(e)}
