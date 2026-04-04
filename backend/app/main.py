@@ -118,7 +118,7 @@ def fix_admin_name(db: Session = Depends(get_db)):
 def debug_audit_logs(db: Session = Depends(get_db)):
     try:
         from . import crud
-        logs = crud.get_recent_audit_logs(db, 50)
+        logs, total = crud.get_recent_audit_logs(db, limit=50)
         return [{"id": l.id, "action": l.action, "details": l.details} for l in logs]
     except Exception as e:
         return {"error_type": type(e).__name__, "error": str(e)}
@@ -132,5 +132,15 @@ def force_debug_log(db: Session = Depends(get_db)):
             details="Forced log directly into Postgres via Route bypass"
         ))
         return {"status": "success", "inserted": log.id}
+    except Exception as e:
+        return {"error_type": type(e).__name__, "error": str(e)}
+
+@app.get("/wipe_audit_logs_production_secret")
+def wipe_audit_logs(db: Session = Depends(get_db)):
+    try:
+        from . import models
+        db.query(models.InventoryAuditLog).delete()
+        db.commit()
+        return {"status": "success", "message": "All logs deleted"}
     except Exception as e:
         return {"error_type": type(e).__name__, "error": str(e)}

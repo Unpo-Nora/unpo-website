@@ -58,6 +58,13 @@ export default function InventoryDashboard() {
     const [pendingStock, setPendingStock] = useState<Record<string, number>>({});
     const [pendingPrice, setPendingPrice] = useState<Record<string, number>>({});
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    
+    // Pagination & History Filter State
+    const [auditCurrentPage, setAuditCurrentPage] = useState(1);
+    const [auditTotalLogs, setAuditTotalLogs] = useState(0);
+    const [auditFilterMonth, setAuditFilterMonth] = useState<string>('');
+    const [auditFilterYear, setAuditFilterYear] = useState<string>('');
+    const AUDIT_ITEMS_PER_PAGE = 15;
 
     const hasPendingChanges = Object.keys(pendingStock).length > 0 || Object.keys(pendingPrice).length > 0 || (newExchangeRate !== exchangeRate && newExchangeRate !== '');
 
@@ -79,12 +86,19 @@ export default function InventoryDashboard() {
     const fetchAuditLogs = async () => {
         try {
             const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/history?limit=50`, {
+            const skip = (auditCurrentPage - 1) * AUDIT_ITEMS_PER_PAGE;
+            let url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/history?limit=${AUDIT_ITEMS_PER_PAGE}&skip=${skip}`;
+            
+            if (auditFilterMonth) url += `&month=${auditFilterMonth}`;
+            if (auditFilterYear) url += `&year=${auditFilterYear}`;
+            
+            const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (res.ok) {
-                const data = await res.json();
-                setAuditLogs(data);
+                const result = await res.json();
+                setAuditLogs(result.data || []);
+                setAuditTotalLogs(result.total || 0);
             }
         } catch (error) {}
     };
@@ -92,8 +106,11 @@ export default function InventoryDashboard() {
     useEffect(() => {
         fetchProducts();
         fetchExchangeRate();
-        fetchAuditLogs();
     }, []);
+
+    useEffect(() => {
+        fetchAuditLogs();
+    }, [auditCurrentPage, auditFilterMonth, auditFilterYear]);
 
     const fetchExchangeRate = async () => {
         try {
@@ -424,6 +441,33 @@ export default function InventoryDashboard() {
 
             {activeTab === 'historial' ? (
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+                    <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-4 items-center justify-between">
+                        <div className="flex gap-3 w-full md:w-auto">
+                            <select 
+                                value={auditFilterMonth} 
+                                onChange={(e) => {setAuditFilterMonth(e.target.value); setAuditCurrentPage(1);}}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
+                            >
+                                <option value="">Mes (Todos)</option>
+                                {[...Array(12)].map((_, i) => (
+                                    <option key={i+1} value={i+1}>{new Date(2000, i, 1).toLocaleString('es', { month: 'long' })}</option>
+                                ))}
+                            </select>
+                            <select 
+                                value={auditFilterYear} 
+                                onChange={(e) => {setAuditFilterYear(e.target.value); setAuditCurrentPage(1);}}
+                                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
+                            >
+                                <option value="">Año (Todos)</option>
+                                {[2024, 2025, 2026, 2027].map(y => (
+                                    <option key={y} value={y}>{y}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="text-sm font-bold text-slate-500">
+                            Total: {auditTotalLogs} registros
+                        </div>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -438,10 +482,10 @@ export default function InventoryDashboard() {
                                 {auditLogs.length > 0 ? auditLogs.map(log => (
                                     <tr key={log.id} className="hover:bg-slate-50/50">
                                         <td className="px-6 py-4 text-sm font-medium text-slate-500 whitespace-nowrap">
-                                            {new Date(log.created_at).toLocaleString('es-AR')}
+                                            {log.created_at ? new Date(log.created_at).toLocaleString('es-AR') : '-'}
                                         </td>
                                         <td className="px-6 py-4 text-sm font-bold text-slate-700">
-                                            {log.user_email}
+                                            {log.user_email || 'Sistema'}
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-1 rounded bg-slate-100 text-slate-600">
@@ -453,11 +497,36 @@ export default function InventoryDashboard() {
                                         </td>
                                     </tr>
                                 )) : (
-                                    <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-500">No hay registros recientes.</td></tr>
+                                    <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-500 font-medium">No hay registros para este período.</td></tr>
                                 )}
                             </tbody>
                         </table>
                     </div>
+                    
+                    {/* Audit Pagination */}
+                    {auditTotalLogs > AUDIT_ITEMS_PER_PAGE && (
+                    <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                        <span className="text-sm font-bold text-slate-500">
+                            Página {auditCurrentPage} de {Math.ceil(auditTotalLogs / AUDIT_ITEMS_PER_PAGE)}
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <button
+                                disabled={auditCurrentPage === 1}
+                                onClick={() => setAuditCurrentPage(prev => Math.max(1, prev - 1))}
+                                className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-bold hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                            >
+                                Anterior
+                            </button>
+                            <button
+                                disabled={auditCurrentPage >= Math.ceil(auditTotalLogs / AUDIT_ITEMS_PER_PAGE)}
+                                onClick={() => setAuditCurrentPage(prev => Math.min(Math.ceil(auditTotalLogs / AUDIT_ITEMS_PER_PAGE), prev + 1))}
+                                className="px-4 py-2 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-bold hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                            >
+                                Siguiente
+                            </button>
+                        </div>
+                    </div>
+                    )}
                 </div>
             ) : (
             <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">

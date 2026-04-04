@@ -283,5 +283,17 @@ def create_audit_log(db: Session, log: schemas.InventoryAuditLogBase):
     db.refresh(db_log)
     return db_log
 
-def get_recent_audit_logs(db: Session, limit: int = 20):
-    return db.query(models.InventoryAuditLog).order_by(models.InventoryAuditLog.created_at.desc()).limit(limit).all()
+def get_recent_audit_logs(db: Session, skip: int = 0, limit: int = 20, year: Optional[int] = None, month: Optional[int] = None):
+    query = db.query(models.InventoryAuditLog)
+    
+    if year:
+        from sqlalchemy import extract
+        query = query.filter(extract('year', models.InventoryAuditLog.created_at) == year)
+    if month:
+        from sqlalchemy import extract
+        query = query.filter(extract('month', models.InventoryAuditLog.created_at) == month)
+        
+    total = query.count()
+    logs = query.order_by(models.InventoryAuditLog.created_at.desc()).offset(skip).limit(limit).all()
+    
+    return logs, total

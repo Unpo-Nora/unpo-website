@@ -197,15 +197,19 @@ def trigger_image_optimization(
 
 @router.get("/history")
 def get_audit_logs(
-    limit: int = 20,
+    skip: int = 0,
+    limit: int = 15,
+    year: Optional[int] = None,
+    month: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
     if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
         raise HTTPException(status_code=403, detail="No tiene permisos")
     try:
-        logs = crud.get_recent_audit_logs(db, limit)
-        return [
+        logs, total = crud.get_recent_audit_logs(db, skip=skip, limit=limit, year=year, month=month)
+        
+        data = [
             {
                 "id": log.id,
                 "user_email": log.user_email,
@@ -215,8 +219,10 @@ def get_audit_logs(
             }
             for log in logs
         ]
+        return {"data": data, "total": total}
+        
     except Exception as e:
-        return [{"id": -1, "user_email": "Error", "action": "ERROR", "details": str(e), "created_at": None}]
+        return {"data": [{"id": -1, "user_email": "Error", "action": "ERROR", "details": str(e), "created_at": None}], "total": 1}
 
 @router.get("/{sku}", response_model=schemas.Product)
 def read_product(sku: str, db: Session = Depends(get_db)):
