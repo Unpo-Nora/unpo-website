@@ -1,6 +1,7 @@
 from sqlalchemy.orm import Session
 from . import models, schemas
 from sqlalchemy import or_
+from typing import Optional, List, Dict, Any
 
 # --- Brand & Category ---
 def get_brand_by_slug(db: Session, slug: str):
