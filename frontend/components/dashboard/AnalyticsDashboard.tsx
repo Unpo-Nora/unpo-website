@@ -56,6 +56,9 @@ interface AnalyticsData {
         visits_per_day: { day: string; visits: number }[];
         top_products_interest: { product: string; count: number }[];
         top_products_sold: { product_name: string; quantity_sold: number }[];
+        daily_sales: { day: string; amount: number }[];
+        daily_expenses: { day: string; amount: number }[];
+        daily_orders: { day: string; count: number }[];
         total_amount_sold?: number;
         total_expenses?: number;
         historical_monthly_sales?: { month: string; total_amount: number; sales_count: number; expenses?: number }[];
@@ -232,6 +235,12 @@ export default function AnalyticsDashboard() {
                             Tendencia Mensual
                         </button>
                         <button
+                            onClick={() => setActiveTab('VENDEDORES')}
+                            className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'VENDEDORES' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            Por Vendedor
+                        </button>
+                        <button
                             onClick={() => setActiveTab('PRODUCTOS')}
                             className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'PRODUCTOS' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                         >
@@ -242,12 +251,6 @@ export default function AnalyticsDashboard() {
                             className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'HISTORICOS' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
                         >
                             Históricos
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('VENDEDORES')}
-                            className={`px-5 py-2 rounded-xl text-sm font-bold transition-all ${activeTab === 'VENDEDORES' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'}`}
-                        >
-                            Por Vendedor
                         </button>
                     </div>
 
@@ -293,36 +296,54 @@ export default function AnalyticsDashboard() {
                         {selectedSeller && sellerLoading ? (
                             <div className="text-center py-20 text-slate-400 font-medium">Cargando tendencias...</div>
                         ) : selectedSeller && sellerTrends ? (
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            <div className="space-y-8">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <StatCard 
+                                        title="Tasa de Contacto" 
+                                        value={`${sellerTrends.metrics?.contact_rate || 0}%`} 
+                                        subtitle={`${sellerTrends.metrics?.contacted_leads || 0} de ${sellerTrends.metrics?.total_leads || 0} leads`} 
+                                        icon={<MessageSquare className="text-emerald-600" />} 
+                                        color="bg-emerald-50" 
+                                    />
+                                    <StatCard 
+                                        title="Clientes Logrados" 
+                                        value={sellerTrends.metrics?.client_count?.toString() || "0"} 
+                                        subtitle="Status CLIENT alcanzado" 
+                                        icon={<Users className="text-indigo-600" />} 
+                                        color="bg-indigo-50" 
+                                    />
+                                </div>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
                                     <h4 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2"><ShoppingCart size={16} /> Ventas Diarias (Mes Actual)</h4>
-                                    <div className="h-[250px] w-full">
+                                    <div className="h-[350px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <LineChart data={sellerTrends.daily_current_month || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                            <LineChart data={sellerTrends.daily_current_month || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val/1000}k`} />
-                                                <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$${val}`} />
-                                                <Line type="monotone" dataKey="total_amount" name="Ventas" stroke="#4f46e5" strokeWidth={4} dot={{ r: 4, fill: '#4f46e5', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                                <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$ ${val.toLocaleString('es-AR')}`} />
+                                                <Line type="monotone" dataKey="total_amount" name="Ventas" stroke="#4f46e5" strokeWidth={5} dot={{ r: 5, fill: '#4f46e5', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 7 }} />
                                             </LineChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
                                 <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
                                     <h4 className="text-sm font-bold text-slate-500 uppercase mb-4 flex items-center gap-2"><CalendarDays size={16} /> Ventas Históricas (12 Meses)</h4>
-                                    <div className="h-[250px] w-full">
+                                    <div className="h-[350px] w-full">
                                         <ResponsiveContainer width="100%" height="100%">
-                                            <BarChart data={sellerTrends.historical_monthly_sales || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                            <BarChart data={sellerTrends.historical_monthly_sales || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: 'bold' }} dy={10} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val/1000}k`} />
-                                                <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$${val}`} />
-                                                <Bar dataKey="total_amount" name="Monto Vendido" fill="#818cf8" radius={[4, 4, 4, 4]} barSize={20} />
+                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                                <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$ ${val.toLocaleString('es-AR')}`} />
+                                                <Bar dataKey="total_amount" name="Monto Vendido" fill="#818cf8" radius={[6, 6, 0, 0]} maxBarSize={40} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </div>
                             </div>
+                        </div>
                         ) : (
                             <div className="p-10 rounded-2xl bg-slate-50 border border-slate-100 flex flex-col items-center justify-center text-center">
                                 <Users size={32} className="text-indigo-300 mb-3" />
@@ -334,7 +355,15 @@ export default function AnalyticsDashboard() {
                 )}
 
                 {activeTab === 'GENERAL' && (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in slide-in-from-left-4 fade-in duration-500">
+                    <div className="space-y-8 animate-in slide-in-from-left-4 fade-in duration-500">
+                        {/* Summary Metrics */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <StatCard title="Visitas Únicas" value={data.visitors?.total?.toString() || "0"} subtitle={`${data.visitors?.monthly || 0} este mes`} icon={<TrendingUp className="text-purple-600" />} color="bg-purple-50" />
+                            <StatCard title="Tasa de Contacto" value={`${data.leads.conversion_rate}%`} subtitle={`${data.leads.contacted} contactados`} icon={<TrendingUp className="text-emerald-600" />} color="bg-emerald-50" />
+                            <StatCard title="Nuevos Leads" value={data.leads.new.toString()} subtitle="Pendientes de asignación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                         {/* Seller Performance */}
                         <div className="bg-white p-8 rounded-[32px] shadow-md shadow-slate-200/40 border border-slate-100">
                             <div className="flex items-center justify-between mb-6">
@@ -481,6 +510,7 @@ export default function AnalyticsDashboard() {
                                     </PieChart>
                                 </ResponsiveContainer>
                             </div>
+                        </div>
                         </div>
                     </div>
                 )}
@@ -635,29 +665,34 @@ export default function AnalyticsDashboard() {
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                         <DollarSign size={20} className="text-emerald-600" />
-                                        Rentabilidad por Mes (Ingresos vs Egresos)
+                                        Profitabilidad Diaria (Ingresos vs Egresos)
                                     </h3>
                                     <p className="text-sm text-slate-500 font-medium mt-1">
-                                        Histórico de facturación menos gastos fijos (Últimos 12 meses).
+                                        Evolución de ventas y gastos día a día en el mes actual.
                                     </p>
                                 </div>
                             </div>
-                            <div className="h-[250px] w-full">
+                            <div className="h-[300px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <ComposedChart data={data.monthly_metrics?.daily_sales?.map((s, idx) => ({ 
+                                        day: s.day, 
+                                        ingresos: s.amount, 
+                                        egresos: data.monthly_metrics?.daily_expenses?.[idx]?.amount || 0,
+                                        neta: s.amount - (data.monthly_metrics?.daily_expenses?.[idx]?.amount || 0)
+                                    })) || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc' }}
-                                            formatter={(value: number, name: string) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'total_amount' ? 'Total Ingresos' : name === 'expenses' ? 'Total Egresos' : 'Rentabilidad Neta']}
-                                            labelFormatter={(label) => `Mes: ${label}`}
+                                            formatter={(value: number, name: string) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'ingresos' ? 'Ingresos' : name === 'egresos' ? 'Egresos' : 'Balance Neto']}
+                                            labelFormatter={(label) => `Día: ${label}`}
                                         />
                                         <Legend wrapperStyle={{ paddingTop: "20px" }} />
-                                        <Bar dataKey="total_amount" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                        <Bar dataKey="expenses" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                        <Line type="monotone" dataKey="rentabilidad" name="Rentabilidad Neta" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
+                                        <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Line type="monotone" dataKey="neta" name="Balance Neto" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
                                     </ComposedChart>
                                 </ResponsiveContainer>
                             </div>
@@ -669,26 +704,26 @@ export default function AnalyticsDashboard() {
                                 <div>
                                     <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                         <ShoppingCart size={20} className="text-blue-600" />
-                                        Ventas Realizadas por Mes
+                                        Ventas Realizadas (Mes Actual)
                                     </h3>
                                     <p className="text-sm text-slate-500 font-medium mt-1">
-                                        Histórico de cantidad de ventas cerradas.
+                                        Cantidad de ventas cerradas por día.
                                     </p>
                                 </div>
                             </div>
-                            <div className="h-[250px] w-full">
+                            <div className="h-[300px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <LineChart data={data.monthly_metrics?.historical_monthly_sales || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                    <LineChart data={data.monthly_metrics?.daily_orders || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
+                                        <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
                                         <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc', strokeWidth: 2 }}
-                                            formatter={(value: number) => [value, 'Cantidad de Ventas']}
-                                            labelFormatter={(label) => `Mes: ${label}`}
+                                            formatter={(value: number) => [value, 'Cant. Ventas']}
+                                            labelFormatter={(label) => `Día: ${label}`}
                                         />
-                                        <Line type="monotone" dataKey="sales_count" name="Ventas" stroke="#3b82f6" strokeWidth={4} dot={{ r: 4, fill: '#3b82f6', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 6 }} />
+                                        <Line type="monotone" dataKey="count" name="Ventas" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 7 }} />
                                     </LineChart>
                                 </ResponsiveContainer>
                             </div>
@@ -854,11 +889,7 @@ export default function AnalyticsDashboard() {
                             <div className="text-center py-20 text-slate-400 font-medium">Consultando registros históricos...</div>
                         ) : historicalData ? (
                             <>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                                    <StatCard title="Visitas Únicas" value={data.visitors?.total?.toString() || "0"} subtitle={`${data.visitors?.monthly || 0} este mes`} icon={<TrendingUp className="text-purple-600" />} color="bg-purple-50" />
-                                    <StatCard title="Tasa de Contacto" value={`${data.leads.conversion_rate}%`} subtitle={`${data.leads.contacted} contactados`} icon={<TrendingUp className="text-emerald-600" />} color="bg-emerald-50" />
-                                    <StatCard title="Nuevos Leads" value={data.leads.new.toString()} subtitle="Pendientes de asignación" icon={<MessageSquare className="text-orange-600" />} color="bg-orange-50" />
-                                </div>
+                                    {/* The cards moved to general are now removed from here */}
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                                     <StatCard title="Total Vendido" value={`$ ${(historicalData.sales.amount || 0).toLocaleString('es-AR', { minimumFractionDigits: 0 })}`} subtitle={`${historicalData.sales.count} órdenes cerradas`} icon={<DollarSign className="text-emerald-600" />} color="bg-emerald-50" />
                                     <StatCard title="Leads Ingresados" value={historicalData.leads.entered.toString()} subtitle="Adquiridos en total" icon={<Users className="text-blue-600" />} color="bg-blue-50" />
@@ -941,9 +972,9 @@ export default function AnalyticsDashboard() {
                                                 </p>
                                             </div>
                                         </div>
-                                        <div className="h-[300px] w-full">
+                                        <div className="h-[350px] w-full">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <ComposedChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                                <ComposedChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                                     <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
                                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />

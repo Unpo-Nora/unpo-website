@@ -66,7 +66,7 @@ def _group_product_stats(raw_stats):
     )
     return sorted_products
 
-class VisitRequest(BaseModel):
+class VisitRequest(BaseModel) :
     visitor_id: str
 
 @router.post("/visit")
@@ -145,8 +145,6 @@ def get_analytics_summary(
     category_data = sorted_categories[:5]
 
     # 5. Interés por Producto (Basado en Leads)
-    # Get all products, we will group them in memory since string manipulation in SQLite/SQLAlchemy 
-    # can be tricky across different DB dialects, and the number of distinct products is usually manageable.
     raw_product_stats = db.query(
         models.Lead.product_interest,
         func.count(models.Lead.id)
@@ -300,31 +298,79 @@ def get_analytics_summary(
     ).scalar()
     monthly_total_expenses = float(raw_monthly_expenses or 0)
 
-    # F. Historical Sales
+    # F. Historical Sales & Expenses (Last 12 months)
     all_completed_sales = db.query(
         models.SaleOrder.created_at,
-        models.SaleOrder.total_amount,
-        models.SaleOrder.id
+        models.SaleOrder.total_amount
     ).filter(
         models.SaleOrder.status == models.SaleOrderStatus.COMPLETED
     ).all()
 
-    monthly_sales_dict = {}
-    for created_at, amount, s_id in all_completed_sales:
+    all_expenses = db.query(
+        models.Expense.date,
+        models.Expense.amount
+    ).all()
+
+    monthly_stats_dict = {}
+    
+    for created_at, amount in all_completed_sales:
         if not created_at: continue
         month_key = created_at.strftime("%Y-%m")
-        if month_key not in monthly_sales_dict:
-            monthly_sales_dict[month_key] = {"amount": 0.0, "count": 0}
-        monthly_sales_dict[month_key]["amount"] += float(amount or 0)
-        monthly_sales_dict[month_key]["count"] += 1
+        if month_key not in monthly_stats_dict:
+            monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0}
+        monthly_stats_dict[month_key]["amount"] += float(amount or 0)
+        monthly_stats_dict[month_key]["count"] += 1
+
+    for e_date, amount in all_expenses:
+        if not e_date: continue
+        month_key = e_date.strftime("%Y-%m")
+        if month_key not in monthly_stats_dict:
+            monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0}
+        monthly_stats_dict[month_key]["expenses"] += float(amount or 0)
 
     historical_monthly_sales = [
         {
             "month": k, 
             "total_amount": v["amount"], 
-            "sales_count": v["count"]
-        } for k, v in sorted(monthly_sales_dict.items())
-    ][-12:] # Las 12 months
+            "sales_count": v["count"],
+            "expenses": v["expenses"]
+        } for k, v in sorted(monthly_stats_dict.items())
+    ][-12:]
+
+    # G. Daily Sales & Expenses for Current Month
+    daily_sales_stats = {str(d): 0.0 for d in range(1, month_days + 1)}
+    daily_expenses_stats = {str(d): 0.0 for d in range(1, month_days + 1)}
+    daily_orders_stats = {str(d): 0 for d in range(1, month_days + 1)}
+
+    current_month_sales_query = db.query(
+        models.SaleOrder.created_at,
+        models.SaleOrder.total_amount
+    ).filter(
+        models.SaleOrder.status == models.SaleOrderStatus.COMPLETED,
+        models.SaleOrder.created_at >= current_month_start
+    ).all()
+
+    for s_date, s_amount in current_month_sales_query:
+        if s_date:
+            day_str = str(s_date.day)
+            daily_sales_stats[day_str] += float(s_amount or 0)
+            daily_orders_stats[day_str] += 1
+
+    current_month_expenses_query = db.query(
+        models.Expense.date,
+        models.Expense.amount
+    ).filter(
+        models.Expense.date >= current_month_start
+    ).all()
+
+    for e_date, e_amount in current_month_expenses_query:
+        if e_date:
+            day_str = str(e_date.day)
+            daily_expenses_stats[day_str] += float(e_amount or 0)
+
+    daily_sales_data = [{"day": k, "amount": v} for k, v in daily_sales_stats.items()]
+    daily_expenses_data = [{"day": k, "amount": v} for k, v in daily_expenses_stats.items()]
+    daily_orders_data = [{"day": k, "count": v} for k, v in daily_orders_stats.items()]
 
     # 9. Stock Valuation
     rate_setting = crud.get_setting(db, key="manual_exchange_rate")
@@ -359,7 +405,7 @@ def get_analytics_summary(
         })
     stock_value_data = sorted(stock_value_data, key=lambda x: x["stock_value"], reverse=True)[:15]
 
-    # 10. Least Sold Products (Bottom active products with stock > 0)
+    # 10. Least Sold Products
     raw_sales_per_product = db.query(
         models.OrderItem.product_sku,
         func.sum(models.OrderItem.quantity)
@@ -379,7 +425,7 @@ def get_analytics_summary(
     least_sold_list = []
     for sku, name in active_stock_prods:
         qty = sales_dict.get(sku, 0)
-        least_sold_list.append({"product_name": name, "count": qty}) # Use "count" key for compatibility
+        least_sold_list.append({"product_name": name, "count": qty})
     
     least_sold_data = sorted(least_sold_list, key=lambda x: x["count"])[:20]
 
@@ -467,7 +513,10 @@ def get_analytics_summary(
             "top_products_sold": monthly_top_sold_data,
             "total_amount_sold": monthly_total_sales,
             "total_expenses": monthly_total_expenses,
-            "historical_monthly_sales": historical_monthly_sales
+            "historical_monthly_sales": historical_monthly_sales,
+            "daily_sales": daily_sales_data,
+            "daily_expenses": daily_expenses_data,
+            "daily_orders": daily_orders_data
         }
     }
 
@@ -708,10 +757,29 @@ def get_seller_trends(
         for k, v in daily_sales_dict.items()
     ]
 
+    # 3. Seller Conversion Stats
+    total_leads = db.query(models.Lead).filter(models.Lead.seller == seller_email).count()
+    contacted_leads = db.query(models.Lead).filter(
+        models.Lead.seller == seller_email,
+        models.Lead.status != models.LeadStatus.NEW
+    ).count()
+    client_leads = db.query(models.Lead).filter(
+        models.Lead.seller == seller_email,
+        models.Lead.status == models.LeadStatus.CLIENT
+    ).count()
+
+    contact_rate = round((contacted_leads / total_leads * 100), 2) if total_leads > 0 else 0
+
     return {
         "seller": seller_email,
         "historical_monthly_sales": historical_monthly_sales,
-        "daily_current_month": daily_current_month
+        "daily_current_month": daily_current_month,
+        "metrics": {
+            "total_leads": total_leads,
+            "contacted_leads": contacted_leads,
+            "client_count": client_leads,
+            "contact_rate": contact_rate
+        }
     }
 
 from ..schemas import Expense, ExpenseCreate
