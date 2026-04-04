@@ -115,6 +115,7 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                             print(f"DEBUG: Data cruda de Meta: {lead_data}")
                             transformed = meta_api.transform_meta_lead_to_schemas(lead_data)
                             from .. import crud, schemas
+                            transformed['status'] = "CONTACTED"
                             lead_create = schemas.LeadCreate(**transformed)
                             # Verify if lead doesn't exist already to avoid dupes (basic check)
                             crud.create_lead(db=db, lead=lead_create)

@@ -38,7 +38,7 @@ export default function InventoryDashboard() {
 
     // Search and Filter State
     const [searchTerm, setSearchTerm] = useState('');
-    const [activeTab, setActiveTab] = useState<'con_stock' | 'stock_bajo' | 'sin_stock' | 'historial'>('con_stock');
+    const [activeTab, setActiveTab] = useState<'con_stock' | 'stock_bajo' | 'sin_stock' | 'historial' | 'historicos'>('con_stock');
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
 
@@ -89,8 +89,13 @@ export default function InventoryDashboard() {
             const skip = (auditCurrentPage - 1) * AUDIT_ITEMS_PER_PAGE;
             let url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/history?limit=${AUDIT_ITEMS_PER_PAGE}&skip=${skip}`;
             
-            if (auditFilterMonth) url += `&month=${auditFilterMonth}`;
-            if (auditFilterYear) url += `&year=${auditFilterYear}`;
+            if (activeTab === 'historial') {
+                const now = new Date();
+                url += `&month=${now.getMonth() + 1}&year=${now.getFullYear()}`;
+            } else {
+                if (auditFilterMonth) url += `&month=${auditFilterMonth}`;
+                if (auditFilterYear) url += `&year=${auditFilterYear}`;
+            }
             
             const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -110,7 +115,7 @@ export default function InventoryDashboard() {
 
     useEffect(() => {
         fetchAuditLogs();
-    }, [auditCurrentPage, auditFilterMonth, auditFilterYear]);
+    }, [auditCurrentPage, auditFilterMonth, auditFilterYear, activeTab]);
 
     const fetchExchangeRate = async () => {
         try {
@@ -435,34 +440,50 @@ export default function InventoryDashboard() {
                     className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'historial' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
                 >
                     <History size={16} />
-                    Historial de Modificaciones
+                    Historial Mensual
+                </button>
+                <button
+                    onClick={() => setActiveTab('historicos')}
+                    className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'historicos' ? 'border-purple-600 text-purple-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
+                >
+                    <Layers size={16} />
+                    Históricos
                 </button>
             </div>
 
-            {activeTab === 'historial' ? (
+            {activeTab === 'historial' || activeTab === 'historicos' ? (
                 <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
                     <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-4 items-center justify-between">
                         <div className="flex gap-3 w-full md:w-auto">
-                            <select 
-                                value={auditFilterMonth} 
-                                onChange={(e) => {setAuditFilterMonth(e.target.value); setAuditCurrentPage(1);}}
-                                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
-                            >
-                                <option value="">Mes (Todos)</option>
-                                {[...Array(12)].map((_, i) => (
-                                    <option key={i+1} value={i+1}>{new Date(2000, i, 1).toLocaleString('es', { month: 'long' })}</option>
-                                ))}
-                            </select>
-                            <select 
-                                value={auditFilterYear} 
-                                onChange={(e) => {setAuditFilterYear(e.target.value); setAuditCurrentPage(1);}}
-                                className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
-                            >
-                                <option value="">Año (Todos)</option>
-                                {[2024, 2025, 2026, 2027].map(y => (
-                                    <option key={y} value={y}>{y}</option>
-                                ))}
-                            </select>
+                            {activeTab === 'historicos' && (
+                                <>
+                                    <select 
+                                        value={auditFilterMonth} 
+                                        onChange={(e) => {setAuditFilterMonth(e.target.value); setAuditCurrentPage(1);}}
+                                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="">Mes (Todos)</option>
+                                        {[...Array(12)].map((_, i) => (
+                                            <option key={i+1} value={i+1}>{new Date(2000, i, 1).toLocaleString('es', { month: 'long' })}</option>
+                                        ))}
+                                    </select>
+                                    <select 
+                                        value={auditFilterYear} 
+                                        onChange={(e) => {setAuditFilterYear(e.target.value); setAuditCurrentPage(1);}}
+                                        className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="">Año (Todos)</option>
+                                        {[2024, 2025, 2026, 2027].map(y => (
+                                            <option key={y} value={y}>{y}</option>
+                                        ))}
+                                    </select>
+                                </>
+                            )}
+                            {activeTab === 'historial' && (
+                                <span className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-bold border border-indigo-100">
+                                    Mes Actual ({new Date().toLocaleString('es', { month: 'long' })})
+                                </span>
+                            )}
                         </div>
                         <div className="text-sm font-bold text-slate-500">
                             Total: {auditTotalLogs} registros

@@ -107,7 +107,11 @@ export default function ClientsDashboard() {
                             onChange={(e) => setSearchTerm(e.target.value)}
                         />
                     </div>
-                    
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm font-bold text-slate-500 bg-white px-4 py-2 rounded-xl border border-slate-200">
+                            Total Clientes: {clients.length}
+                        </span>
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
