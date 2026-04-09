@@ -87,7 +87,7 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     company_info_text = """<b>UNPO Oficial</b><br/>
     Venta Mayorista<br/>
     Sitio Web: unpo.com.ar<br/>
-    Atención al Cliente: +54 9 11 1234-5678"""
+    Atención al Cliente: +5491131488378"""
     company_info = Paragraph(company_info_text, normal_style)
     remito_number = Paragraph(f"<b>REMITO N° {order.id}</b>", normal_style)
     
@@ -145,7 +145,7 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
         
     t_products = Table(table_data, colWidths=[1.8*cm, 1.8*cm, 8.4*cm, 3*cm, 3*cm])
     t_products.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#0f172a")), # Slate-900 header
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#475569")), # Slate-600 header
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
