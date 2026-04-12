@@ -117,7 +117,7 @@ class Category(CategoryBase):
         from_attributes = True
 
 class ProductBase(BaseModel):
-    sku: str
+    sku: Optional[str] = None
     name: str
     description: Optional[str] = None
     brand_id: Optional[int] = None

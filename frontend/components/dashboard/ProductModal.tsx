@@ -143,8 +143,11 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
             });
 
             if (response.ok) {
+                // Return data has generated sku
+                const savedProduct = await response.json();
+                
                 // Upload images if any
-                const sku = product ? product.sku : formData.sku;
+                const sku = product ? product.sku : (savedProduct.sku || formData.sku);
                 if (selectedFiles.length > 0) {
                     setSaving(true);
                     for (const file of selectedFiles) {
@@ -267,13 +270,13 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                             <div className="space-y-2">
                                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">SKU</label>
                                 <input
-                                    required
-                                    disabled={!!product}
+                                    required={!!product} // not required if it's new
+                                    disabled={true} // always disabled. Auto on new, uneditable on update.
                                     type="text"
-                                    value={formData.sku}
+                                    value={product ? formData.sku : "Autogenerado"}
                                     onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none text-slate-700 font-bold disabled:opacity-50"
-                                    placeholder="Ej: 10700084"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-500 font-bold disabled:opacity-50"
+                                    title="El SKU se generará automáticamente"
                                 />
                             </div>
                             <div className="space-y-2">

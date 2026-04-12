@@ -75,8 +75,10 @@ def update_setting(db: Session, key: str, value: str):
 def create_lead(db: Session, lead: schemas.LeadCreate):
     db_lead = models.Lead(**lead.model_dump())
     
-    if db_lead.source == "WEB_UNPO":
-        db_lead.status = "CONTACTED"
+    # We want new leads to be NEW by default.
+    # If the provided status in the schema is not set, it defaults to NEW.
+    if not db_lead.status:
+        db_lead.status = "NEW"
     
     if db_lead.status == "CONTACTED" and not getattr(db_lead, "contacted_at", None):
         from datetime import datetime, timezone

@@ -240,6 +240,17 @@ def create_product(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No tiene permisos para crear productos")
         
+    if not product.sku or product.sku.strip() == "":
+        last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
+        if last_product:
+            try:
+                new_sku_int = int(last_product.sku) + 1
+            except ValueError:
+                new_sku_int = 10700086
+        else:
+            new_sku_int = 10700086
+        product.sku = str(new_sku_int)
+        
     db_product = crud.get_product(db, sku=product.sku)
     if db_product:
         raise HTTPException(status_code=400, detail="Product already exists")
