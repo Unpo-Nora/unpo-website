@@ -10,6 +10,8 @@ export default function PurchasesDashboard() {
     const [amount, setAmount] = useState('');
     const [description, setDescription] = useState('');
     const [date, setDate] = useState('');
+    const [currency, setCurrency] = useState<'ARS'|'USD'>('ARS');
+    const [exchangeRate, setExchangeRate] = useState(1);
     const [expenses, setExpenses] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     
@@ -30,6 +32,17 @@ export default function PurchasesDashboard() {
 
     useEffect(() => {
         fetchExpenses();
+        const fetchExchange = async () => {
+             const token = localStorage.getItem('token');
+             try {
+                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if(res.ok) {
+                    const data = await res.json();
+                    setExchangeRate(Number(data.value) || 1);
+                }
+             } catch(e) {}
+        };
+        fetchExchange();
     }, []);
 
     const handleAddExpense = async (e: React.FormEvent) => {
@@ -37,13 +50,17 @@ export default function PurchasesDashboard() {
         setLoading(true);
         try {
             const token = localStorage.getItem('token');
+            const parsedAmount = parseFloat(amount);
+            const finalAmount = currency === 'USD' ? parsedAmount * exchangeRate : parsedAmount;
+            const finalDescription = currency === 'USD' ? `${description} (U$D ${parsedAmount})` : description;
+            
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/expenses`, {
                 method: 'POST',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ amount: parseFloat(amount), description, date: date ? new Date(date).toISOString() : undefined })
+                body: JSON.stringify({ amount: finalAmount, description: finalDescription, date: date ? new Date(date).toISOString() : undefined })
             });
             if (res.ok) {
                 setAmount('');
@@ -107,12 +124,26 @@ export default function PurchasesDashboard() {
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-red-500 outline-none font-medium"
                         />
                     </div>
-                    <div className="w-full sm:w-40 space-y-1">
-                        <label className="text-xs font-bold text-slate-400 uppercase">Monto ($)</label>
+                    <div className="w-full sm:w-24 space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">Moneda</label>
+                        <select 
+                            value={currency} 
+                            onChange={(e) => setCurrency(e.target.value as 'ARS'|'USD')}
+                            className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-red-500 outline-none font-bold text-slate-700"
+                        >
+                            <option value="ARS">ARS</option>
+                            <option value="USD">USD</option>
+                        </select>
+                    </div>
+                    <div className="w-full sm:w-32 space-y-1">
+                        <label className="text-xs font-bold text-slate-400 uppercase">
+                            {currency === 'USD' ? 'Monto Or.' : 'Monto ($)'}
+                        </label>
                         <input 
                             required 
                             type="number" 
-                            min="1"
+                            min="0.01"
+                            step="0.01"
                             value={amount}
                             onChange={e => setAmount(e.target.value)}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-red-500 outline-none font-bold text-right"
