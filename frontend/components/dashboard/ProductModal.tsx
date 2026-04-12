@@ -28,6 +28,8 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
     const [profitMargin, setProfitMargin] = useState(30);
     const [exchangeRate, setExchangeRate] = useState(1);
 
+    const [nextSku, setNextSku] = useState("");
+
     useEffect(() => {
         const fetchExchange = async () => {
              const token = localStorage.getItem('token');
@@ -40,7 +42,21 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
              } catch(e) {}
         };
         fetchExchange();
-    }, []);
+        
+        if (!product && isOpen) {
+            const fetchNextSku = async () => {
+                 const token = localStorage.getItem('token');
+                 try {
+                     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/next-sku`, { headers: { 'Authorization': `Bearer ${token}` }});
+                     if (res.ok) {
+                         const data = await res.json();
+                         setNextSku(data.next_sku);
+                     }
+                 } catch (e) {}
+            };
+            fetchNextSku();
+        }
+    }, [isOpen, product]);
 
     // Calculator useEffect
     useEffect(() => {
@@ -273,7 +289,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                     required={!!product} // not required if it's new
                                     disabled={true} // always disabled. Auto on new, uneditable on update.
                                     type="text"
-                                    value={product ? formData.sku : "Autogenerado"}
+                                    value={product ? formData.sku : (nextSku || "Cargando...")}
                                     onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-slate-500 font-bold disabled:opacity-50"
                                     title="El SKU se generará automáticamente"

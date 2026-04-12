@@ -224,6 +224,24 @@ def get_audit_logs(
     except Exception as e:
         return {"data": [{"id": -1, "user_email": "Error", "action": "ERROR", "details": str(e), "created_at": None}], "total": 1}
 
+@router.get("/next-sku")
+def get_next_sku(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+        raise HTTPException(status_code=403, detail="No tiene permisos")
+        
+    last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
+    if last_product:
+        try:
+            new_sku_int = int(last_product.sku) + 1
+        except ValueError:
+            new_sku_int = 10700086
+    else:
+        new_sku_int = 10700086
+    return {"next_sku": str(new_sku_int)}
+
 @router.get("/{sku}", response_model=schemas.Product)
 def read_product(sku: str, db: Session = Depends(get_db)):
     db_product = crud.get_product(db, sku=sku)
