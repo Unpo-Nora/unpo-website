@@ -140,8 +140,16 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
             f"${item.total_price:,.2f}"
         ])
         
-    # Table Total
-    table_data.append(["", "", "", "SUBTOTAL:", f"${order.total_amount:,.2f}"])
+    # Calculate implicit discount based on discrepancy
+    sum_items_raw = sum(item.total_price for item in order.items)
+    
+    if float(order.total_amount) < float(sum_items_raw) - 0.5: # 0.5 threshold to avoid precision issues
+        discount_value = float(sum_items_raw) - float(order.total_amount)
+        table_data.append(["", "", "", "SUBTOTAL:", f"${sum_items_raw:,.2f}"])
+        table_data.append(["", "", "", "DESCUENTO:", f"-${discount_value:,.2f}"])
+        table_data.append(["", "", "", "TOTAL FINAL:", f"${order.total_amount:,.2f}"])
+    else:
+        table_data.append(["", "", "", "TOTAL:", f"${order.total_amount:,.2f}"])
         
     t_products = Table(table_data, colWidths=[1.8*cm, 1.8*cm, 8.4*cm, 3*cm, 3*cm])
     t_products.setStyle(TableStyle([

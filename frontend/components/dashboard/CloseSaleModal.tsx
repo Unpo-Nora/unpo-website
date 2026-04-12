@@ -33,6 +33,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     const [searchTerm, setSearchTerm] = useState("");
     const [cart, setCart] = useState<OrderItem[]>([]);
     const [exchangeRate, setExchangeRate] = useState<number>(1);
+    const [discountPercent, setDiscountPercent] = useState<number>(0);
 
     // Step 2 Form State
     const [formData, setFormData] = useState({
@@ -126,9 +127,18 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
         }
     };
 
-    const totalAmount = cart.reduce((acc, current) => acc + current.total_price, 0);
+    const rawTotalAmount = cart.reduce((acc, current) => acc + current.total_price, 0);
     const minMonto = 100000;
-    const canProceed = totalAmount >= minMonto;
+    const canProceed = rawTotalAmount >= minMonto;
+    
+    // Auto reset discount if total drops below 150000
+    useEffect(() => {
+        if (rawTotalAmount < 150000 && discountPercent > 0) {
+            setDiscountPercent(0);
+        }
+    }, [rawTotalAmount, discountPercent]);
+
+    const finalTotalAmount = rawTotalAmount * (1 - discountPercent / 100);
 
     const filteredProducts = products.filter(p =>
         p.stock_quantity > 0 &&
@@ -146,7 +156,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
         try {
             const payload = {
                 lead_id: lead.id,
-                total_amount: totalAmount,
+                total_amount: finalTotalAmount,
                 status: "COMPLETED",
                 ...formData,
                 items: cart.map(c => ({
@@ -315,16 +325,50 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                 </div>
 
                                 <div className="pt-6 border-t border-slate-200 mt-6">
+                                    {rawTotalAmount >= 150000 && (
+                                        <div className="flex justify-between items-center mb-4">
+                                            <span className="text-slate-500 font-bold uppercase tracking-widest text-xs flex items-center gap-2">
+                                                Descuento
+                                            </span>
+                                            <select 
+                                                value={discountPercent} 
+                                                onChange={e => setDiscountPercent(Number(e.target.value))}
+                                                className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-sm font-bold text-blue-700 outline-none hover:bg-blue-100 transition-colors cursor-pointer"
+                                            >
+                                                <option value={0}>Sin Descuento</option>
+                                                <option value={5}>5% OFF</option>
+                                                <option value={10}>10% OFF</option>
+                                                <option value={15}>15% OFF</option>
+                                            </select>
+                                        </div>
+                                    )}
+                                    
+                                    {discountPercent > 0 && (
+                                        <div className="flex justify-between items-end mb-2 opacity-60">
+                                            <span className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Subtotal (Sin Desc)</span>
+                                            <span className="text-lg font-black text-slate-500 line-through">
+                                                ${rawTotalAmount.toLocaleString()}
+                                            </span>
+                                        </div>
+                                    )}
+                                    
                                     <div className="flex justify-between items-end mb-6">
-                                        <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Total</span>
-                                        <span className={`text-3xl font-black ${canProceed ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                            ${totalAmount.toLocaleString()}
-                                        </span>
+                                        <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Total final</span>
+                                        <div className="text-right">
+                                            {discountPercent > 0 && (
+                                                <div className="text-rose-500 font-bold text-xs tracking-wider mb-1">
+                                                    - AHORRO: ${(rawTotalAmount - finalTotalAmount).toLocaleString()}
+                                                </div>
+                                            )}
+                                            <span className={`text-3xl font-black ${canProceed ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                ${finalTotalAmount.toLocaleString()}
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {!canProceed && (
                                         <p className="text-xs text-rose-500 font-bold text-center mb-4 bg-rose-50 p-2 rounded-lg">
-                                            Mínimo de compra: $100.000 (Faltan ${(100000 - totalAmount).toLocaleString()})
+                                            Mínimo de compra: $100.000 (Faltan ${(100000 - rawTotalAmount).toLocaleString()})
                                         </p>
                                     )}
 
