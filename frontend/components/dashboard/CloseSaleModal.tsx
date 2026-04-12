@@ -34,6 +34,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     const [cart, setCart] = useState<OrderItem[]>([]);
     const [exchangeRate, setExchangeRate] = useState<number>(1);
     const [discountPercent, setDiscountPercent] = useState<number>(0);
+    const [hasIva, setHasIva] = useState<boolean>(false);
 
     // Step 2 Form State
     const [formData, setFormData] = useState({
@@ -138,7 +139,9 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
         }
     }, [rawTotalAmount, discountPercent]);
 
-    const finalTotalAmount = rawTotalAmount * (1 - discountPercent / 100);
+    const discountedAmount = rawTotalAmount * (1 - discountPercent / 100);
+    const ivaAmount = hasIva ? (discountedAmount * 0.21) : 0;
+    const finalTotalAmount = discountedAmount + ivaAmount;
 
     const filteredProducts = products.filter(p =>
         p.stock_quantity > 0 &&
@@ -342,12 +345,24 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                             </select>
                                         </div>
                                     )}
+
+                                    <div className="flex justify-between items-center mb-6">
+                                        <label className="flex items-center gap-2 cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={hasIva} 
+                                                onChange={e => setHasIva(e.target.checked)} 
+                                                className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer" 
+                                            />
+                                            <span className="text-slate-500 font-bold uppercase tracking-widest text-xs">Incluir IVA (+21%)</span>
+                                        </label>
+                                    </div>
                                     
-                                    {discountPercent > 0 && (
+                                    {(discountPercent > 0 || hasIva) && (
                                         <div className="flex justify-between items-end mb-2 opacity-60">
-                                            <span className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Subtotal (Sin Desc)</span>
+                                            <span className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Subtotal (Sin Desc/IVA)</span>
                                             <span className="text-lg font-black text-slate-500 line-through">
-                                                ${rawTotalAmount.toLocaleString()}
+                                                ${rawTotalAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
                                         </div>
                                     )}
@@ -357,11 +372,16 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                         <div className="text-right">
                                             {discountPercent > 0 && (
                                                 <div className="text-rose-500 font-bold text-xs tracking-wider mb-1">
-                                                    - AHORRO: ${(rawTotalAmount - finalTotalAmount).toLocaleString()}
+                                                    - AHORRO: ${(rawTotalAmount - discountedAmount).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </div>
+                                            )}
+                                            {hasIva && (
+                                                <div className="text-blue-500 font-bold text-xs tracking-wider mb-1">
+                                                    + IVA (21%): ${(ivaAmount).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </div>
                                             )}
                                             <span className={`text-3xl font-black ${canProceed ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                ${finalTotalAmount.toLocaleString()}
+                                                ${finalTotalAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                             </span>
                                         </div>
                                     </div>

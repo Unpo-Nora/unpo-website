@@ -140,16 +140,42 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
             f"${item.total_price:,.2f}"
         ])
         
-    # Calculate implicit discount based on discrepancy
-    sum_items_raw = sum(item.total_price for item in order.items)
+    # Calculate implicit discount and IVA based on discrepancy
+    sum_items_raw = sum(float(item.total_price) for item in order.items)
+    target = float(order.total_amount)
     
-    if float(order.total_amount) < float(sum_items_raw) - 0.5: # 0.5 threshold to avoid precision issues
-        discount_value = float(sum_items_raw) - float(order.total_amount)
-        table_data.append(["", "", "", "SUBTOTAL:", f"${sum_items_raw:,.2f}"])
-        table_data.append(["", "", "", "DESCUENTO:", f"-${discount_value:,.2f}"])
-        table_data.append(["", "", "", "TOTAL FINAL:", f"${order.total_amount:,.2f}"])
-    else:
-        table_data.append(["", "", "", "TOTAL:", f"${order.total_amount:,.2f}"])
+    best_d = 0.0
+    best_iva = False
+    
+    for iva_opt in [False, True]:
+        for d_opt in [0.0, 0.05, 0.10, 0.15]:
+            calc = sum_items_raw * (1 - d_opt)
+            if iva_opt:
+                calc *= 1.21
+            # 10 ARS tolerance for rounding
+            if abs(calc - target) < 10.0:
+                best_d = d_opt
+                best_iva = iva_opt
+                break
+                
+    table_data.append(["", "", "", "SUBTOTAL:", f"${sum_items_raw:,.2f}"])
+    
+    subtotal_desc = sum_items_raw * (1 - best_d)
+    
+    if best_d > 0.0:
+        desc_amount = sum_items_raw - subtotal_desc
+        table_data.append(["", "", "", f"DESCUENTO ({int(best_d*100)}%):", f"-${desc_amount:,.2f}"])
+        if not best_iva:
+            table_data.append(["", "", "", "TOTAL FINAL:", f"${target:,.2f}"])
+            
+    if best_iva:
+        iva_amount = subtotal_desc * 0.21
+        table_data.append(["", "", "", "IVA (21%):", f"+${iva_amount:,.2f}"])
+        table_data.append(["", "", "", "TOTAL FINAL:", f"${target:,.2f}"])
+        
+    if best_d == 0.0 and not best_iva:
+        # Just simple replacement of TOTAL FINAL since SUBTOTAL is already there
+        pass
         
     t_products = Table(table_data, colWidths=[1.8*cm, 1.8*cm, 8.4*cm, 3*cm, 3*cm])
     t_products.setStyle(TableStyle([
