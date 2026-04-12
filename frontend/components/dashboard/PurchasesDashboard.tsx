@@ -60,7 +60,7 @@ export default function PurchasesDashboard() {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ amount: finalAmount, description: finalDescription, date: date ? new Date(date).toISOString() : undefined })
+                body: JSON.stringify({ amount: finalAmount, description: finalDescription, date: date ? new Date(date + 'T12:00:00').toISOString() : undefined })
             });
             if (res.ok) {
                 setAmount('');
