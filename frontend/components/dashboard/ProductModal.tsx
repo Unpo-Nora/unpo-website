@@ -63,8 +63,26 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
              try {
                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/categories`, { headers: { 'Authorization': `Bearer ${token}` }});
                  if (res.ok) {
-                     const data = await res.json();
-                     setCategories(data);
+                     let data = await res.json();
+                     const allowed = ["DECORACION", "HOGAR", "MARROQUINERIA", "BAZAR", "TECNOLOGIA", "JUGUETE"];
+                     
+                     const missing = allowed.filter(allowName => !data.some((c: any) => c.name.trim().toUpperCase() === allowName));
+                     for (const m of missing) {
+                         try {
+                             const cRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/categories`, {
+                                 method: 'POST',
+                                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                 body: JSON.stringify({name: m})
+                             });
+                             if(cRes.ok) {
+                                 data.push(await cRes.json());
+                             }
+                         } catch (e) {}
+                     }
+                     
+                     // Filter to ONLY show the allowed ones and sort them matching exactly
+                     const finalCategories = data.filter((c: any) => allowed.includes(c.name.trim().toUpperCase()));
+                     setCategories(finalCategories);
                  }
              } catch (e) {}
         };
@@ -328,9 +346,12 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                     onChange={(e) => setFormData({ ...formData, category_id: parseInt(e.target.value) })}
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 outline-none text-slate-700 font-bold"
                                 >
-                                    <option value="" disabled>Seleccione una categoría</option>
-                                    {categories.map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                     <option value="" disabled>Seleccione una categoría</option>
+                                    {categories
+                                        .filter(c => ['DECORACION', 'HOGAR', 'MARROQUINERIA', 'BAZAR', 'TECNOLOGIA', 'JUGUETE'].includes(c.name.toUpperCase()))
+                                        .sort((a,b) => a.name.localeCompare(b.name))
+                                        .map(c => (
+                                        <option key={c.id} value={c.id}>{c.name.toUpperCase()}</option>
                                     ))}
                                 </select>
                         </div>
