@@ -431,6 +431,35 @@ def archive_product(
     ))
     return db_product
 
+@router.patch("/{sku}/restore", response_model=schemas.Product)
+def restore_product(
+    sku: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tiene permisos para restaurar productos")
+        
+    db_product = crud.get_product(db, sku=sku)
+    if not db_product:
+        # Check if we can find it even if it's inactive (get_product respects include_inactive?)
+        # Wait, crud.get_product might only return active products. 
+        # Let's bypass crud and use db directly:
+        db_product = db.query(models.Product).filter(models.Product.sku == sku).first()
+        if not db_product:
+            raise HTTPException(status_code=404, detail="Product not found")
+            
+    db_product.is_active = True
+    db.commit()
+    db.refresh(db_product)
+    
+    crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+        user_email=current_user.email,
+        action="RESTORE_PRODUCT",
+        details=f"Producto restaurado: {sku}"
+    ))
+    return db_product
+
 @router.delete("/{sku}/hard")
 def hard_delete_product(
     sku: str,

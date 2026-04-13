@@ -182,19 +182,39 @@ export default function InventoryDashboard() {
         setIsModalOpen(true);
     };
 
-    const handleArchiveProduct = async (sku: string) => {
-        if (!confirm('¿Estás seguro de archivar (borrar) este producto del inventario?')) return;
+    const handleExcludeFromCapital = async (sku: string) => {
+        if (!confirm('¿Estás seguro de excluir este producto del cálculo? (Se pondrá su Costo de Compra en $0 pero el producto seguirá existiendo).')) return;
         try {
+            const productToUpdate = products.find(p => p.sku === sku);
+            if (!productToUpdate) return;
+            
+            const payload = { 
+                ...productToUpdate, 
+                cost_price: 0 
+            };
+            
+            if (payload.price_breakdown) {
+                payload.price_breakdown = {
+                    ...payload.price_breakdown,
+                    purchase_cost: 0
+                };
+            }
+            
             const token = localStorage.getItem('token');
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${sku}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify(payload)
             });
+            
             if (response.ok) {
-                setMessage({ type: 'success', text: `Producto ${sku} archivado.` });
+                setMessage({ type: 'success', text: `Costo excluido de ${sku}.` });
                 fetchProducts();
             } else {
-                setMessage({ type: 'error', text: 'Error al archivar el producto.' });
+                setMessage({ type: 'error', text: 'Error al excluir del capital.' });
             }
         } catch (error) {
             setMessage({ type: 'error', text: 'Error de conexión' });
@@ -803,9 +823,9 @@ export default function InventoryDashboard() {
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 <button 
-                                                    onClick={() => handleArchiveProduct(item.sku)}
+                                                    onClick={() => handleExcludeFromCapital(item.sku)}
                                                     className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                                                    title="Archivar producto"
+                                                    title="Excluir del cálculo"
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
