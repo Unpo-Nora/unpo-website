@@ -337,19 +337,24 @@ def update_product(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para editar productos")
-        
-    db_product = crud.update_product(db, sku=sku, product_data=product.model_dump(exclude_unset=True))
-    if db_product is None:
-        raise HTTPException(status_code=404, detail="Product not found")
-        
-    crud.create_audit_log(db, schemas.InventoryAuditLogBase(
-        user_email=current_user.email,
-        action="PRODUCT_EDITED",
-        details=f"Producto editado: {db_product.name} (SKU: {sku})"
-    ))
-    return db_product
+    try:
+        if current_user.role != "admin":
+            raise HTTPException(status_code=403, detail="No tiene permisos para editar productos")
+            
+        db_product = crud.update_product(db, sku=sku, product_data=product.model_dump(exclude_unset=True))
+        if db_product is None:
+            raise HTTPException(status_code=404, detail="Product not found")
+            
+        crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+            user_email=current_user.email,
+            action="PRODUCT_EDITED",
+            details=f"Producto editado: {db_product.name} (SKU: {sku})"
+        ))
+        return db_product
+    except Exception as e:
+        import traceback
+        # Return 400 to pass CORS, but contain the traceback
+        raise HTTPException(status_code=400, detail=f"TRACEBACK: {traceback.format_exc()}")
 
 @router.patch("/{sku}/stock", response_model=schemas.Product)
 def adjust_stock(

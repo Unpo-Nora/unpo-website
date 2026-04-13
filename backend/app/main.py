@@ -35,6 +35,19 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
 )
 
+from fastapi.exceptions import RequestValidationError, ResponseValidationError
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(ResponseValidationError)
+async def validation_exception_handler(request, exc):
+    import traceback
+    return JSONResponse(status_code=422, content={'detail': f'Response Validation Error: {exc.errors()}', 'trace': traceback.format_exc()})
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request, exc):
+    import traceback
+    return JSONResponse(status_code=500, content={'detail': f'Internal Server Error: {str(exc)}', 'trace': traceback.format_exc()})
+
 app.include_router(products.router)
 app.include_router(leads.router)
 app.include_router(auth.router)
