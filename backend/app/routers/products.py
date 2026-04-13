@@ -434,8 +434,12 @@ def archive_product(
 @router.patch("/{sku}/restore", response_model=schemas.Product)
 def restore_product(
     sku: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
 ):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tiene permisos para restaurar productos")
+        
     db_product = db.query(models.Product).filter(models.Product.sku == sku).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -444,6 +448,11 @@ def restore_product(
     db.commit()
     db.refresh(db_product)
     
+    crud.create_audit_log(db, schemas.InventoryAuditLogBase(
+        user_email=current_user.email,
+        action="RESTORE_PRODUCT",
+        details=f"Producto restaurado: {sku}"
+    ))
     return db_product
 
 @router.delete("/{sku}/hard")
