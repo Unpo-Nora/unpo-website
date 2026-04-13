@@ -60,7 +60,7 @@ export default function InventoryDashboard() {
     const [pendingPrice, setPendingPrice] = useState<Record<string, number>>({});
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
-    const [ivaPercentInCapital, setIvaPercentInCapital] = useState<number>(0);
+    const [ivaAmountInCapital, setIvaAmountInCapital] = useState<number>(0);
     
     // Pagination & History Filter State
     const [auditCurrentPage, setAuditCurrentPage] = useState(1);
@@ -328,7 +328,7 @@ export default function InventoryDashboard() {
 
     const totalCostValueARS = breakdownDetails.reduce((acc, item) => acc + item.total, 0);
     
-    const finalCostValueARS = ivaPercentInCapital > 0 ? totalCostValueARS * (1 + ivaPercentInCapital / 100) : totalCostValueARS;
+    const finalCostValueARS = totalCostValueARS + ivaAmountInCapital;
     const finalCostValueUSD = finalCostValueARS / numericExchangeRate;
 
     // Valor de venta estimado en USD de la base de datos
@@ -347,7 +347,7 @@ export default function InventoryDashboard() {
                     <div>
                         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-2">
                             Capital en Mercadería Invertida
-                            {ivaPercentInCapital > 0 && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[10px] font-black">+ {ivaPercentInCapital}% IVA</span>}
+                            {ivaAmountInCapital > 0 && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[10px] font-black">+ IVA</span>}
                         </p>
                         <h3 className="text-3xl font-black text-slate-800">$ {finalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
                         {exchangeRate !== 'Cargando...' && (
@@ -773,16 +773,16 @@ export default function InventoryDashboard() {
                                 <div className="flex items-center gap-2 bg-slate-100 pl-3 pr-2 py-1.5 rounded-xl border border-slate-200">
                                     <span className="text-xs font-bold text-slate-700">Agregado de IVA:</span>
                                     <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-sm">
+                                        <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1.5 border-r border-slate-200">$</span>
                                         <input 
                                             type="number"
                                             min="0"
-                                            step="0.1"
-                                            value={ivaPercentInCapital === 0 ? '' : ivaPercentInCapital}
+                                            step="1"
+                                            value={ivaAmountInCapital === 0 ? '' : ivaAmountInCapital}
                                             placeholder="0"
-                                            onChange={e => setIvaPercentInCapital(parseFloat(e.target.value) || 0)}
-                                            className="w-14 px-2 py-1 text-xs text-center font-black text-indigo-700 outline-none" 
+                                            onChange={e => setIvaAmountInCapital(parseFloat(e.target.value) || 0)}
+                                            className="w-24 px-2 py-1 text-xs text-center font-black text-indigo-700 outline-none" 
                                         />
-                                        <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1.5 border-l border-slate-200">%</span>
                                     </div>
                                 </div>
                             </div>
@@ -804,8 +804,6 @@ export default function InventoryDashboard() {
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
                                     {breakdownDetails.map((item, idx) => {
-                                        const finalItemTotal = ivaPercentInCapital > 0 ? item.total * (1 + ivaPercentInCapital / 100) : item.total;
-                                        const finalItemCost = ivaPercentInCapital > 0 ? item.realCost * (1 + ivaPercentInCapital / 100) : item.realCost;
                                         return (
                                         <tr key={idx} className="hover:bg-white transition-colors group">
                                             <td className="px-4 py-3">
@@ -816,10 +814,10 @@ export default function InventoryDashboard() {
                                                 {item.stock}
                                             </td>
                                             <td className="px-4 py-3 text-right font-medium text-slate-500">
-                                                ${finalItemCost.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                                                ${item.realCost.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
                                             </td>
                                             <td className="px-4 py-3 text-right font-black text-slate-700">
-                                                ${finalItemTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                                ${item.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                                             </td>
                                             <td className="px-4 py-3 text-center">
                                                 <button 
@@ -832,6 +830,17 @@ export default function InventoryDashboard() {
                                             </td>
                                         </tr>
                                     )})}
+                                    {ivaAmountInCapital > 0 && (
+                                        <tr className="bg-indigo-50/50">
+                                            <td colSpan={3} className="px-4 py-3 text-right font-bold text-slate-600">
+                                                IVA Añadido Manualmente:
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-black text-indigo-700">
+                                                ${ivaAmountInCapital.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                            </td>
+                                            <td></td>
+                                        </tr>
+                                    )}
                                     {breakdownDetails.length === 0 && (
                                         <tr>
                                             <td colSpan={4} className="px-4 py-8 text-center text-slate-500 font-medium">
