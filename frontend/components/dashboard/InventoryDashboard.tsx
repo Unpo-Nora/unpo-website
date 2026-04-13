@@ -14,7 +14,8 @@ import {
     Edit,
     History,
     TrendingUp,
-    Wallet
+    Wallet,
+    Trash2
 } from 'lucide-react';
 import ProductModal from './ProductModal';
 
