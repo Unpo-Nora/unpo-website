@@ -29,6 +29,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
     const [exchangeRate, setExchangeRate] = useState(1);
 
     const [nextSku, setNextSku] = useState("");
+    const [categories, setCategories] = useState<{id: number, name: string}[]>([]);
 
     useEffect(() => {
         const fetchExchange = async () => {
@@ -56,6 +57,18 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
             };
             fetchNextSku();
         }
+
+        const fetchCategories = async () => {
+             const token = localStorage.getItem('token');
+             try {
+                 const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/categories`, { headers: { 'Authorization': `Bearer ${token}` }});
+                 if (res.ok) {
+                     const data = await res.json();
+                     setCategories(data);
+                 }
+             } catch (e) {}
+        };
+        fetchCategories();
     }, [isOpen, product]);
 
     // Calculator useEffect
@@ -305,6 +318,21 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                     className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 outline-none text-slate-700 font-bold"
                                 />
                             </div>
+                        </div>
+                        
+                        <div className="space-y-2 flex-grow">
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Categoría <span className="text-red-500">*</span></label>
+                                <select
+                                    required
+                                    value={formData.category_id || ''}
+                                    onChange={(e) => setFormData({ ...formData, category_id: parseInt(e.target.value) })}
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:border-blue-500 outline-none text-slate-700 font-bold"
+                                >
+                                    <option value="" disabled>Seleccione una categoría</option>
+                                    {categories.map(c => (
+                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                </select>
                         </div>
 
                         <div className="space-y-2">

@@ -144,3 +144,35 @@ def wipe_audit_logs(db: Session = Depends(get_db)):
         return {"status": "success", "message": "All logs deleted"}
     except Exception as e:
         return {"error_type": type(e).__name__, "error": str(e)}
+
+@app.get("/fix_valija_category")
+def fix_valija_category(db: Session = Depends(get_db)):
+    try:
+        from . import models
+        valija = db.query(models.Category).filter(models.Category.name.ilike('%VALIJA%')).first()
+        bazar = db.query(models.Category).filter(models.Category.name.ilike('%BAZAR%')).first()
+        
+        if not bazar:
+            bazar = models.Category(name="Bazar")
+            db.add(bazar)
+            db.commit()
+            db.refresh(bazar)
+            
+        fixed_count = 0
+        if valija:
+            products = db.query(models.Product).filter(models.Product.category_id == valija.id).all()
+            for p in products:
+                p.category_id = bazar.id
+                fixed_count += 1
+            db.delete(valija)
+            db.commit()
+            
+        p_ban = db.query(models.Product).filter(models.Product.name.ilike('%bandeja cuadrada%')).first()
+        if p_ban and p_ban.category_id != bazar.id:
+            p_ban.category_id = bazar.id
+            db.commit()
+            fixed_count += 1
+            
+        return {"status": "success", "message": f"Migrated {fixed_count} products. Valija category removed.", "new_category": bazar.id}
+    except Exception as e:
+        return {"error_type": type(e).__name__, "error": str(e)}

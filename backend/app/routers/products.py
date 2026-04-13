@@ -63,6 +63,36 @@ def fix_all_images_endpoint(db: Session = Depends(get_db)):
         "debug_files_sample": debug_files[:10]
     }
 
+@router.get("/fix-valija")
+def fix_valija_category(db: Session = Depends(get_db)):
+    valija = db.query(models.Category).filter(models.Category.name.ilike('%VALIJA%')).first()
+    bazar = db.query(models.Category).filter(models.Category.name.ilike('%BAZAR%')).first()
+    
+    if not bazar:
+        bazar = models.Category(name="Bazar")
+        db.add(bazar)
+        db.commit()
+        db.refresh(bazar)
+        
+    counts = 0
+    if valija:
+        products = db.query(models.Product).filter(models.Product.category_id == valija.id).all()
+        for p in products:
+            p.category_id = bazar.id
+            counts += 1
+        db.delete(valija)
+        db.commit()
+        return {"status": "success", "message": f"Updated {counts} products from VALIJA to BAZAR. Deleted VALIJA."}
+        
+    # Also directly fix "Set x2 bandeja cuadrada" if it exists just in case
+    product = db.query(models.Product).filter(models.Product.name.ilike('%bandeja cuadrada%')).first()
+    if product and product.category_id != bazar.id:
+        product.category_id = bazar.id
+        db.commit()
+        return {"status": "success", "message": "Updated specific product directly"}
+        
+    return {"status": "success", "message": "No VALIJA category found"}
+
 @router.get("/catalog/pdf")
 def download_catalog_pdf(
     db: Session = Depends(get_db),
