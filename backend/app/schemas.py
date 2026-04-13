@@ -140,6 +140,7 @@ class ProductBase(BaseModel):
     provider_name: Optional[str] = None
     
     specs: Optional[Dict[str, Any]] = None
+    price_breakdown: Optional[Dict[str, Any]] = None
     images: Optional[List[str]] = None
     videos: Optional[List[str]] = None
 

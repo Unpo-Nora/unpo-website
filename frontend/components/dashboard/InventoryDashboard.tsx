@@ -259,20 +259,21 @@ export default function InventoryDashboard() {
 
     const numericExchangeRate = !isNaN(parseFloat(exchangeRate)) ? parseFloat(exchangeRate) : 1;
 
-    // Capital en Mercadería (costos) en ARS usando el desglose de precio "price_breakdown"
+    // Capital en Mercadería (costos) en ARS (usando price_breakdown o cost_price nativo)
     const totalCostValueARS = products.reduce((acc, p) => {
-        // Solo calculamos el stock de los productos que tengan el precio cargado con la nueva lógica (Costo de Compra + Impuestos)
-        if (!p.price_breakdown || typeof p.price_breakdown.purchase_cost === 'undefined') {
-            return acc; 
-        }
+        let realCost = 0;
         
-        const origin = p.price_breakdown.origin || 'argentina';
-        const purchaseCost = Number(p.price_breakdown.purchase_cost) || 0;
-        const importTaxes = Number(p.price_breakdown.import_taxes) || 0;
-        
-        let realCost = purchaseCost;
-        if (origin === 'importado') {
-            realCost += importTaxes;
+        if (p.price_breakdown && typeof p.price_breakdown.purchase_cost !== 'undefined') {
+            const origin = p.price_breakdown.origin || 'argentina';
+            const purchaseCost = Number(p.price_breakdown.purchase_cost) || 0;
+            const importTaxes = Number(p.price_breakdown.import_taxes) || 0;
+            
+            realCost = purchaseCost;
+            if (origin === 'importado') {
+                realCost += importTaxes;
+            }
+        } else if (p.cost_price !== null && p.cost_price !== undefined) {
+            realCost = Number(p.cost_price) || 0;
         }
         
         return acc + (realCost * (p.stock_quantity > 0 ? p.stock_quantity : 0));
