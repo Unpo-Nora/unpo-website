@@ -279,6 +279,33 @@ def read_product(sku: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
     return db_product
 
+@router.post("/debug_post", response_model=schemas.Product)
+def debug_post_product(
+    product: schemas.ProductCreate, 
+    db: Session = Depends(get_db)
+):
+    try:
+        if not product.sku or product.sku.strip() == "":
+            last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
+            if last_product:
+                try:
+                    new_sku_int = int(last_product.sku) + 1
+                except ValueError:
+                    new_sku_int = 10700086
+            else:
+                new_sku_int = 10700086
+            product.sku = str(new_sku_int)
+            
+        db_product = crud.get_product(db, sku=product.sku)
+        if db_product:
+            raise HTTPException(status_code=400, detail="Product already exists")
+        
+        new_product = crud.create_product(db=db, product=product)
+        return new_product # Note: No create_audit_log
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=400, detail=f"DEBUG TRACEBACK: {traceback.format_exc()}")
+
 @router.post("/", response_model=schemas.Product)
 def create_product(
     product: schemas.ProductCreate, 

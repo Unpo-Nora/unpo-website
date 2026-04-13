@@ -118,7 +118,7 @@ class Category(CategoryBase):
 
 class ProductBase(BaseModel):
     sku: Optional[str] = None
-    name: str
+    name: str # Required
     description: Optional[str] = None
     brand_id: Optional[int] = None
     category_id: Optional[int] = None
@@ -127,9 +127,9 @@ class ProductBase(BaseModel):
     cost_price: Optional[Decimal] = None
     price_usd: Optional[Decimal] = None
     iva_percent: Optional[Decimal] = Field(default=Decimal(21.0))
-    moq: int = 1
-    stock_quantity: int = 0
-    is_active: bool = True
+    moq: Optional[int] = 1
+    stock_quantity: Optional[int] = 0
+    is_active: Optional[bool] = True
     
     # Physical Attributes
     weight: Optional[Decimal] = None
