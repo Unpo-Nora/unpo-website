@@ -114,6 +114,7 @@ export default function InventoryDashboard() {
     useEffect(() => {
         fetchProducts();
         fetchExchangeRate();
+        fetchCapitalIva();
     }, []);
 
     useEffect(() => {
@@ -132,6 +133,40 @@ export default function InventoryDashboard() {
                 setNewExchangeRate(data.value);
             }
         } catch (error) {}
+    };
+
+    const fetchCapitalIva = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_iva_amount`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setIvaAmountInCapital(parseFloat(data.value) || 0);
+            }
+        } catch (error) {}
+    };
+
+    const handleSaveCapitalIva = async () => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_iva_amount`, {
+                method: 'PUT',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json' 
+                },
+                body: JSON.stringify({ value: ivaAmountInCapital.toString() })
+            });
+            if (response.ok) {
+                setMessage({ type: 'success', text: 'Monto de IVA guardado correctamente.' });
+            } else {
+                setMessage({ type: 'error', text: 'Error al guardar el monto de IVA.' });
+            }
+        } catch (error) {
+            setMessage({ type: 'error', text: 'Error de conexión' });
+        }
     };
 
     const handleBatchSave = async () => {
@@ -784,6 +819,13 @@ export default function InventoryDashboard() {
                                             className="w-24 px-2 py-1 text-xs text-center font-black text-indigo-700 outline-none" 
                                         />
                                     </div>
+                                    <button 
+                                        onClick={handleSaveCapitalIva}
+                                        className="ml-1 px-3 py-1 bg-indigo-600 text-white rounded shadow text-xs font-bold hover:bg-indigo-700 transition flex items-center gap-1"
+                                        title="Guardar IVA para todos los usuarios"
+                                    >
+                                        <CheckCircle2 size={12} /> Guardar
+                                    </button>
                                 </div>
                             </div>
                             <button onClick={() => setIsCapitalModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">
