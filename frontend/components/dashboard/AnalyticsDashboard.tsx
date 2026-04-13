@@ -321,7 +321,7 @@ export default function AnalyticsDashboard() {
                                             <LineChart data={sellerTrends.daily_current_month || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                                <YAxis width={60} axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
                                                 <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$ ${val.toLocaleString('es-AR')}`} />
                                                 <Line type="monotone" dataKey="total_amount" name="Ventas" stroke="#4f46e5" strokeWidth={5} dot={{ r: 5, fill: '#4f46e5', strokeWidth: 2, stroke: '#ffffff' }} activeDot={{ r: 7 }} />
                                             </LineChart>
@@ -335,7 +335,7 @@ export default function AnalyticsDashboard() {
                                             <BarChart data={sellerTrends.historical_monthly_sales || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                                 <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 10, fontWeight: 'bold' }} dy={10} />
-                                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                                <YAxis width={60} axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
                                                 <RechartsTooltip contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} formatter={(val: number) => `$ ${val.toLocaleString('es-AR')}`} />
                                                 <Bar dataKey="total_amount" name="Monto Vendido" fill="#818cf8" radius={[6, 6, 0, 0]} maxBarSize={40} />
                                             </BarChart>
@@ -674,24 +674,39 @@ export default function AnalyticsDashboard() {
                             </div>
                             <div className="h-[300px] w-full">
                                 <ResponsiveContainer width="100%" height="100%">
-                                    <ComposedChart data={data.monthly_metrics?.daily_sales?.map((s, idx) => ({ 
-                                        day: s.day, 
-                                        ingresos: s.amount, 
-                                        egresos: data.monthly_metrics?.daily_expenses?.[idx]?.amount || 0,
-                                        neta: s.amount - (data.monthly_metrics?.daily_expenses?.[idx]?.amount || 0)
-                                    })) || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
+                                    <ComposedChart data={data.monthly_metrics?.daily_sales?.map((s, idx) => {
+                                        const ingresosOriginal = s.amount || 0;
+                                        const egresosOriginal = data.monthly_metrics?.daily_expenses?.[idx]?.amount || 0;
+                                        return {
+                                            day: s.day,
+                                            ingresos: ingresosOriginal,
+                                            egresos: -egresosOriginal, // Graph downwards
+                                            neta: ingresosOriginal - egresosOriginal
+                                        };
+                                    }) || []} margin={{ top: 10, right: 30, left: 10, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                         <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                        <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                        <YAxis 
+                                            width={60}
+                                            axisLine={false} 
+                                            tickLine={false} 
+                                            tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} 
+                                            tickFormatter={(val) => {
+                                                const absVal = Math.abs(val);
+                                                if (absVal >= 1000000) return `${val < 0 ? '-' : ''}$${(absVal/1000000).toFixed(1)}M`;
+                                                if (absVal >= 1000) return `${val < 0 ? '-' : ''}$${(absVal/1000).toFixed(0)}k`;
+                                                return `${val < 0 ? '-' : ''}$${absVal}`;
+                                            }} 
+                                        />
                                         <RechartsTooltip
                                             contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                             cursor={{ fill: '#f8fafc' }}
-                                            formatter={(value: number, name: string) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'ingresos' ? 'Ingresos' : name === 'egresos' ? 'Egresos' : 'Balance Neto']}
+                                            formatter={(value: number, name: string) => [`$ ${Math.abs(value).toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'ingresos' ? 'Ingresos' : name === 'egresos' ? 'Egresos' : 'Balance Neto']}
                                             labelFormatter={(label) => `Día: ${label}`}
                                         />
                                         <Legend wrapperStyle={{ paddingTop: "20px" }} />
                                         <Bar dataKey="ingresos" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                        <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                        <Bar dataKey="egresos" name="Egresos" fill="#ef4444" radius={[0, 0, 4, 4]} maxBarSize={40} />
                                         <Line type="monotone" dataKey="neta" name="Balance Neto" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
                                     </ComposedChart>
                                 </ResponsiveContainer>
