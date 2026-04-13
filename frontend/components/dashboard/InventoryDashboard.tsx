@@ -59,6 +59,7 @@ export default function InventoryDashboard() {
     const [pendingPrice, setPendingPrice] = useState<Record<string, number>>({});
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
+    const [includeIvaInCapital, setIncludeIvaInCapital] = useState(false);
     
     // Pagination & History Filter State
     const [auditCurrentPage, setAuditCurrentPage] = useState(1);
@@ -180,6 +181,25 @@ export default function InventoryDashboard() {
         setIsModalOpen(true);
     };
 
+    const handleArchiveProduct = async (sku: string) => {
+        if (!confirm('¿Estás seguro de archivar (borrar) este producto del inventario?')) return;
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${sku}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                setMessage({ type: 'success', text: `Producto ${sku} archivado.` });
+                fetchProducts();
+            } else {
+                setMessage({ type: 'error', text: 'Error al archivar el producto.' });
+            }
+        } catch (error) {
+            setMessage({ type: 'error', text: 'Error de conexión' });
+        }
+    };
+
     const handleCreateProduct = () => {
         setEditingProduct(null);
         setIsModalOpen(true);
@@ -287,7 +307,8 @@ export default function InventoryDashboard() {
 
     const totalCostValueARS = breakdownDetails.reduce((acc, item) => acc + item.total, 0);
     
-    const totalCostValueUSD = totalCostValueARS / numericExchangeRate;
+    const finalCostValueARS = includeIvaInCapital ? totalCostValueARS * 1.21 : totalCostValueARS;
+    const finalCostValueUSD = finalCostValueARS / numericExchangeRate;
 
     // Valor de venta estimado en USD de la base de datos
     const totalSaleValueUSD = products.reduce((acc, p) => acc + ((p.price_usd || 0) * (p.stock_quantity > 0 ? p.stock_quantity : 0)), 0);
@@ -303,10 +324,13 @@ export default function InventoryDashboard() {
                     title="Click para ver el desglose de capital"
                 >
                     <div>
-                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Capital en Mercadería Invertida</p>
-                        <h3 className="text-3xl font-black text-slate-800">$ {totalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
+                        <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-2">
+                            Capital en Mercadería Invertida
+                            {includeIvaInCapital && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[10px] font-black">+ IVA</span>}
+                        </p>
+                        <h3 className="text-3xl font-black text-slate-800">$ {finalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
                         {exchangeRate !== 'Cargando...' && (
-                            <p className="text-xs font-bold text-slate-400 mt-1">U$D {totalCostValueUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
+                            <p className="text-xs font-bold text-slate-400 mt-1">U$D {finalCostValueUSD.toLocaleString('es-AR', { maximumFractionDigits: 2 })}</p>
                         )}
                     </div>
                     <div className="w-14 h-14 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center">
@@ -718,11 +742,22 @@ export default function InventoryDashboard() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
                     <div className="bg-white w-full max-w-3xl max-h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden zoom-in-95 animate-in">
                         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                            <div>
-                                <h3 className="text-xl font-black text-slate-800">Desglose de Capital Invertido</h3>
-                                <p className="text-sm font-medium text-slate-500">
-                                    Total: <span className="text-indigo-600 font-bold">${totalCostValueARS.toLocaleString('es-AR')} ARS</span>
-                                </p>
+                            <div className="flex gap-4 items-center">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-800">Desglose de Capital Invertido</h3>
+                                    <p className="text-sm font-medium text-slate-500">
+                                        Total: <span className="text-indigo-600 font-bold">${finalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</span>
+                                    </p>
+                                </div>
+                                <label className="flex items-center gap-2 cursor-pointer bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={includeIvaInCapital} 
+                                        onChange={e => setIncludeIvaInCapital(e.target.checked)} 
+                                        className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer" 
+                                    />
+                                    <span className="text-xs font-bold text-slate-700">Incluir IVA (+21%)</span>
+                                </label>
                             </div>
                             <button onClick={() => setIsCapitalModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">
                                 <AlertTriangle size={20} className="hidden" /> {/* Para asegurar import, ya lo teníamos */}
@@ -737,11 +772,15 @@ export default function InventoryDashboard() {
                                         <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase text-center">Stock</th>
                                         <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase text-right">Costo Unitario</th>
                                         <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase text-right">Total Invertido</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase text-center w-10"></th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {breakdownDetails.map((item, idx) => (
-                                        <tr key={idx} className="hover:bg-white transition-colors">
+                                    {breakdownDetails.map((item, idx) => {
+                                        const finalItemTotal = includeIvaInCapital ? item.total * 1.21 : item.total;
+                                        const finalItemCost = includeIvaInCapital ? item.realCost * 1.21 : item.realCost;
+                                        return (
+                                        <tr key={idx} className="hover:bg-white transition-colors group">
                                             <td className="px-4 py-3">
                                                 <div className="font-bold text-slate-700">{item.name}</div>
                                                 <div className="text-[10px] text-slate-400 font-mono">{item.sku}</div>
@@ -750,13 +789,22 @@ export default function InventoryDashboard() {
                                                 {item.stock}
                                             </td>
                                             <td className="px-4 py-3 text-right font-medium text-slate-500">
-                                                ${item.realCost.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                                                ${finalItemCost.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
                                             </td>
                                             <td className="px-4 py-3 text-right font-black text-slate-700">
-                                                ${item.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                                ${finalItemTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                            </td>
+                                            <td className="px-4 py-3 text-center">
+                                                <button 
+                                                    onClick={() => handleArchiveProduct(item.sku)}
+                                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                                                    title="Archivar producto"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
                                             </td>
                                         </tr>
-                                    ))}
+                                    )})}
                                     {breakdownDetails.length === 0 && (
                                         <tr>
                                             <td colSpan={4} className="px-4 py-8 text-center text-slate-500 font-medium">
