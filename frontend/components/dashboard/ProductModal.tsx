@@ -173,23 +173,35 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
 
         try {
             const token = localStorage.getItem('token');
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             const url = product
                 ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${product.sku}`
                 : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/`;
 
             const method = product ? 'PUT' : 'POST';
 
-            const response = await fetch(url, {
-                method,
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
+            let response;
+            let retries = 3;
+            while(retries > 0) {
+                try {
+                    response = await fetch(url, {
+                        method,
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(formData)
+                    });
+                    
+                    // If network succeeded (even if 4xx/5xx), break out of retry loop
+                    break;
+                } catch (netErr) {
+                    retries--;
+                    if (retries === 0) throw netErr;
+                    await new Promise(r => setTimeout(r, 1000)); // wait 1s before retry
+                }
+            }
 
-            if (response.ok) {
+            if (response && response.ok) {
                 // Return data has generated sku
                 const savedProduct = await response.json();
                 
@@ -215,12 +227,20 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
 
                 onSave();
                 onClose();
+            } else if (response) {
+                // Not a network error, but a 4xx or 5xx HTTP error
+                try {
+                    const data = await response.json();
+                    setError(data.detail || 'Error al guardar el producto (Backend Error)');
+                } catch (parseErr) {
+                    // Happens if backend returns HTML (e.g. 502 Bad Gateway)
+                    setError('Error interno del servidor. Intente nuevamente.');
+                }
             } else {
-                const data = await response.json();
-                setError(data.detail || 'Error al guardar el producto');
+                setError('No se pudo establecer conexión con el servidor.');
             }
         } catch (err) {
-            setError('Error de conexión con el servidor');
+            setError('Error de conexión con el servidor tras varios intentos.');
         } finally {
             setSaving(false);
         }

@@ -311,6 +311,25 @@ def create_product(
     ))
     return new_product
 
+@router.put("/debug/{sku}")
+def debug_update_product(
+    sku: str,
+    product: schemas.ProductCreate,
+    db: Session = Depends(get_db)
+):
+    try:
+        db_product = crud.get_product(db, sku)
+        if not db_product:
+            return {"error": "Not found"}
+        for key, value in product.model_dump(exclude_unset=True).items():
+            setattr(db_product, key, value)
+        db.commit()
+        db.refresh(db_product)
+        return {"success": True, "product": db_product.sku}
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "traceback": traceback.format_exc()}
+
 @router.put("/{sku}", response_model=schemas.Product)
 def update_product(
     sku: str,
