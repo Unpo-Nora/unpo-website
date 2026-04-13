@@ -86,8 +86,11 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     };
 
     const getProductPrice = (item: Product) => {
+        const usdVal = item.price_usd ? Number(item.price_usd) : 0;
+        const calcPrice = usdVal * exchangeRate;
+        if (calcPrice > 0) return calcPrice;
+        
         if (item.price_wholesale) return Number(item.price_wholesale);
-        if (item.price_usd && exchangeRate > 0) return Number(item.price_usd) * exchangeRate;
         return 0;
     };
 
