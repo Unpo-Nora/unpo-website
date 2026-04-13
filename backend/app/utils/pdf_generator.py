@@ -14,6 +14,9 @@ from .. import models
 import requests
 from io import BytesIO
 
+def format_price(amount):
+    return f"${round(amount):,}".replace(",", ".")
+
 def _process_and_resize_image(img_url, images_dir):
     """
     Helper to fetch, convert to RGB, and resize an image.
@@ -136,8 +139,8 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
             "1",  # BULTO (simplificado)
             str(int(item.quantity)), # UNIDAD
             Paragraph(desc_text, normal_style),
-            f"${item.unit_price:,.2f}",
-            f"${item.total_price:,.2f}"
+            format_price(item.unit_price),
+            format_price(item.total_price)
         ])
         
     # Calculate implicit discount and IVA based on discrepancy
@@ -158,20 +161,20 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
                 best_iva = iva_opt
                 break
                 
-    table_data.append(["", "", "", "SUBTOTAL:", f"${sum_items_raw:,.2f}"])
+    table_data.append(["", "", "", "SUBTOTAL:", format_price(sum_items_raw)])
     
     subtotal_desc = sum_items_raw * (1 - best_d)
     
     if best_d > 0.0:
         desc_amount = sum_items_raw - subtotal_desc
-        table_data.append(["", "", "", f"DESCUENTO ({int(best_d*100)}%):", f"-${desc_amount:,.2f}"])
+        table_data.append(["", "", "", f"DESCUENTO ({int(best_d*100)}%):", "-" + format_price(desc_amount)])
         if not best_iva:
-            table_data.append(["", "", "", "TOTAL FINAL:", f"${target:,.2f}"])
+            table_data.append(["", "", "", "TOTAL FINAL:", format_price(target)])
             
     if best_iva:
         iva_amount = subtotal_desc * 0.21
-        table_data.append(["", "", "", "IVA (21%):", f"+${iva_amount:,.2f}"])
-        table_data.append(["", "", "", "TOTAL FINAL:", f"${target:,.2f}"])
+        table_data.append(["", "", "", "IVA (21%):", "+" + format_price(iva_amount)])
+        table_data.append(["", "", "", "TOTAL FINAL:", format_price(target)])
         
     if best_d == 0.0 and not best_iva:
         # Just simple replacement of TOTAL FINAL since SUBTOTAL is already there
@@ -294,7 +297,7 @@ def generate_catalog_pdf(products, exchange_rate: float = 1450.0) -> bytes:
             else:
                 continue
         
-        price_str = f"${calculated_price:,.2f} + IVA"
+        price_str = f"{format_price(calculated_price)} + IVA"
         valid_products.append((p, price_str))
 
     # Step 2: Parallel Image Processing
