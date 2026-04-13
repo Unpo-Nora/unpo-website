@@ -361,7 +361,7 @@ def generate_catalog_pdf(products, exchange_rate: float = 1450.0) -> bytes:
     CHUNK_SIZE = 50
     for i in range(0, len(all_rows), CHUNK_SIZE):
         chunk = all_rows[i:i + CHUNK_SIZE]
-        t_products = Table([header_row] + chunk, colWidths=[4.2*cm, 2.3*cm, 6.5*cm, 2.5*cm, 2.5*cm], repeatRows=1)
+        t_products = Table([header_row] + chunk, colWidths=[4.2*cm, 2.0*cm, 6.2*cm, 2.4*cm, 3.2*cm], repeatRows=1)
         t_products.setStyle(table_style)
         elements.append(t_products)
         if i + CHUNK_SIZE < len(all_rows):
