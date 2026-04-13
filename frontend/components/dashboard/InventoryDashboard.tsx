@@ -58,6 +58,7 @@ export default function InventoryDashboard() {
     const [pendingStock, setPendingStock] = useState<Record<string, number>>({});
     const [pendingPrice, setPendingPrice] = useState<Record<string, number>>({});
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
     
     // Pagination & History Filter State
     const [auditCurrentPage, setAuditCurrentPage] = useState(1);
@@ -260,7 +261,7 @@ export default function InventoryDashboard() {
     const numericExchangeRate = !isNaN(parseFloat(exchangeRate)) ? parseFloat(exchangeRate) : 1;
 
     // Capital en Mercadería (costos) en ARS (usando price_breakdown o cost_price nativo)
-    const totalCostValueARS = products.reduce((acc, p) => {
+    const breakdownDetails = products.map(p => {
         let realCost = 0;
         
         if (p.price_breakdown && typeof p.price_breakdown.purchase_cost !== 'undefined') {
@@ -276,8 +277,15 @@ export default function InventoryDashboard() {
             realCost = Number(p.cost_price) || 0;
         }
         
-        return acc + (realCost * (p.stock_quantity > 0 ? p.stock_quantity : 0));
-    }, 0);
+        const stock = p.stock_quantity > 0 ? p.stock_quantity : 0;
+        const total = realCost * stock;
+        
+        return { sku: p.sku, name: p.name, realCost, stock, total };
+    }).filter(item => item.total > 0);
+
+    breakdownDetails.sort((a, b) => b.total - a.total);
+
+    const totalCostValueARS = breakdownDetails.reduce((acc, item) => acc + item.total, 0);
     
     const totalCostValueUSD = totalCostValueARS / numericExchangeRate;
 
@@ -289,7 +297,11 @@ export default function InventoryDashboard() {
         <div className="space-y-6">
             {/* Value Check Summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between">
+                <div 
+                    onClick={() => setIsCapitalModalOpen(true)}
+                    className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-indigo-300 hover:shadow-md transition-all group"
+                    title="Click para ver el desglose de capital"
+                >
                     <div>
                         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1">Capital en Mercadería Invertida</p>
                         <h3 className="text-3xl font-black text-slate-800">$ {totalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
@@ -700,6 +712,64 @@ export default function InventoryDashboard() {
                 onSave={handleModalSave}
                 product={editingProduct}
             />
+
+            {/* Capital Modal */}
+            {isCapitalModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white w-full max-w-3xl max-h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden zoom-in-95 animate-in">
+                        <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-800">Desglose de Capital Invertido</h3>
+                                <p className="text-sm font-medium text-slate-500">
+                                    Total: <span className="text-indigo-600 font-bold">${totalCostValueARS.toLocaleString('es-AR')} ARS</span>
+                                </p>
+                            </div>
+                            <button onClick={() => setIsCapitalModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">
+                                <AlertTriangle size={20} className="hidden" /> {/* Para asegurar import, ya lo teníamos */}
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            </button>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 bg-slate-50/30">
+                            <table className="w-full text-left text-sm">
+                                <thead>
+                                    <tr className="border-b border-slate-200">
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Producto</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase text-center">Stock</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase text-right">Costo Unitario</th>
+                                        <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase text-right">Total Invertido</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {breakdownDetails.map((item, idx) => (
+                                        <tr key={idx} className="hover:bg-white transition-colors">
+                                            <td className="px-4 py-3">
+                                                <div className="font-bold text-slate-700">{item.name}</div>
+                                                <div className="text-[10px] text-slate-400 font-mono">{item.sku}</div>
+                                            </td>
+                                            <td className="px-4 py-3 text-center font-bold text-slate-600">
+                                                {item.stock}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-medium text-slate-500">
+                                                ${item.realCost.toLocaleString('es-AR', { maximumFractionDigits: 2 })}
+                                            </td>
+                                            <td className="px-4 py-3 text-right font-black text-slate-700">
+                                                ${item.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    {breakdownDetails.length === 0 && (
+                                        <tr>
+                                            <td colSpan={4} className="px-4 py-8 text-center text-slate-500 font-medium">
+                                                No hay productos con costo registrado en stock.
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div >
     );
 }
