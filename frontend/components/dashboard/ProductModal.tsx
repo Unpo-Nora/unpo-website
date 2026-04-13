@@ -12,7 +12,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
     const [formData, setFormData] = useState({
         sku: '',
         name: '',
-        category_id: 1, // Fallback category (General)
+        category_id: 0, // 0 to force user selection
         description: '',
         stock_quantity: 0,
         cost_price: 0,
@@ -129,7 +129,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
             setFormData({
                 sku: product.sku,
                 name: product.name,
-                category_id: product.category_id || 1,
+                category_id: product.category_id || 0,
                 description: product.description || '',
                 stock_quantity: product.stock_quantity,
                 cost_price: product.cost_price || 0,
@@ -146,7 +146,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
             }
             setExistingImages(product.images || []);
         } else {
-            setFormData({ sku: '', name: '', category_id: 1, description: '', stock_quantity: 0, cost_price: 0, price_usd: 0, iva_percent: 21, is_active: true, price_breakdown: {} });
+            setFormData({ sku: '', name: '', category_id: 0, description: '', stock_quantity: 0, cost_price: 0, price_usd: 0, iva_percent: 21, is_active: true, price_breakdown: {} });
             setExistingImages([]);
         }
         setSelectedFiles([]);
@@ -160,6 +160,11 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
 
         if (!formData.description.trim()) {
             setError("La descripción del producto es obligatoria.");
+            return;
+        }
+
+        if (!formData.category_id) {
+            setError("Debe seleccionar una categoría.");
             return;
         }
 
