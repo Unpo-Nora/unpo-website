@@ -270,7 +270,18 @@ export default function SellerDashboard() {
         };
         const platformFriendlyName = platformMap[lead.platform?.toLowerCase()] || "nuestra página web";
 
-        const message = `Hola ${lead.full_name}, ¿cómo estás? Soy ${sellerFirstName} de UNPO, importadores directos con más de 5 años de trayectoria en el rubro. Te escribo por la consulta que nos hiciste por ${platformFriendlyName}. ¿Tenés unos minutos para que hablemos un rato y te cuente un poco más sobre lo que ofrecemos?`;
+        const message = `Hola ${lead.full_name}, ¿cómo estás?  
+Mi nombre es ${sellerFirstName}, un gusto saludarte.
+
+Te cuento brevemente sobre nosotros, y más abajo te dejo el catálogo con nuestros productos y precios.
+
+En UNPO somos mayoristas de productos de bazar. También trabajamos con artículos de iluminación, decoración, hogar y marroquinería.
+
+Contamos con depósito en Zona Oeste, Buenos Aires (Francisco Álvarez), y realizamos envíos a todo el país.
+
+Nuestro mínimo de compra es de $100.000.  
+Trabajamos con pago en efectivo o transferencia.  
+Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
 
         return `${base}?text=${encodeURIComponent(message)}`;
     };
