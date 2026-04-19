@@ -206,6 +206,13 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
         setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
+    const getImageUrl = (url?: string) => {
+        if (!url) return null;
+        if (url.startsWith('http')) return url;
+        const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
+    };
+
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 overflow-x-hidden overflow-y-auto">
             <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm fixed" onClick={onClose}></div>
@@ -261,9 +268,23 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                             <div key={p.sku} className="p-4 border border-slate-100 rounded-2xl flex items-center justify-between hover:border-blue-200 hover:shadow-md transition-all group">
                                                 <div className="flex items-center gap-4">
                                                     {/* Thumbnail */}
-                                                    <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
+                                                    <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden relative">
                                                         {imgUrl ? (
-                                                            <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${imgUrl}`} alt={p.name} className="w-full h-full object-cover" />
+                                                            <>
+                                                                <img 
+                                                                    src={getImageUrl(imgUrl) || ''} 
+                                                                    alt={p.name} 
+                                                                    className="w-full h-full object-cover" 
+                                                                    onError={(e) => {
+                                                                        e.currentTarget.style.display = 'none';
+                                                                        const nextSibling = e.currentTarget.nextElementSibling;
+                                                                        if (nextSibling) {
+                                                                            nextSibling.classList.remove('hidden');
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <Package size={24} className="text-slate-300 hidden" />
+                                                            </>
                                                         ) : (
                                                             <Package size={24} className="text-slate-300" />
                                                         )}

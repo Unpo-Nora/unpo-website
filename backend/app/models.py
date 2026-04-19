@@ -40,6 +40,15 @@ class Settings(Base):
     key = Column(String, primary_key=True, index=True)
     value = Column(String, nullable=False)
 
+class CapitalIva(Base):
+    __tablename__ = "capital_ivas"
+
+    id = Column(Integer, primary_key=True, index=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=get_ar_time)
+    observation = Column(String, nullable=True)
+    created_by = Column(String, nullable=True)
+
 class Product(Base):
     __tablename__ = "products"
 

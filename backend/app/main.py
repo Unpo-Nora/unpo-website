@@ -228,3 +228,43 @@ def fix_valija_category(db: Session = Depends(get_db)):
         return {"status": "success", "message": f"Migrated {fixed_count} products. Valija category removed.", "new_category": bazar.id}
     except Exception as e:
         return {"error_type": type(e).__name__, "error": str(e)}
+
+@app.get("/migrate_capital_iva_system")
+def migrate_capital_iva_system(db: Session = Depends(get_db)):
+    try:
+        from . import models
+        models.Base.metadata.create_all(bind=engine)
+        
+        count = db.query(models.CapitalIva).count()
+        if count == 0:
+            old_setting = db.query(models.Settings).filter(models.Settings.key == "capital_iva_amount").first()
+            if old_setting and old_setting.value:
+                try:
+                    amount = float(old_setting.value)
+                    if amount > 0:
+                        from datetime import datetime
+                        import pytz
+                        now = datetime.now(pytz.timezone('America/Argentina/Buenos_Aires'))
+                        new_iva = models.CapitalIva(
+                            amount=amount,
+                            created_at=now,
+                            observation="Migrado del sistema anterior",
+                            created_by="system"
+                        )
+                        db.add(new_iva)
+                        db.delete(old_setting)
+                        db.commit()
+                        return {"status": "success", "message": f"Migrated amount {amount} successfully."}
+                except Exception as ex:
+                    return {"status": "error", "message": f"Error parsing amount: {ex}"}
+            else:
+                return {"status": "success", "message": "No old data to migrate."}
+        else:
+            old_setting = db.query(models.Settings).filter(models.Settings.key == "capital_iva_amount").first()
+            if old_setting:
+                db.delete(old_setting)
+                db.commit()
+            return {"status": "success", "message": "Migration already performed."}
+    except Exception as e:
+        db.rollback()
+        return {"error_type": type(e).__name__, "error": str(e)}

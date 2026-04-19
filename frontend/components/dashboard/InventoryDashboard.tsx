@@ -64,7 +64,9 @@ export default function InventoryDashboard() {
     const [pendingPrice, setPendingPrice] = useState<Record<string, number>>({});
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
     const [isCapitalModalOpen, setIsCapitalModalOpen] = useState(false);
-    const [ivaAmountInCapital, setIvaAmountInCapital] = useState<number>(0);
+    const [ivaList, setIvaList] = useState<any[]>([]);
+    const [newIvaAmount, setNewIvaAmount] = useState<number>(0);
+    const [newIvaObs, setNewIvaObs] = useState<string>('');
     
     // Pagination & History Filter State
     const [auditCurrentPage, setAuditCurrentPage] = useState(1);
@@ -142,35 +144,55 @@ export default function InventoryDashboard() {
     const fetchCapitalIva = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_iva_amount`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_ivas/list`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {
                 const data = await response.json();
-                setIvaAmountInCapital(parseFloat(data.value) || 0);
+                setIvaList(data);
             }
         } catch (error) {}
     };
 
-    const handleSaveCapitalIva = async () => {
+    const handleAddCapitalIva = async () => {
+        if (newIvaAmount <= 0) return;
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_iva_amount`, {
-                method: 'PUT',
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_ivas/`, {
+                method: 'POST',
                 headers: { 
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json' 
                 },
-                body: JSON.stringify({ value: ivaAmountInCapital.toString() })
+                body: JSON.stringify({ amount: newIvaAmount, observation: newIvaObs })
             });
             if (response.ok) {
-                setMessage({ type: 'success', text: 'Monto de IVA guardado correctamente.' });
+                setMessage({ type: 'success', text: 'Monto de IVA agregado.' });
+                setNewIvaAmount(0);
+                setNewIvaObs('');
+                fetchCapitalIva();
             } else {
-                setMessage({ type: 'error', text: 'Error al guardar el monto de IVA.' });
+                setMessage({ type: 'error', text: 'Error al agregar IVA.' });
             }
         } catch (error) {
             setMessage({ type: 'error', text: 'Error de conexión' });
         }
+    };
+
+    const handleDeleteCapitalIva = async (id: number) => {
+        if (!confirm("¿Eliminar este registro de IVA? El monto se descontará del total.")) return;
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_ivas/${id}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (response.ok) {
+                fetchCapitalIva();
+            } else {
+                setMessage({ type: 'error', text: 'Error al eliminar IVA.' });
+            }
+        } catch (error) {}
     };
 
     const handleBatchSave = async () => {
@@ -367,7 +389,8 @@ export default function InventoryDashboard() {
 
     const totalCostValueARS = breakdownDetails.reduce((acc, item) => acc + item.total, 0);
     
-    const finalCostValueARS = totalCostValueARS + ivaAmountInCapital;
+    const totalIvaSum = ivaList.reduce((acc, iva) => acc + Number(iva.amount), 0);
+    const finalCostValueARS = totalCostValueARS + totalIvaSum;
     const finalCostValueUSD = finalCostValueARS / numericExchangeRate;
 
     // Valor de venta estimado en USD de la base de datos
@@ -387,7 +410,7 @@ export default function InventoryDashboard() {
                     <div>
                         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-1 flex items-center gap-2">
                             Capital en Mercadería Invertida
-                            {ivaAmountInCapital > 0 && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[10px] font-black">+ IVA</span>}
+                            {totalIvaSum > 0 && <span className="px-2 py-0.5 bg-indigo-100 text-indigo-600 rounded text-[10px] font-black">+ IVA ({ivaList.length})</span>}
                         </p>
                         <h3 className="text-3xl font-black text-slate-800">$ {finalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</h3>
                         {exchangeRate !== 'Cargando...' && (
@@ -494,13 +517,6 @@ export default function InventoryDashboard() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={fetchProducts}
-                        className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all"
-                    >
-                        <RefreshCcw size={18} />
-                        Actualizar
-                    </button>
                     {!isVendedor && (
                     <button
                         onClick={handleCreateProduct}
@@ -830,34 +846,43 @@ export default function InventoryDashboard() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in">
                     <div className="bg-white w-full max-w-3xl max-h-[85vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden zoom-in-95 animate-in">
                         <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                            <div className="flex gap-4 items-center">
+                            <div className="flex gap-4 items-center flex-wrap">
                                 <div>
                                     <h3 className="text-xl font-black text-slate-800">Desglose de Capital Invertido</h3>
                                     <p className="text-sm font-medium text-slate-500">
                                         Total: <span className="text-indigo-600 font-bold">${finalCostValueARS.toLocaleString('es-AR', { maximumFractionDigits: 0 })} ARS</span>
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-2 bg-slate-100 pl-3 pr-2 py-1.5 rounded-xl border border-slate-200">
-                                    <span className="text-xs font-bold text-slate-700">Agregado de IVA:</span>
-                                    <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-sm">
-                                        <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1.5 border-r border-slate-200">$</span>
+                                <div className="flex items-center gap-2 bg-slate-100 pl-3 pr-2 py-1.5 rounded-xl border border-slate-200 flex-wrap">
+                                    <span className="text-xs font-bold text-slate-700 hidden sm:inline">Agregar IVA:</span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex items-center bg-white border border-slate-300 rounded overflow-hidden shadow-sm">
+                                            <span className="text-[10px] font-black text-slate-400 bg-slate-50 px-2 py-1.5 border-r border-slate-200">$</span>
+                                            <input 
+                                                type="number"
+                                                min="0"
+                                                step="1"
+                                                value={newIvaAmount === 0 ? '' : newIvaAmount}
+                                                placeholder="Monto"
+                                                onChange={e => setNewIvaAmount(parseFloat(e.target.value) || 0)}
+                                                className="w-24 px-2 py-1 text-xs text-center font-black text-indigo-700 outline-none" 
+                                            />
+                                        </div>
                                         <input 
-                                            type="number"
-                                            min="0"
-                                            step="1"
-                                            value={ivaAmountInCapital === 0 ? '' : ivaAmountInCapital}
-                                            placeholder="0"
-                                            onChange={e => setIvaAmountInCapital(parseFloat(e.target.value) || 0)}
-                                            className="w-24 px-2 py-1 text-xs text-center font-black text-indigo-700 outline-none" 
+                                            type="text"
+                                            value={newIvaObs}
+                                            placeholder="Obs (Opcional)"
+                                            onChange={e => setNewIvaObs(e.target.value)}
+                                            className="w-28 px-2 py-1 text-xs border border-slate-300 rounded outline-none text-slate-600" 
                                         />
+                                        <button 
+                                            onClick={handleAddCapitalIva}
+                                            disabled={newIvaAmount <= 0}
+                                            className="px-3 py-1 bg-indigo-600 text-white rounded shadow text-xs font-bold hover:bg-indigo-700 transition flex items-center gap-1 disabled:opacity-50"
+                                        >
+                                            <Plus size={12} /> Agregar
+                                        </button>
                                     </div>
-                                    <button 
-                                        onClick={handleSaveCapitalIva}
-                                        className="ml-1 px-3 py-1 bg-indigo-600 text-white rounded shadow text-xs font-bold hover:bg-indigo-700 transition flex items-center gap-1"
-                                        title="Guardar IVA para todos los usuarios"
-                                    >
-                                        <CheckCircle2 size={12} /> Guardar
-                                    </button>
                                 </div>
                             </div>
                             <button onClick={() => setIsCapitalModalOpen(false)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-200 rounded-xl transition-colors">
@@ -904,17 +929,28 @@ export default function InventoryDashboard() {
                                             </td>
                                         </tr>
                                     )})}
-                                    {ivaAmountInCapital > 0 && (
-                                        <tr className="bg-indigo-50/50">
-                                            <td colSpan={3} className="px-4 py-3 text-right font-bold text-slate-600">
-                                                IVA Añadido Manualmente:
+                                    {ivaList.map((iva, idx) => (
+                                        <tr key={`iva-${iva.id || idx}`} className="bg-indigo-50/50 group">
+                                            <td colSpan={3} className="px-4 py-3 text-right font-bold text-slate-600 flex justify-end items-center gap-2">
+                                                <span>IVA Añadido: {iva.observation && <span className="text-xs font-normal text-slate-500">({iva.observation})</span>}</span>
+                                                <span className="text-[10px] font-mono text-slate-400 bg-white px-1 rounded border border-slate-200">
+                                                    {new Date(iva.created_at).toLocaleDateString('es-AR')}
+                                                </span>
                                             </td>
                                             <td className="px-4 py-3 text-right font-black text-indigo-700">
-                                                ${ivaAmountInCapital.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                                                ${Number(iva.amount).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                                             </td>
-                                            <td></td>
+                                            <td className="px-4 py-3 text-center">
+                                                <button 
+                                                    onClick={() => handleDeleteCapitalIva(iva.id)}
+                                                    className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                                    title="Eliminar IVA"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </td>
                                         </tr>
-                                    )}
+                                    ))}
                                     {breakdownDetails.length === 0 && (
                                         <tr>
                                             <td colSpan={4} className="px-4 py-8 text-center text-slate-500 font-medium">

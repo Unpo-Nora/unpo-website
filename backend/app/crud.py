@@ -71,6 +71,25 @@ def update_setting(db: Session, key: str, value: str):
     db.refresh(setting)
     return setting
 
+# --- Capital IVA ---
+def get_capital_ivas(db: Session):
+    return db.query(models.CapitalIva).order_by(models.CapitalIva.created_at.desc()).all()
+
+def create_capital_iva(db: Session, iva: schemas.CapitalIvaCreate, user_email: str):
+    db_iva = models.CapitalIva(**iva.model_dump(), created_by=user_email)
+    db.add(db_iva)
+    db.commit()
+    db.refresh(db_iva)
+    return db_iva
+
+def delete_capital_iva(db: Session, iva_id: int):
+    db_iva = db.query(models.CapitalIva).filter(models.CapitalIva.id == iva_id).first()
+    if db_iva:
+        db.delete(db_iva)
+        db.commit()
+        return True
+    return False
+
 # --- Leads ---
 def create_lead(db: Session, lead: schemas.LeadCreate):
     db_lead = models.Lead(**lead.model_dump())

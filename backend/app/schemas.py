@@ -168,6 +168,23 @@ class Settings(SettingsBase):
     class Config:
         from_attributes = True
 
+# --- Capital IVA ---
+
+class CapitalIvaBase(BaseModel):
+    amount: Decimal
+    observation: Optional[str] = None
+
+class CapitalIvaCreate(CapitalIvaBase):
+    pass
+
+class CapitalIva(CapitalIvaBase):
+    id: int
+    created_at: datetime
+    created_by: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 # --- Analytics / Expenses ---
 
 class ExpenseBase(BaseModel):

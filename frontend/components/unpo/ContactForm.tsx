@@ -6,6 +6,7 @@ import { Send, Loader2, CheckCircle } from 'lucide-react';
 export default function ContactForm() {
     const [isLoading, setIsLoading] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
+    const [whatsappLink, setWhatsappLink] = useState('');
     const [formData, setFormData] = useState({
         full_name: '',
         email: '',
@@ -47,7 +48,10 @@ export default function ContactForm() {
                 const text = `Hola! Acabo de completar el formulario en la web de UNPO.
 Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* y busco asesoramiento sobre *${formData.category_interest}*.`;
                 const encodedText = encodeURIComponent(text);
-                window.open(`https://wa.me/5491144227969?text=${encodedText}`, '_blank');
+                const link = `https://wa.me/5491144227969?text=${encodedText}`;
+                setWhatsappLink(link);
+                // Usar window.location.href en lugar de window.open para evitar bloqueos en iOS/Safari
+                window.location.href = link;
 
                 setIsSuccess(true);
                 setFormData({
@@ -78,15 +82,27 @@ Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* 
                     <CheckCircle className="w-16 h-16 text-green-500" />
                 </div>
                 <h3 className="text-2xl font-bold text-green-800 mb-2">¡Mensaje Enviado!</h3>
-                <p className="text-green-700">
-                    Gracias por contactarnos. Un asesor comercial revisará tu perfil y te contactará a la brevedad.
+                <p className="text-green-700 mb-6">
+                    Gracias por contactarnos. Un asesor comercial revisará tu perfil.
                 </p>
-                <button
-                    onClick={() => setIsSuccess(false)}
-                    className="mt-6 text-green-600 hover:text-green-800 font-medium underline"
+                
+                <a
+                    href={whatsappLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center justify-center space-x-2 w-full sm:w-auto px-8 py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-all shadow-md hover:shadow-lg mb-6"
                 >
-                    Enviar otro mensaje
-                </button>
+                    <span>Continuar por WhatsApp</span>
+                </a>
+
+                <div className="mt-4">
+                    <button
+                        onClick={() => setIsSuccess(false)}
+                        className="text-green-600 hover:text-green-800 font-medium underline text-sm"
+                    >
+                        Enviar otro mensaje
+                    </button>
+                </div>
             </div>
         );
     }
