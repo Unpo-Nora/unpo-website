@@ -16,7 +16,9 @@ import {
     Trash2,
     Download,
     XCircle,
-    Users
+    Users,
+    ChevronDown,
+    ChevronUp
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import CloseSaleModal from './CloseSaleModal';
@@ -77,6 +79,9 @@ export default function SellerDashboard() {
     const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
     const [deleteReason, setDeleteReason] = useState("No contesta llamados ni mensajes");
     const [isDeleting, setIsDeleting] = useState(false);
+
+    // Mobile Card Accordion State
+    const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
 
     useEffect(() => {
         fetchLeads();
@@ -435,31 +440,33 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                     <p className="text-slate-500">Administra y contacta a tus potenciales clientes de UNPO</p>
                 </div>
 
-                <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-slate-100 self-start">
-                    <button
-                        onClick={handleDownloadCatalog}
-                        className="px-6 py-2 mr-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200"
-                        title="Descargar Catálogo en stock (PDF)"
-                    >
-                        <Download size={18} />
-                        Catálogo PDF
-                    </button>
-                    <button
-                        onClick={() => { setActiveTab("NEW"); setCurrentPage(1); }}
-                        className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "NEW" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
-                            }`}
-                    >
+                <div className="flex bg-white rounded-2xl p-1 shadow-sm border border-slate-100 self-start overflow-x-auto custom-scrollbar w-full md:w-auto">
+                    <div className="flex shrink-0">
+                        <button
+                            onClick={handleDownloadCatalog}
+                            className="px-5 py-2.5 mr-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 whitespace-nowrap"
+                            title="Descargar Catálogo en stock (PDF)"
+                        >
+                            <Download size={18} />
+                            Catálogo PDF
+                        </button>
+                        <button
+                            onClick={() => { setActiveTab("NEW"); setCurrentPage(1); }}
+                            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "NEW" ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
+                                }`}
+                        >
                         <UserPlus size={18} />
                         Nuevos ({leads.filter(l => l.status === 'NEW').length})
                     </button>
-                    <button
-                        onClick={() => { setActiveTab("CONTACTED"); setCurrentPage(1); }}
-                        className={`px-6 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "CONTACTED" ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
-                            }`}
-                    >
-                        <History size={18} />
-                        Contactados ({leads.filter(l => l.status === 'CONTACTED').length})
-                    </button>
+                        <button
+                            onClick={() => { setActiveTab("CONTACTED"); setCurrentPage(1); }}
+                            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === "CONTACTED" ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:bg-slate-50'
+                                }`}
+                        >
+                            <History size={18} />
+                            Contactados ({leads.filter(l => l.status === 'CONTACTED').length})
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -520,8 +527,8 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                     )}
                 </div>
 
-                {/* Table */}
-                <div className="overflow-x-auto">
+                {/* Desktop Table */}
+                <div className="overflow-x-auto hidden lg:block">
                     <table className="w-full text-left">
                         <thead className="bg-slate-50/50 text-slate-500 text-[11px] uppercase tracking-widest font-black">
                             <tr>
@@ -660,6 +667,149 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                             ))}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Mobile / Tablet Cards */}
+                <div className="lg:hidden p-4 sm:p-6 bg-slate-50/50">
+                    {loading ? (
+                        <div className="text-center py-10 text-slate-400 font-medium">Cargando base de datos...</div>
+                    ) : paginatedLeads.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400 font-medium">No se encontraron registros</div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {paginatedLeads.map(lead => (
+                                <div key={lead.id} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                                    {/* Card Header */}
+                                    <div className="p-4 border-b border-slate-100 flex justify-between items-start gap-2">
+                                        <div className="flex-1">
+                                            <h3 className="font-black text-slate-900 text-lg leading-tight">{lead.full_name}</h3>
+                                            <a href={`tel:${lead.phone}`} className="text-slate-600 font-bold mt-1 inline-block text-sm hover:text-blue-600 transition-colors">
+                                                {lead.phone}
+                                            </a>
+                                        </div>
+                                        <div className="shrink-0 text-right">
+                                            {activeTab === "NEW" ? (
+                                                <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase bg-blue-50 text-blue-600 border border-blue-100">Nuevo</span>
+                                            ) : (
+                                                getFeedbackBadge(lead.feedback_status)
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    {/* Card Body */}
+                                    <div className="p-4 flex flex-col gap-3">
+                                        <div className="flex items-center gap-2">
+                                            <Tag size={16} className="text-blue-500 shrink-0" />
+                                            <span className="text-sm font-bold text-slate-700 truncate">{lead.product_interest || lead.category_interest || "General"}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase border ${lead.platform?.includes('ig') ? 'bg-pink-50 text-pink-600 border-pink-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'}`}>
+                                                {lead.platform || 'WEB'}
+                                            </span>
+                                            <div className="text-xs font-bold text-slate-500 flex items-center gap-1">
+                                                <History size={12} />
+                                                {activeTab === "NEW" 
+                                                    ? ((lead.lead_date || lead.created_at) ? new Date(lead.lead_date || lead.created_at as string).toLocaleDateString('es-AR') : "-")
+                                                    : (lead.contacted_at ? new Date(lead.contacted_at).toLocaleDateString('es-AR') : "-")
+                                                }
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Primary Action */}
+                                        <button
+                                            onClick={() => {
+                                                if (activeTab === "NEW") {
+                                                    handleWhatsAppClick(lead);
+                                                } else {
+                                                    window.open(getWhatsAppLink(lead), 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes');
+                                                }
+                                            }}
+                                            className="w-full mt-2 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-all active:scale-95"
+                                        >
+                                            <MessageCircle size={18} />
+                                            {activeTab === "NEW" ? 'Contactar por WhatsApp' : 'Ver Chat'}
+                                        </button>
+                                        
+                                        {/* Toggle Accordion */}
+                                        <button 
+                                            onClick={() => setExpandedCardId(expandedCardId === lead.id ? null : lead.id)}
+                                            className="mt-1 w-full py-2 text-xs font-bold text-slate-400 hover:text-slate-600 flex items-center justify-center gap-1"
+                                        >
+                                            {expandedCardId === lead.id ? 'Ocultar detalles' : 'Ver más y opciones'}
+                                            {expandedCardId === lead.id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                        </button>
+                                    </div>
+                                    
+                                    {/* Expanded Content */}
+                                    {expandedCardId === lead.id && (
+                                        <div className="border-t border-slate-100 bg-slate-50 p-4 flex flex-col gap-4 animate-in slide-in-from-top-2">
+                                            {/* Extra Info */}
+                                            <div className="space-y-2 text-xs">
+                                                {lead.email && (
+                                                    <div className="flex gap-2">
+                                                        <span className="font-bold text-slate-500 w-16">Email:</span>
+                                                        <span className="text-slate-700 break-all">{lead.email}</span>
+                                                    </div>
+                                                )}
+                                                {lead.seller && (
+                                                    <div className="flex gap-2">
+                                                        <span className="font-bold text-slate-500 w-16">Vendedor:</span>
+                                                        <span className="text-slate-700 font-bold">{lead.seller.split('@')[0]}</span>
+                                                    </div>
+                                                )}
+                                                {lead.notes && (
+                                                    <div className="mt-2 bg-white p-3 border border-slate-200 rounded-xl italic text-slate-600">
+                                                        "{lead.notes}"
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Secondary Actions */}
+                                            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
+                                                {activeTab === "NEW" ? (
+                                                    <button
+                                                        onClick={() => setLeadToDelete(lead)}
+                                                        className="flex-1 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                                    >
+                                                        <Trash2 size={14} /> Eliminar
+                                                    </button>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleOpenFeedbackModal(lead)}
+                                                            className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                                                        >
+                                                            <Save size={14} /> Feedback
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setLeadToClose(lead)}
+                                                            className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-sm"
+                                                        >
+                                                            <CheckCircle size={14} /> Cerrar Venta
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleRevertToNew(lead)}
+                                                            className="px-3 py-2 bg-white border border-amber-200 text-amber-500 hover:bg-amber-50 rounded-lg transition-colors shadow-sm"
+                                                            title="Mover a Nuevos"
+                                                        >
+                                                            <RotateCcw size={16} />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setLeadToDelete(lead)}
+                                                            className="px-3 py-2 bg-white border border-rose-200 text-rose-500 hover:bg-rose-50 rounded-lg transition-colors shadow-sm"
+                                                            title="Eliminar Registro"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 {/* Pagination Footer */}
