@@ -213,3 +213,106 @@ class Employee(Base):
     
     user = relationship("User", backref="employee_profile")
 
+class TransactionType(str, enum.Enum):
+    INGRESO = "INGRESO"
+    EGRESO = "EGRESO"
+    CUENTA_POR_PAGAR = "CUENTA_POR_PAGAR"
+    PAGO = "PAGO"
+
+class TransactionCategory(str, enum.Enum):
+    MERCADERIA = "MERCADERIA"
+    DEPOSITO = "DEPOSITO"
+    OPERATIVO = "OPERATIVO"
+    LOGISTICA = "LOGISTICA"
+    IMPUESTOS = "IMPUESTOS"
+    OTROS = "OTROS"
+
+class TransactionStatus(str, enum.Enum):
+    PENDIENTE = "PENDIENTE"
+    PAGADO = "PAGADO"
+    VENCIDO = "VENCIDO"
+
+class PurchasePaymentType(str, enum.Enum):
+    CONTADO = "CONTADO"
+    DIAS_30 = "30_DIAS"
+    DIAS_60 = "60_DIAS"
+
+class PurchaseStatus(str, enum.Enum):
+    PENDIENTE = "PENDIENTE"
+    PARCIAL = "PARCIAL"
+    PAGADO = "PAGADO"
+
+class CostType(str, enum.Enum):
+    PRODUCTO = "PRODUCTO"
+    FLETE = "FLETE"
+    IMPUESTOS = "IMPUESTOS"
+    OTROS = "OTROS"
+
+class Supplier(Base):
+    __tablename__ = "suppliers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    nombre = Column(String, index=True, nullable=False)
+    contacto = Column(String, nullable=True)
+    telefono = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+
+    purchases = relationship("Purchase", back_populates="supplier")
+
+class Purchase(Base):
+    __tablename__ = "purchases"
+
+    id = Column(Integer, primary_key=True, index=True)
+    proveedor_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    descripcion = Column(String, nullable=True)
+    cantidad_total = Column(Integer, default=0)
+    monto_total = Column(Numeric(12, 2), default=0.0)
+    moneda = Column(String, default="ARS")
+    fecha_compra = Column(DateTime(timezone=True), default=get_ar_time)
+    tipo_pago = Column(Enum(PurchasePaymentType), default=PurchasePaymentType.CONTADO)
+    estado = Column(Enum(PurchaseStatus), default=PurchaseStatus.PENDIENTE)
+
+    supplier = relationship("Supplier", back_populates="purchases")
+    cost_details = relationship("PurchaseCostDetail", back_populates="purchase", cascade="all, delete-orphan")
+    items = relationship("PurchaseItem", back_populates="purchase", cascade="all, delete-orphan")
+
+class PurchaseCostDetail(Base):
+    __tablename__ = "purchase_cost_details"
+
+    id = Column(Integer, primary_key=True, index=True)
+    compra_id = Column(Integer, ForeignKey("purchases.id"), nullable=False)
+    tipo_costo = Column(Enum(CostType), nullable=False)
+    monto = Column(Numeric(12, 2), nullable=False)
+
+    purchase = relationship("Purchase", back_populates="cost_details")
+
+class PurchaseItem(Base):
+    __tablename__ = "purchase_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    compra_id = Column(Integer, ForeignKey("purchases.id"), nullable=False)
+    product_sku = Column(String, ForeignKey("products.sku"), nullable=False)
+    cantidad = Column(Integer, nullable=False)
+
+    purchase = relationship("Purchase", back_populates="items")
+    product = relationship("Product")
+
+class FinancialTransaction(Base):
+    __tablename__ = "financial_transactions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tipo_movimiento = Column(Enum(TransactionType), nullable=False)
+    categoria = Column(Enum(TransactionCategory), nullable=False)
+    descripcion = Column(String, nullable=False)
+    monto = Column(Numeric(12, 2), nullable=False)
+    moneda = Column(String, default="ARS")
+    fecha = Column(DateTime(timezone=True), default=get_ar_time)
+    fecha_vencimiento = Column(DateTime(timezone=True), nullable=True)
+    estado = Column(Enum(TransactionStatus), default=TransactionStatus.PAGADO)
+    
+    proveedor_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    compra_id = Column(Integer, ForeignKey("purchases.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=get_ar_time)
+
+    supplier = relationship("Supplier")
+    purchase = relationship("Purchase")

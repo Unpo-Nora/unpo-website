@@ -14,7 +14,8 @@ import {
     Star,
     MonitorSmartphone,
     X,
-    Briefcase
+    Briefcase,
+    DollarSign
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -55,9 +56,9 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
             roles: ['admin']
         },
         {
-            title: 'Compras y Egresos',
+            title: 'Finanzas y Compras',
             path: '/admin/purchases',
-            icon: <FileUp size={20} />, // Can change icon later if needed, FileUp is used in Import, we can use DollarSign but it's not imported. Let's just use Settings or something imported? Wait, FileUp is already used.
+            icon: <DollarSign size={20} />,
             roles: ['admin']
         },
         {

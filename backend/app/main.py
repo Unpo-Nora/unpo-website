@@ -54,9 +54,10 @@ app.include_router(auth.router)
 app.include_router(analytics.router)
 app.include_router(sales.router)
 app.include_router(settings.router)
-from .routers import users, hr
+from .routers import users, hr, finance
 app.include_router(users.router)
 app.include_router(hr.router)
+app.include_router(finance.router)
 
 # Mount static images and videos
 images_path = "data/images"
@@ -155,6 +156,44 @@ def wipe_audit_logs(db: Session = Depends(get_db)):
         db.query(models.InventoryAuditLog).delete()
         db.commit()
         return {"status": "success", "message": "All logs deleted"}
+    except Exception as e:
+        return {"error_type": type(e).__name__, "error": str(e)}
+
+@app.get("/migrate_finance_schema_and_data")
+def migrate_finance_schema_and_data(db: Session = Depends(get_db)):
+    try:
+        from . import models
+        # Ensures tables exist
+        models.Base.metadata.create_all(bind=engine)
+        
+        # Migrate old expenses to new FinancialTransaction
+        expenses = db.query(models.Expense).all()
+        migrated_count = 0
+        
+        for exp in expenses:
+            # Check if this expense is already migrated (assuming duplicate dates/amounts might mean so, but safer to check if table is empty or just insert)
+            existing = db.query(models.FinancialTransaction).filter(
+                models.FinancialTransaction.monto == exp.amount,
+                models.FinancialTransaction.descripcion == exp.description,
+                models.FinancialTransaction.fecha == exp.date
+            ).first()
+            
+            if not existing:
+                tx = models.FinancialTransaction(
+                    tipo_movimiento=models.TransactionType.EGRESO,
+                    categoria=models.TransactionCategory.OPERATIVO,
+                    descripcion=exp.description,
+                    monto=exp.amount,
+                    moneda="ARS",
+                    fecha=exp.date,
+                    estado=models.TransactionStatus.PAGADO,
+                    created_at=exp.date
+                )
+                db.add(tx)
+                migrated_count += 1
+                
+        db.commit()
+        return {"status": "success", "message": f"Successfully migrated {migrated_count} expenses to FinancialTransaction."}
     except Exception as e:
         return {"error_type": type(e).__name__, "error": str(e)}
 

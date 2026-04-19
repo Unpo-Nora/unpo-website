@@ -198,3 +198,124 @@ class InventoryAuditLog(InventoryAuditLogBase):
     
     class Config:
         from_attributes = True
+
+# --- Finance / Accounting Schemas ---
+from enum import Enum
+
+class TransactionType(str, Enum):
+    INGRESO = "INGRESO"
+    EGRESO = "EGRESO"
+    CUENTA_POR_PAGAR = "CUENTA_POR_PAGAR"
+    PAGO = "PAGO"
+
+class TransactionCategory(str, Enum):
+    MERCADERIA = "MERCADERIA"
+    DEPOSITO = "DEPOSITO"
+    OPERATIVO = "OPERATIVO"
+    LOGISTICA = "LOGISTICA"
+    IMPUESTOS = "IMPUESTOS"
+    OTROS = "OTROS"
+
+class TransactionStatus(str, Enum):
+    PENDIENTE = "PENDIENTE"
+    PAGADO = "PAGADO"
+    VENCIDO = "VENCIDO"
+
+class PurchasePaymentType(str, Enum):
+    CONTADO = "CONTADO"
+    DIAS_30 = "30_DIAS"
+    DIAS_60 = "60_DIAS"
+
+class PurchaseStatus(str, Enum):
+    PENDIENTE = "PENDIENTE"
+    PARCIAL = "PARCIAL"
+    PAGADO = "PAGADO"
+
+class CostType(str, Enum):
+    PRODUCTO = "PRODUCTO"
+    FLETE = "FLETE"
+    IMPUESTOS = "IMPUESTOS"
+    OTROS = "OTROS"
+
+class SupplierBase(BaseModel):
+    nombre: str
+    contacto: Optional[str] = None
+    telefono: Optional[str] = None
+    email: Optional[str] = None
+
+class SupplierCreate(SupplierBase):
+    pass
+
+class Supplier(SupplierBase):
+    id: int
+    class Config:
+        from_attributes = True
+
+class PurchaseCostDetailBase(BaseModel):
+    tipo_costo: CostType
+    monto: Decimal
+
+class PurchaseCostDetailCreate(PurchaseCostDetailBase):
+    pass
+
+class PurchaseCostDetail(PurchaseCostDetailBase):
+    id: int
+    compra_id: int
+    class Config:
+        from_attributes = True
+
+class PurchaseItemBase(BaseModel):
+    product_sku: str
+    cantidad: int
+
+class PurchaseItemCreate(PurchaseItemBase):
+    pass
+
+class PurchaseItem(PurchaseItemBase):
+    id: int
+    compra_id: int
+    class Config:
+        from_attributes = True
+
+class PurchaseBase(BaseModel):
+    proveedor_id: Optional[int] = None
+    descripcion: Optional[str] = None
+    cantidad_total: Optional[int] = 0
+    monto_total: Optional[Decimal] = 0.0
+    moneda: Optional[str] = "ARS"
+    fecha_compra: Optional[datetime] = None
+    tipo_pago: Optional[PurchasePaymentType] = PurchasePaymentType.CONTADO
+
+class PurchaseCreate(PurchaseBase):
+    cost_details: List[PurchaseCostDetailCreate] = []
+    items: List[PurchaseItemCreate] = []
+
+class Purchase(PurchaseBase):
+    id: int
+    estado: PurchaseStatus
+    cost_details: List[PurchaseCostDetail] = []
+    items: List[PurchaseItem] = []
+    costo_real_unitario: Optional[Decimal] = None # Calculated field to return
+    class Config:
+        from_attributes = True
+
+class FinancialTransactionBase(BaseModel):
+    tipo_movimiento: TransactionType
+    categoria: TransactionCategory
+    descripcion: str
+    monto: Decimal
+    moneda: Optional[str] = "ARS"
+    fecha: Optional[datetime] = None
+    fecha_vencimiento: Optional[datetime] = None
+    estado: Optional[TransactionStatus] = TransactionStatus.PAGADO
+    proveedor_id: Optional[int] = None
+    compra_id: Optional[int] = None
+
+class FinancialTransactionCreate(FinancialTransactionBase):
+    pass
+
+class FinancialTransaction(FinancialTransactionBase):
+    id: int
+    created_at: datetime
+    class Config:
+        from_attributes = True

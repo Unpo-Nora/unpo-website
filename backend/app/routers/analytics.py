@@ -291,12 +291,19 @@ def get_analytics_summary(
     ).scalar()
     monthly_total_sales = float(raw_monthly_sales_amount or 0)
 
-    raw_monthly_expenses = db.query(
-        func.sum(models.Expense.amount)
-    ).filter(
-        models.Expense.date >= current_month_start
-    ).scalar()
-    monthly_total_expenses = float(raw_monthly_expenses or 0)
+    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
+    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
+
+    monthly_tx_expenses = db.query(models.FinancialTransaction).filter(
+        models.FinancialTransaction.fecha >= current_month_start,
+        models.FinancialTransaction.tipo_movimiento.in_([models.TransactionType.EGRESO, models.TransactionType.PAGO])
+    ).all()
+    monthly_total_expenses = 0.0
+    for tx in monthly_tx_expenses:
+        amt = float(tx.monto)
+        if tx.moneda == "USD":
+            amt *= exchange_rate
+        monthly_total_expenses += amt
 
     # F. Historical Sales & Expenses (Last 12 months)
     all_completed_sales = db.query(
@@ -306,9 +313,10 @@ def get_analytics_summary(
         models.SaleOrder.status == models.SaleOrderStatus.COMPLETED
     ).all()
 
-    all_expenses = db.query(
-        models.Expense.date,
-        models.Expense.amount
+    all_expenses_tx = db.query(
+        models.FinancialTransaction
+    ).filter(
+        models.FinancialTransaction.tipo_movimiento.in_([models.TransactionType.EGRESO, models.TransactionType.PAGO])
     ).all()
 
     monthly_stats_dict = {}
@@ -321,12 +329,16 @@ def get_analytics_summary(
         monthly_stats_dict[month_key]["amount"] += float(amount or 0)
         monthly_stats_dict[month_key]["count"] += 1
 
-    for e_date, amount in all_expenses:
-        if not e_date: continue
-        month_key = e_date.strftime("%Y-%m")
+    for extx in all_expenses_tx:
+        if not extx.fecha: continue
+        month_key = extx.fecha.strftime("%Y-%m")
         if month_key not in monthly_stats_dict:
             monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0}
-        monthly_stats_dict[month_key]["expenses"] += float(amount or 0)
+        
+        amt = float(extx.monto)
+        if extx.moneda == "USD":
+            amt *= exchange_rate
+        monthly_stats_dict[month_key]["expenses"] += amt
 
     historical_monthly_sales = [
         {
@@ -357,24 +369,25 @@ def get_analytics_summary(
             daily_orders_stats[day_str] += 1
 
     current_month_expenses_query = db.query(
-        models.Expense.date,
-        models.Expense.amount
+        models.FinancialTransaction
     ).filter(
-        models.Expense.date >= current_month_start
+        models.FinancialTransaction.fecha >= current_month_start,
+        models.FinancialTransaction.tipo_movimiento.in_([models.TransactionType.EGRESO, models.TransactionType.PAGO])
     ).all()
 
-    for e_date, e_amount in current_month_expenses_query:
-        if e_date:
-            day_str = str(e_date.day)
-            daily_expenses_stats[day_str] += float(e_amount or 0)
+    for extx in current_month_expenses_query:
+        if extx.fecha:
+            day_str = str(extx.fecha.day)
+            amt = float(extx.monto)
+            if extx.moneda == "USD":
+                amt *= exchange_rate
+            daily_expenses_stats[day_str] += amt
 
     daily_sales_data = [{"day": k, "amount": v} for k, v in daily_sales_stats.items()]
     daily_expenses_data = [{"day": k, "amount": v} for k, v in daily_expenses_stats.items()]
     daily_orders_data = [{"day": k, "count": v} for k, v in daily_orders_stats.items()]
 
-    # 9. Stock Valuation
-    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
-    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
+    # Exchange rate is now fetched at the beginning of this function
 
     raw_stock_value = db.query(
         models.Product.name,
@@ -547,13 +560,20 @@ def get_historical_analytics(
     sales_amount = float(sales_q[1] or 0)
 
     # Gastos en ese mes historico
-    raw_hist_expenses = db.query(
-        func.sum(models.Expense.amount)
-    ).filter(
-        models.Expense.date >= start_date,
-        models.Expense.date <= end_date
-    ).scalar()
-    historical_expenses = float(raw_hist_expenses or 0)
+    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
+    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
+    
+    hist_txs = db.query(models.FinancialTransaction).filter(
+        models.FinancialTransaction.fecha >= start_date,
+        models.FinancialTransaction.fecha <= end_date,
+        models.FinancialTransaction.tipo_movimiento.in_([models.TransactionType.EGRESO, models.TransactionType.PAGO])
+    ).all()
+    historical_expenses = 0.0
+    for htx in hist_txs:
+        amt = float(htx.monto)
+        if htx.moneda == "USD":
+            amt *= exchange_rate
+        historical_expenses += amt
 
     # 2. Leads ingresados
     leads_entered = db.query(models.Lead).filter(
