@@ -56,6 +56,15 @@ export default function PurchasesDashboard() {
         fetchAllData();
     }, []);
 
+    const handleMontoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        let val = e.target.value.replace(/\D/g, ''); // Solo números
+        if (val) {
+            // Formatear con separadores de miles
+            val = new Intl.NumberFormat('es-AR').format(parseInt(val, 10));
+        }
+        setTxForm({...txForm, monto: val});
+    };
+
     const handleCreateTransaction = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
@@ -67,7 +76,7 @@ export default function PurchasesDashboard() {
                     tipo_movimiento: txForm.tipo,
                     categoria: txForm.categoria,
                     descripcion: txForm.descripcion,
-                    monto: parseFloat(txForm.monto),
+                    monto: parseFloat(txForm.monto.replace(/\./g, '')), // Quitar puntos de miles
                     moneda: txForm.moneda,
                     fecha: txForm.fecha ? new Date(txForm.fecha + 'T12:00:00').toISOString() : undefined
                 })
@@ -255,17 +264,22 @@ export default function PurchasesDashboard() {
                                         <label className="text-xs font-bold text-slate-400 uppercase">Descripción</label>
                                         <input required value={txForm.descripcion} onChange={e => setTxForm({...txForm, descripcion: e.target.value})} placeholder="Ej: Pago alquiler, Venta extra..." className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-medium text-slate-700" />
                                     </div>
-                                    <div className="space-y-1 flex gap-2">
-                                        <div className="flex-1">
-                                            <label className="text-xs font-bold text-slate-400 uppercase">Monto</label>
-                                            <input required type="number" step="0.01" value={txForm.monto} onChange={e => setTxForm({...txForm, monto: e.target.value})} placeholder="0.00" className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-bold text-right" />
-                                        </div>
-                                        <div className="w-24">
-                                            <label className="text-xs font-bold text-slate-400 uppercase">Moneda</label>
-                                            <select value={txForm.moneda} onChange={e => setTxForm({...txForm, moneda: e.target.value})} className="w-full p-3 bg-white border border-slate-200 rounded-xl outline-none font-bold text-slate-700">
-                                                <option value="ARS">ARS</option>
-                                                <option value="USD">USD</option>
-                                            </select>
+                                    <div className="md:col-span-6 bg-white p-5 rounded-2xl border border-slate-200 mt-2 mb-2 shadow-sm">
+                                        <div className="flex flex-col md:flex-row gap-6 items-start md:items-center">
+                                            <div className="flex-1 w-full">
+                                                <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Monto del Movimiento</label>
+                                                <div className="relative flex items-center">
+                                                    <span className="absolute left-6 text-2xl font-black text-slate-400">$</span>
+                                                    <input required type="text" value={txForm.monto} onChange={handleMontoChange} placeholder="0" className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-200 focus:border-blue-500 rounded-xl outline-none text-3xl md:text-5xl font-black text-right text-slate-800 transition-colors" />
+                                                </div>
+                                            </div>
+                                            <div className="w-full md:w-56">
+                                                <label className="text-xs font-bold text-slate-400 uppercase mb-2 block">Moneda</label>
+                                                <select value={txForm.moneda} onChange={e => setTxForm({...txForm, moneda: e.target.value})} className="w-full px-6 py-4 bg-slate-50 border-2 border-slate-200 focus:border-blue-500 rounded-xl outline-none text-2xl font-black text-slate-700 h-[76px] md:h-[90px] transition-colors">
+                                                    <option value="ARS">ARS</option>
+                                                    <option value="USD">USD</option>
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="space-y-1">

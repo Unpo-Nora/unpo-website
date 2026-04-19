@@ -493,7 +493,13 @@ export default function InventoryDashboard() {
                         <RefreshCcw size={18} />
                         Actualizar
                     </button>
-                    {/* Boton Nuevo Producto movido a Compras */}
+                    <button
+                        onClick={handleCreateProduct}
+                        className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"
+                    >
+                        <Plus size={18} />
+                        Crear Nuevo Producto
+                    </button>
                 </div>
             </div>
 
