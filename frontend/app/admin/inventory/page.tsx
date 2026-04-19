@@ -10,7 +10,8 @@ export default function InventoryPage() {
     const router = useRouter();
 
     React.useEffect(() => {
-        if (!loading && (!user || user.role !== 'admin')) {
+        const allowedRoles = ['admin', 'vendedor', 'seller', 'vendor'];
+        if (!loading && (!user || !allowedRoles.includes(user.role))) {
             router.push('/login');
         }
     }, [user, loading, router]);

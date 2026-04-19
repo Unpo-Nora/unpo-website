@@ -234,7 +234,7 @@ def get_audit_logs(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+    if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No tiene permisos")
     try:
         logs, total = crud.get_recent_audit_logs(db, skip=skip, limit=limit, year=year, month=month)
@@ -259,7 +259,7 @@ def get_next_sku(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+    if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No tiene permisos")
         
     last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
@@ -390,7 +390,7 @@ def adjust_stock(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+    if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No tiene permisos para modificar stock")
         
     db_product = crud.get_product(db, sku=sku)
@@ -542,7 +542,7 @@ def batch_update_inventory(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
+    if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No tiene permisos")
     
     actions_taken = []

@@ -17,6 +17,7 @@ import {
     Wallet,
     Trash2
 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 import ProductModal from './ProductModal';
 
 interface Product {
@@ -34,6 +35,9 @@ interface Product {
 }
 
 export default function InventoryDashboard() {
+    const { user } = useAuth();
+    const isVendedor = ['vendedor', 'seller', 'vendor'].includes(user?.role || '');
+
     const [products, setProducts] = useState<Product[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -373,6 +377,7 @@ export default function InventoryDashboard() {
     return (
         <div className="space-y-6">
             {/* Value Check Summary */}
+            {!isVendedor && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div 
                     onClick={() => setIsCapitalModalOpen(true)}
@@ -406,8 +411,9 @@ export default function InventoryDashboard() {
                     </div>
                 </div>
             </div>
+            )}
             {/* Pending Changes Action Bar */}
-            {hasPendingChanges && (
+            {!isVendedor && hasPendingChanges && (
                 <div className="sticky top-4 z-40 bg-blue-600 rounded-2xl p-4 shadow-xl shadow-blue-200/50 flex flex-col md:flex-row items-center justify-between gap-4 border border-blue-500 text-white animate-in slide-in-from-top-4">
                     <div className="flex items-center gap-3">
                         <AlertTriangle className="text-blue-200" size={24} />
@@ -441,6 +447,7 @@ export default function InventoryDashboard() {
             {/* Audit Logs Box - Removed from top, moved to tab */}
 
             {/* Settings Card: Exchange Rate */}
+            {!isVendedor && (
             <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 rounded-2xl bg-green-50 text-green-600 flex items-center justify-center">
@@ -471,6 +478,7 @@ export default function InventoryDashboard() {
                     </button>
                 </div>
             </div>
+            )}
 
             {/* Action Bar */}
             <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
@@ -493,6 +501,7 @@ export default function InventoryDashboard() {
                         <RefreshCcw size={18} />
                         Actualizar
                     </button>
+                    {!isVendedor && (
                     <button
                         onClick={handleCreateProduct}
                         className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"
@@ -500,6 +509,7 @@ export default function InventoryDashboard() {
                         <Plus size={18} />
                         Crear Nuevo Producto
                     </button>
+                    )}
                 </div>
             </div>
 
@@ -534,6 +544,8 @@ export default function InventoryDashboard() {
                     <AlertTriangle size={16} />
                     Sin Stock ({searchedProducts.filter(p => p.stock_quantity <= 0).length})
                 </button>
+                {!isVendedor && (
+                <>
                 <button
                     onClick={() => setActiveTab('historial')}
                     className={`pb-4 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${activeTab === 'historial' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}
@@ -548,6 +560,8 @@ export default function InventoryDashboard() {
                     <Layers size={16} />
                     Históricos
                 </button>
+                </>
+                )}
             </div>
 
             {activeTab === 'historial' || activeTab === 'historicos' ? (
@@ -659,16 +673,16 @@ export default function InventoryDashboard() {
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">Stock</th>
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Precio USD</th>
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Precio ARS (Act.)</th>
-                                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">IVA</th>
-                                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">Acciones</th>
+                                {!isVendedor && <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">IVA</th>}
+                                {!isVendedor && <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">Acciones</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {paginatedProducts.map((p) => (
                                 <tr
                                     key={p.sku}
-                                    onClick={() => handleEditProduct(p)}
-                                    className="hover:bg-slate-50/50 transition-colors group cursor-pointer"
+                                    onClick={() => { if (!isVendedor) handleEditProduct(p); }}
+                                    className={`transition-colors group ${!isVendedor ? 'hover:bg-slate-50/50 cursor-pointer' : 'hover:bg-slate-50/20'}`}
                                 >
                                     <td className="px-6 py-5 text-center">
                                         <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">
@@ -686,6 +700,7 @@ export default function InventoryDashboard() {
                                     </td>
                                     <td className="px-6 py-5 text-center" onClick={(e) => e.stopPropagation()}>
                                         <div className="flex items-center justify-center gap-2">
+                                            {!isVendedor && (
                                             <button
                                                 type="button"
                                                 onClick={(e) => handleStockAdjust(e, p.sku, -1)}
@@ -694,6 +709,7 @@ export default function InventoryDashboard() {
                                             >
                                                 -
                                             </button>
+                                            )}
                                             <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${p.stock_quantity + (pendingStock[p.sku] || 0) > 10
                                                 ? 'bg-emerald-50 text-emerald-600'
                                                 : p.stock_quantity + (pendingStock[p.sku] || 0) > 0
@@ -703,6 +719,7 @@ export default function InventoryDashboard() {
                                                 <Box size={14} />
                                                 {p.stock_quantity + (pendingStock[p.sku] || 0)}
                                             </div>
+                                            {!isVendedor && (
                                             <button
                                                 type="button"
                                                 onClick={(e) => handleStockAdjust(e, p.sku, 1)}
@@ -710,11 +727,15 @@ export default function InventoryDashboard() {
                                             >
                                                 +
                                             </button>
+                                            )}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5 text-right" onClick={(e) => e.stopPropagation()}>
                                         <div className="relative flex items-center justify-end font-bold">
                                             <span className="text-slate-400 mr-1">US$</span>
+                                            {isVendedor ? (
+                                                <span className="w-20 text-right text-slate-900">{p.price_usd}</span>
+                                            ) : (
                                             <input 
                                                 type="number"
                                                 step="0.01"
@@ -723,6 +744,7 @@ export default function InventoryDashboard() {
                                                 onChange={(e) => handlePriceChange(e, p.sku)}
                                                 className={`w-20 text-right bg-transparent border-b-2 outline-none transition-colors ${pendingPrice[p.sku] !== undefined ? 'border-amber-400 text-amber-600' : 'border-transparent text-slate-900 focus:border-blue-300'}`}
                                             />
+                                            )}
                                         </div>
                                     </td>
                                     <td className="px-6 py-5 text-right">
@@ -730,6 +752,8 @@ export default function InventoryDashboard() {
                                             ${p.price_usd && !isNaN(Number(newExchangeRate)) ? (Number(pendingPrice[p.sku] !== undefined ? pendingPrice[p.sku] : p.price_usd) * Number(newExchangeRate)).toLocaleString('es-AR', { maximumFractionDigits: 0 }) : 'N/A'}
                                         </div>
                                     </td>
+                                    {!isVendedor && (
+                                    <>
                                     <td className="px-6 py-5 text-center">
                                         <span className="text-[10px] font-bold text-slate-500">{p.iva_percent}%</span>
                                     </td>
@@ -742,6 +766,8 @@ export default function InventoryDashboard() {
                                             <Edit size={16} />
                                         </button>
                                     </td>
+                                    </>
+                                    )}
                                 </tr>
                             ))}
                         </tbody>

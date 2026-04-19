@@ -53,7 +53,7 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
             title: 'Inventario',
             path: '/admin/inventory',
             icon: <Settings size={20} />,
-            roles: ['admin']
+            roles: ['admin', 'vendedor', 'seller', 'vendor']
         },
         {
             title: 'Finanzas y Compras',
