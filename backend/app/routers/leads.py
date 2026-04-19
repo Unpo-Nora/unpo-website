@@ -18,7 +18,10 @@ def create_lead(lead: schemas.LeadCreate, db: Session = Depends(get_db)):
     created_lead = crud.create_lead(db=db, lead=lead)
     
     # Simple Logic to generate a customized WhatsApp link
-    base_url = "https://wa.me/5491131488378"
+    if getattr(lead, "source", None) == "WEB_UNPO" or (hasattr(lead, "model_dump") and lead.model_dump().get("source") == "WEB_UNPO"):
+        base_url = "https://wa.me/5491144227969"
+    else:
+        base_url = "https://wa.me/5491131488378"
     interest = lead.product_interest or lead.category_interest or "productos"
     message = f"Hola, soy {lead.full_name}. Estoy interesado en {interest}."
     encoded_message = urllib.parse.quote(message)
