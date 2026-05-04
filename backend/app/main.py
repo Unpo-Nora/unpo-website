@@ -16,23 +16,29 @@ app = FastAPI(
 )
 
 # CORS Configuration
-origins = [
-    "http://localhost:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:3000",
-    "https://unpo.com.ar",
-    "https://www.unpo.com.ar",
-    "https://unpo.online",
-    "https://www.unpo.online",
-    "https://unpo-website.vercel.app"
-]
+import os
+
+env_origins = os.getenv("CORS_ORIGINS")
+if env_origins:
+    origins = [orig.strip() for orig in env_origins.split(",") if orig.strip()]
+else:
+    origins = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "https://unpo.com.ar",
+        "https://www.unpo.com.ar",
+        "https://unpo.online",
+        "https://www.unpo.online",
+        "https://unpo-website.vercel.app"
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    allow_headers=["*"],
 )
 
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
