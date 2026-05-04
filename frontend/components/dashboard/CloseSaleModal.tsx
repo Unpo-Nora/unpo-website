@@ -214,20 +214,20 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 overflow-x-hidden overflow-y-auto">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 sm:p-4 overflow-hidden">
             <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm fixed" onClick={onClose}></div>
-            <div className="relative bg-white w-full max-w-[95vw] xl:max-w-7xl h-[95vh] sm:h-[90vh] rounded-2xl sm:rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col my-4">
+            <div className="relative bg-white w-full h-full sm:h-[90vh] sm:max-w-[95vw] xl:max-w-7xl sm:rounded-[32px] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col">
 
                 {/* Header */}
-                <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
-                    <div>
-                        <h3 className="text-2xl font-black text-slate-900">Cerrar Venta</h3>
-                        <p className="text-slate-500 font-medium">Cliente: <span className="text-blue-600">{lead.full_name}</span></p>
+                <div className="px-4 sm:px-8 py-4 sm:py-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 shrink-0">
+                    <div className="min-w-0 pr-4">
+                        <h3 className="text-xl sm:text-2xl font-black text-slate-900 truncate">Cerrar Venta</h3>
+                        <p className="text-xs sm:text-sm text-slate-500 font-medium truncate">Cliente: <span className="text-blue-600">{lead.full_name}</span></p>
                     </div>
 
-                    <div className="flex items-center gap-8">
+                    <div className="flex items-center gap-4 sm:gap-8 shrink-0">
                         {/* Stepper */}
-                        <div className="flex items-center gap-4">
+                        <div className="hidden sm:flex items-center gap-4">
                             <div className={`flex items-center gap-2 ${step === 1 ? 'text-blue-600' : 'text-slate-400'}`}>
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${step === 1 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}`}>1</div>
                                 <span className="font-bold text-sm">Productos</span>
@@ -239,6 +239,10 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                             </div>
                         </div>
 
+                        <div className="sm:hidden font-bold text-blue-600 text-sm bg-blue-50 px-3 py-1 rounded-full">
+                            Paso {step} de 2
+                        </div>
+
                         <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400">
                             <X size={24} />
                         </button>
@@ -246,12 +250,12 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                 </div>
 
                 {/* Body Content */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-8">
+                <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-8">
                     {step === 1 ? (
-                        <div className="flex flex-col lg:flex-row h-full gap-6 sm:gap-8">
+                        <div className="flex flex-col lg:flex-row lg:h-full gap-6 sm:gap-8">
                             {/* Product List */}
-                            <div className="flex-1 lg:border-r border-slate-100 lg:pr-8 flex flex-col min-h-[400px]">
-                                <div className="relative mb-6 shrink-0">
+                            <div className="w-full lg:flex-1 lg:border-r border-slate-100 lg:pr-8 flex flex-col h-[50vh] min-h-[350px] lg:h-full lg:max-h-none">
+                                <div className="relative mb-4 sm:mb-6 shrink-0">
                                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
                                     <input
                                         type="text"
@@ -265,10 +269,10 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                     {filteredProducts.map(p => {
                                         const imgUrl = p.images && p.images.length > 0 ? p.images[0] : null;
                                         return (
-                                            <div key={p.sku} className="p-4 border border-slate-100 rounded-2xl flex items-center justify-between hover:border-blue-200 hover:shadow-md transition-all group">
-                                                <div className="flex items-center gap-4">
+                                            <div key={p.sku} className="p-3 sm:p-4 border border-slate-100 rounded-2xl flex items-center justify-between hover:border-blue-200 hover:shadow-md transition-all group gap-2">
+                                                <div className="flex items-center gap-3 sm:gap-4 overflow-hidden flex-1">
                                                     {/* Thumbnail */}
-                                                    <div className="w-14 h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden relative">
+                                                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden relative">
                                                         {imgUrl ? (
                                                             <>
                                                                 <img 
@@ -290,24 +294,24 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                                         )}
                                                     </div>
 
-                                                    <div className="flex-1 min-w-0 pr-4">
-                                                        <div className="flex justify-between items-center mb-1 gap-2">
-                                                            <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate block">
+                                                    <div className="flex-1 min-w-0 pr-2">
+                                                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-1 gap-1">
+                                                            <span className="font-bold text-slate-900 text-sm sm:text-base group-hover:text-blue-600 transition-colors line-clamp-2 sm:line-clamp-1 block leading-tight">
                                                                 {p.name}
                                                             </span>
-                                                            <span className={`text-xs font-black shrink-0 ${p.stock_quantity > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                                {p.stock_quantity > 0 ? `${p.stock_quantity} EN STOCK` : 'SIN STOCK'}
+                                                            <span className={`text-[10px] sm:text-xs font-black shrink-0 ${p.stock_quantity > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
+                                                                {p.stock_quantity > 0 ? `${p.stock_quantity} STOCK` : 'SIN STOCK'}
                                                             </span>
                                                         </div>
-                                                        <div className="flex items-center gap-3 mt-1">
-                                                            <span className="text-sm font-black text-emerald-600">${getProductPrice(p).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
-                                                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">SKU {p.sku}</span>
+                                                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                                                            <span className="text-sm sm:text-base font-black text-emerald-600">${getProductPrice(p).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                                                            <span className="text-[9px] sm:text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md shrink-0">SKU {p.sku}</span>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <button
                                                     onClick={() => handleAddToCart(p)}
-                                                    className="w-10 h-10 shrink-0 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors font-bold text-lg"
+                                                    className="w-10 h-10 sm:w-12 sm:h-12 shrink-0 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors font-bold text-xl ml-auto"
                                                 >+</button>
                                             </div>
                                         );
@@ -316,7 +320,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                             </div>
 
                             {/* Cart Summary */}
-                            <div className="w-full lg:w-[350px] shrink-0 flex flex-col bg-slate-50/50 rounded-3xl p-4 sm:p-6 border border-slate-100 min-h-[400px]">
+                            <div className="w-full lg:w-[350px] shrink-0 flex flex-col bg-slate-50/50 rounded-3xl p-4 sm:p-6 border border-slate-100 min-h-[300px] lg:h-full">
                                 <h4 className="font-black tracking-tight text-lg mb-6 flex items-center gap-2 shrink-0"><ShoppingCart size={20} className="text-blue-600" /> Carrito Actual</h4>
 
                                 <div className="flex-1 overflow-y-auto space-y-4">
@@ -427,7 +431,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                             </div>
                         </div>
                     ) : (
-                        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
+                        <div className="w-full max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-12">
                             {/* Billing Info */}
                             <div className="space-y-6">
                                 <h4 className="text-lg font-black tracking-tight flex items-center gap-2 text-slate-800 border-b border-slate-100 pb-4">
