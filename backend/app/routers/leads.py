@@ -84,6 +84,24 @@ def update_lead(
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     return updated_lead
 
+@router.put("/{lead_id}/mark-contacted")
+def mark_contacted(
+    lead_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    updated_lead = crud.update_lead(
+        db, 
+        lead_id, 
+        {
+            "status": "CONTACTED",
+            "seller": current_user.email
+        }
+    )
+    if not updated_lead:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+    return {"status": "success"}
+
 @router.get("/webhook")
 async def verify_webhook(
     request: Request,

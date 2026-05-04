@@ -137,6 +137,31 @@ export default function SellerDashboard() {
         }
     };
 
+    const handleMarkContacted = async (lead: Lead) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}/mark-contacted`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                setLeads(leads.map(l =>
+                    l.id === lead.id
+                        ? { ...l, status: 'CONTACTED', seller: currentUser?.email || '' }
+                        : l
+                ));
+            } else {
+                alert("Error al marcar como contactado.");
+            }
+        } catch (error) {
+            console.error("Error al marcar como contactado:", error);
+            alert("Error de conexión");
+        }
+    };
+
     const handleOpenFeedbackModal = (lead: Lead) => {
         setSelectedLead(lead);
         let status = lead.feedback_status || "Respondio";
@@ -608,6 +633,14 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                                             {activeTab === "NEW" ? (
                                                 <div className="flex items-center gap-3">
                                                     <button
+                                                        onClick={() => handleMarkContacted(lead)}
+                                                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-slate-200"
+                                                        title="Marcar como contactado"
+                                                    >
+                                                        <CheckCircle size={14} />
+                                                        Marcar Contactado
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleWhatsAppClick(lead)}
                                                         className="inline-flex items-center gap-2 px-6 py-2.5 bg-green-500 hover:bg-green-600 text-white text-sm font-black rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-lg shadow-green-200"
                                                     >
@@ -767,12 +800,20 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                                             {/* Secondary Actions */}
                                             <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-200">
                                                 {activeTab === "NEW" ? (
-                                                    <button
-                                                        onClick={() => setLeadToDelete(lead)}
-                                                        className="flex-1 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-sm"
-                                                    >
-                                                        <Trash2 size={14} /> Eliminar
-                                                    </button>
+                                                    <>
+                                                        <button
+                                                            onClick={() => handleMarkContacted(lead)}
+                                                            className="flex-[2] py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                                        >
+                                                            <CheckCircle size={14} /> Marcar Contactado
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setLeadToDelete(lead)}
+                                                            className="flex-1 py-2 bg-white border border-rose-200 text-rose-600 hover:bg-rose-50 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                                        >
+                                                            <Trash2 size={14} /> Eliminar
+                                                        </button>
+                                                    </>
                                                 ) : (
                                                     <>
                                                         <button
