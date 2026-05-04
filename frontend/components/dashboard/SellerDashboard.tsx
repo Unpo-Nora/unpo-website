@@ -391,6 +391,39 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
         }
     };
 
+    const handleExportNuevosToExcel = async () => {
+        const nuevos = leads.filter(l => l.status === 'NEW');
+        if (nuevos.length === 0) {
+            alert("No hay leads nuevos para exportar");
+            return;
+        }
+
+        try {
+            const XLSX = await import('xlsx');
+            const dataToExport = nuevos.map(l => ({
+                "Nombre": l.full_name || "",
+                "Teléfono": l.phone || "",
+                "Email": l.email || "",
+                "Interés": l.product_interest || l.category_interest || "General",
+                "Origen / Plataforma": l.platform || "WEB",
+                "Fecha de creación": (l.lead_date || l.created_at) ? new Date(l.lead_date || l.created_at as string).toLocaleDateString('es-AR') : "",
+                "Estado": l.status,
+                "Vendedor": l.seller || "",
+                "Notas / Feedback": l.feedback_status || l.notes || ""
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Nuevos");
+
+            const dateStr = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `leads_nuevos_UNPO_${dateStr}.xlsx`);
+        } catch (error) {
+            console.error("Error al exportar a Excel:", error);
+            alert("Error al intentar exportar. Es posible que el módulo 'xlsx' esté cargando.");
+        }
+    };
+
     const filteredLeads = leads
         .filter(l => l.status === activeTab)
         .filter(l =>
@@ -542,6 +575,14 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                             </>
                         )}
                     </div>
+                    {activeTab === "NEW" && (
+                        <button
+                            onClick={handleExportNuevosToExcel}
+                            className="px-6 py-3 shrink-0 bg-emerald-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors shadow-md"
+                        >
+                            <Download size={18} /> Exportar a Excel
+                        </button>
+                    )}
                     {activeTab === "CONTACTED" && (
                         <button
                             onClick={handleOpenAddLead}

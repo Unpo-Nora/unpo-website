@@ -128,6 +128,7 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
     table_data = [[
         Paragraph("<b>BULTO</b>", normal_style), 
         Paragraph("<b>UNIDAD</b>", normal_style), 
+        Paragraph("<b>SKU</b>", normal_style), 
         Paragraph("<b>DESCRIPCIÓN</b>", normal_style), 
         Paragraph("<b>PRECIO<br/>(sin IVA)</b>", normal_style), 
         Paragraph("<b>PRECIO TOTAL<br/>(sin IVA)</b>", normal_style)
@@ -138,6 +139,7 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
         table_data.append([
             "1",  # BULTO (simplificado)
             str(int(item.quantity)), # UNIDAD
+            str(item.product_sku), # SKU
             Paragraph(desc_text, normal_style),
             format_price(item.unit_price),
             format_price(item.total_price)
@@ -161,33 +163,33 @@ def generate_remito_pdf(order: models.SaleOrder) -> bytes:
                 best_iva = iva_opt
                 break
                 
-    table_data.append(["", "", "", "SUBTOTAL:", format_price(sum_items_raw)])
+    table_data.append(["", "", "", "", "SUBTOTAL:", format_price(sum_items_raw)])
     
     subtotal_desc = sum_items_raw * (1 - best_d)
     
     if best_d > 0.0:
         desc_amount = sum_items_raw - subtotal_desc
-        table_data.append(["", "", "", f"DESCUENTO ({int(best_d*100)}%):", "-" + format_price(desc_amount)])
+        table_data.append(["", "", "", "", f"DESCUENTO ({int(best_d*100)}%):", "-" + format_price(desc_amount)])
         if not best_iva:
-            table_data.append(["", "", "", "TOTAL FINAL:", format_price(target)])
+            table_data.append(["", "", "", "", "TOTAL FINAL:", format_price(target)])
             
     if best_iva:
         iva_amount = subtotal_desc * 0.21
-        table_data.append(["", "", "", "IVA (21%):", "+" + format_price(iva_amount)])
-        table_data.append(["", "", "", "TOTAL FINAL:", format_price(target)])
+        table_data.append(["", "", "", "", "IVA (21%):", "+" + format_price(iva_amount)])
+        table_data.append(["", "", "", "", "TOTAL FINAL:", format_price(target)])
         
     if best_d == 0.0 and not best_iva:
         # Just simple replacement of TOTAL FINAL since SUBTOTAL is already there
         pass
         
-    t_products = Table(table_data, colWidths=[1.8*cm, 1.8*cm, 8.4*cm, 3*cm, 3*cm])
+    t_products = Table(table_data, colWidths=[1.8*cm, 1.8*cm, 2.0*cm, 6.4*cm, 3*cm, 3*cm])
     t_products.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#475569")), # Slate-600 header
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ALIGN', (2,1), (2,-1), 'LEFT'),
-        ('ALIGN', (3,1), (-1,-1), 'RIGHT'),
+        ('ALIGN', (3,1), (3,-1), 'LEFT'),
+        ('ALIGN', (4,1), (-1,-1), 'RIGHT'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
         ('BOTTOMPADDING', (0,0), (-1,0), 6),
         ('TOPPADDING', (0,0), (-1,0), 6),
