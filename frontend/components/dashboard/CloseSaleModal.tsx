@@ -27,9 +27,12 @@ interface CloseSaleModalProps {
     onSuccess: (orderId: number) => void;
 }
 
+import BudgetPreviewModal from './BudgetPreviewModal';
+
 export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleModalProps) {
     const [step, setStep] = useState<1 | 2>(1);
     const [products, setProducts] = useState<Product[]>([]);
+    const [showBudgetPreview, setShowBudgetPreview] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [cart, setCart] = useState<OrderItem[]>([]);
     const [exchangeRate, setExchangeRate] = useState<number>(1);
@@ -427,6 +430,15 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                     >
                                         Continuar a Datos <ChevronRight size={18} />
                                     </button>
+
+                                    {cart.length > 0 && (
+                                        <button
+                                            onClick={() => setShowBudgetPreview(true)}
+                                            className="w-full mt-3 py-3 bg-white border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
+                                        >
+                                            Generar Presupuesto
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -479,6 +491,20 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                     )}
                 </div>
             </div>
+
+            {showBudgetPreview && (
+                <BudgetPreviewModal
+                    cart={cart}
+                    lead={lead}
+                    discountPercent={discountPercent}
+                    hasIva={hasIva}
+                    rawTotalAmount={rawTotalAmount}
+                    discountedAmount={discountedAmount}
+                    ivaAmount={ivaAmount}
+                    finalTotalAmount={finalTotalAmount}
+                    onClose={() => setShowBudgetPreview(false)}
+                />
+            )}
         </div>
     );
 }
