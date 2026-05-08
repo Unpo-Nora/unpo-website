@@ -44,47 +44,81 @@ export default function BudgetPreviewModal({
     };
 
     const handleDownloadPdf = () => {
-        // window.print() is often the best and easiest way to save as PDF in modern browsers.
-        // It triggers the print dialog where users can select "Save as PDF".
-        // To suggest a filename, we temporarily change the document title.
         const originalTitle = document.title;
         const clientName = lead?.full_name ? lead.full_name.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'cliente';
         const dateStr = today.replace(/\//g, '-');
         document.title = `presupuesto_UNPO_${clientName}_${dateStr}`;
         window.print();
-        // Restore title after print dialog closes
         setTimeout(() => {
             document.title = originalTitle;
         }, 1000);
     };
 
     return (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8 bg-slate-900/80 backdrop-blur-sm print:p-0 print:bg-white print:backdrop-blur-none">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-8 bg-slate-900/80 backdrop-blur-sm print:absolute print:inset-0 print:p-0 print:bg-transparent print:backdrop-blur-none print:flex-col print:items-start print:justify-start">
             <style>{`
                 @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 12mm;
+                    }
+                    
+                    /* Ocultar fondo general del sistema */
                     body * {
                         visibility: hidden;
                     }
-                    #printable-budget, #printable-budget * {
+
+                    /* Quitar restricciones de scroll y height al body/html para permitir multipágina */
+                    body, html {
+                        height: auto !important;
+                        overflow: visible !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: transparent !important;
+                    }
+
+                    /* Mostrar solo el área de impresión y sus hijos */
+                    .presupuesto-print-area, .presupuesto-print-area * {
                         visibility: visible;
                     }
-                    #printable-budget {
+
+                    /* Posicionar el área de impresión desde el inicio de la hoja */
+                    .presupuesto-print-area {
                         position: absolute;
                         left: 0;
                         top: 0;
                         width: 100%;
                         margin: 0;
-                        padding: 20px;
-                        box-shadow: none;
-                        max-width: none;
+                        padding: 0;
+                        background: white;
                     }
+
                     .print-hidden {
                         display: none !important;
+                    }
+
+                    /* Evitar saltos de página internos en bloques clave */
+                    .presupuesto-header,
+                    .presupuesto-client-data,
+                    .presupuesto-totals,
+                    .presupuesto-footer {
+                        break-inside: avoid;
+                        page-break-inside: avoid;
+                    }
+
+                    table {
+                        page-break-inside: auto;
+                        width: 100%;
+                    }
+
+                    tr {
+                        page-break-inside: avoid;
+                        break-inside: avoid;
                     }
                 }
             `}</style>
 
-            <div className="relative bg-white w-full max-w-4xl max-h-[90vh] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden print:shadow-none print:h-auto print:max-h-none print:overflow-visible">
+            <div className="relative bg-white w-full max-w-4xl max-h-[90vh] sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden print:static print:h-auto print:max-h-none print:overflow-visible print:shadow-none print:bg-transparent print:w-full print:rounded-none">
                 
                 {/* Header Actions - Hidden on Print */}
                 <div className="print-hidden px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 shrink-0">
@@ -113,11 +147,11 @@ export default function BudgetPreviewModal({
                 </div>
 
                 {/* Printable Document Area */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 print:bg-white print:p-0 print:overflow-visible custom-scrollbar">
-                    <div id="printable-budget" className="bg-white w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 sm:p-12 shadow-sm rounded-xl print:shadow-none print:rounded-none">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 print:overflow-visible print:bg-transparent print:p-0 print:block custom-scrollbar">
+                    <div className="presupuesto-print-area bg-white w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 sm:p-12 shadow-sm rounded-xl print:shadow-none print:rounded-none print:min-h-0 print:p-0 print:m-0 print:w-full print:max-w-none">
                         
                         {/* Header Document */}
-                        <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
+                        <div className="presupuesto-header flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8 print:pb-4 print:mb-6">
                             <div>
                                 <h1 className="text-4xl font-black tracking-tighter text-slate-900 mb-1">UNPO</h1>
                                 <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Venta Mayorista</p>
@@ -130,7 +164,7 @@ export default function BudgetPreviewModal({
                         </div>
 
                         {/* Client Info */}
-                        <div className="bg-slate-50 rounded-xl p-4 mb-8 border border-slate-100">
+                        <div className="presupuesto-client-data bg-slate-50 rounded-xl p-4 mb-8 border border-slate-100 print:mb-6 print:border-slate-200">
                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Datos del Cliente</h3>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -145,7 +179,7 @@ export default function BudgetPreviewModal({
                         </div>
 
                         {/* Items Table */}
-                        <div className="mb-8">
+                        <div className="mb-8 print:mb-6">
                             <table className="w-full text-left text-sm">
                                 <thead>
                                     <tr className="border-b-2 border-slate-200">
@@ -175,7 +209,7 @@ export default function BudgetPreviewModal({
                         </div>
 
                         {/* Totals Section */}
-                        <div className="flex justify-end">
+                        <div className="presupuesto-totals flex justify-end">
                             <div className="w-full max-w-sm space-y-3">
                                 <div className="flex justify-between text-sm">
                                     <span className="font-bold text-slate-500">Subtotal:</span>
@@ -213,7 +247,7 @@ export default function BudgetPreviewModal({
                         </div>
 
                         {/* Footer Notes */}
-                        <div className="mt-16 pt-8 border-t border-slate-200 text-center text-xs text-slate-400 font-medium">
+                        <div className="presupuesto-footer mt-16 pt-8 border-t border-slate-200 text-center text-xs text-slate-400 font-medium print:mt-10 print:pt-4">
                             <p>Este documento es un presupuesto no válido como factura y está sujeto a disponibilidad de stock.</p>
                             <p className="mt-1">Los precios pueden variar sin previo aviso una vez superado el tiempo de validez.</p>
                         </div>
