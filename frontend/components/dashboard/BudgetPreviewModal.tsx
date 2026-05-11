@@ -27,31 +27,31 @@ const PresupuestoPrintDocument = ({
     cart, lead, discountPercent, hasIva, rawTotalAmount, discountedAmount, ivaAmount, finalTotalAmount, today
 }: any) => {
     return (
-        <div className="presupuesto-print-document bg-white">
+        <div className="presupuesto-print-document bg-white text-black">
             {/* Header Document */}
-            <div className="presupuesto-header flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-8">
+            <div className="flex justify-between items-start border-b-2 border-black pb-6 mb-8">
                 <div>
-                    <h1 className="text-4xl font-black tracking-tighter text-slate-900 mb-1">UNPO</h1>
-                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Venta Mayorista</p>
+                    <h1 className="text-4xl font-black tracking-tighter text-black mb-1">UNPO</h1>
+                    <p className="text-sm font-bold text-gray-600 uppercase tracking-widest">Venta Mayorista</p>
                 </div>
                 <div className="text-right">
-                    <h2 className="text-2xl font-black text-blue-600 uppercase tracking-wider mb-2">Presupuesto</h2>
-                    <p className="text-sm text-slate-600 font-medium">Fecha: <strong>{today}</strong></p>
-                    <p className="text-sm text-slate-600 font-medium mt-1">Validez: <strong>15 días</strong></p>
+                    <h2 className="text-2xl font-black text-black uppercase tracking-wider mb-2">Presupuesto</h2>
+                    <p className="text-sm text-gray-800 font-medium">Fecha: <strong>{today}</strong></p>
+                    <p className="text-sm text-gray-800 font-medium mt-1">Validez: <strong>15 días</strong></p>
                 </div>
             </div>
 
             {/* Client Info */}
-            <div className="presupuesto-client-data bg-slate-50 rounded-xl p-4 mb-8 border border-slate-100">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Datos del Cliente</h3>
+            <div className="presupuesto-client-data bg-gray-50 rounded-xl p-4 mb-8 border border-gray-200">
+                <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Datos del Cliente</h3>
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <p className="text-sm text-slate-500 mb-1">Nombre / Razón Social:</p>
-                        <p className="font-bold text-slate-900">{lead?.full_name || "Consumidor Final"}</p>
+                        <p className="text-sm text-gray-600 mb-1">Nombre / Razón Social:</p>
+                        <p className="font-bold text-black">{lead?.full_name || "Consumidor Final"}</p>
                     </div>
                     <div>
-                        <p className="text-sm text-slate-500 mb-1">Teléfono / Contacto:</p>
-                        <p className="font-bold text-slate-900">{lead?.phone || "-"}</p>
+                        <p className="text-sm text-gray-600 mb-1">Teléfono / Contacto:</p>
+                        <p className="font-bold text-black">{lead?.phone || "-"}</p>
                     </div>
                 </div>
             </div>
@@ -60,24 +60,24 @@ const PresupuestoPrintDocument = ({
             <div className="mb-8">
                 <table className="presupuesto-table text-left text-sm w-full">
                     <thead>
-                        <tr className="border-b-2 border-slate-200">
-                            <th className="py-3 px-2 font-black text-slate-700 uppercase tracking-wider">SKU</th>
-                            <th className="py-3 px-2 font-black text-slate-700 uppercase tracking-wider">Producto</th>
-                            <th className="py-3 px-2 font-black text-slate-700 uppercase tracking-wider text-center">Cant.</th>
-                            <th className="py-3 px-2 font-black text-slate-700 uppercase tracking-wider text-right">Precio Unit.</th>
-                            <th className="py-3 px-2 font-black text-slate-700 uppercase tracking-wider text-right">Subtotal</th>
+                        <tr className="border-b-2 border-gray-300">
+                            <th className="py-3 px-2 font-black text-black uppercase tracking-wider">SKU</th>
+                            <th className="py-3 px-2 font-black text-black uppercase tracking-wider">Producto</th>
+                            <th className="py-3 px-2 font-black text-black uppercase tracking-wider text-center">Cant.</th>
+                            <th className="py-3 px-2 font-black text-black uppercase tracking-wider text-right">Precio Unit.</th>
+                            <th className="py-3 px-2 font-black text-black uppercase tracking-wider text-right">Subtotal</th>
                         </tr>
                     </thead>
                     <tbody>
                         {cart.map((item: any, index: number) => (
-                            <tr key={`${item.product_sku}-${index}`} className="border-b border-slate-100">
-                                <td className="py-3 px-2 text-slate-500 font-medium">{item.product_sku || "-"}</td>
-                                <td className="py-3 px-2 font-bold text-slate-800">{item.product_name}</td>
-                                <td className="py-3 px-2 text-center font-bold text-slate-700">{item.quantity}</td>
-                                <td className="py-3 px-2 text-right font-medium text-slate-600">
+                            <tr key={`${item.product_sku}-${index}`} className="border-b border-gray-200">
+                                <td className="py-3 px-2 text-gray-600 font-medium">{item.product_sku || "-"}</td>
+                                <td className="py-3 px-2 font-bold text-black">{item.product_name}</td>
+                                <td className="py-3 px-2 text-center font-bold text-black">{item.quantity}</td>
+                                <td className="py-3 px-2 text-right font-medium text-gray-800">
                                     ${item.unit_price.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                                 </td>
-                                <td className="py-3 px-2 text-right font-black text-slate-900">
+                                <td className="py-3 px-2 text-right font-black text-black">
                                     ${item.total_price.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                                 </td>
                             </tr>
@@ -90,24 +90,24 @@ const PresupuestoPrintDocument = ({
             <div className="presupuesto-totals flex justify-end mt-8">
                 <div className="w-full max-w-sm space-y-3">
                     <div className="flex justify-between text-sm">
-                        <span className="font-bold text-slate-500">Subtotal:</span>
-                        <span className="font-bold text-slate-800">
+                        <span className="font-bold text-gray-600">Subtotal:</span>
+                        <span className="font-bold text-black">
                             ${rawTotalAmount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                         </span>
                     </div>
 
                     {discountPercent > 0 && (
                         <div className="flex justify-between text-sm">
-                            <span className="font-bold text-rose-500">Descuento ({discountPercent}%):</span>
-                            <span className="font-bold text-rose-600">
+                            <span className="font-bold text-black">Descuento ({discountPercent}%):</span>
+                            <span className="font-bold text-black">
                                 - ${(rawTotalAmount - discountedAmount).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                             </span>
                         </div>
                     )}
 
                     <div className="flex justify-between text-sm">
-                        <span className="font-bold text-slate-500">IVA ({hasIva ? '21%' : 'No incluido'}):</span>
-                        <span className="font-bold text-slate-800">
+                        <span className="font-bold text-gray-600">IVA ({hasIva ? '21%' : 'No incluido'}):</span>
+                        <span className="font-bold text-black">
                             {hasIva 
                                 ? `+ $${ivaAmount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}` 
                                 : "$0"
@@ -115,9 +115,9 @@ const PresupuestoPrintDocument = ({
                         </span>
                     </div>
 
-                    <div className="border-t-2 border-slate-900 pt-3 mt-3 flex justify-between items-center">
-                        <span className="text-lg font-black uppercase tracking-widest text-slate-900">Total Final</span>
-                        <span className="text-2xl font-black text-blue-600">
+                    <div className="border-t-2 border-black pt-3 mt-3 flex justify-between items-center">
+                        <span className="text-lg font-black uppercase tracking-widest text-black">Total Final</span>
+                        <span className="text-2xl font-black text-black">
                             ${finalTotalAmount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                         </span>
                     </div>
@@ -125,7 +125,7 @@ const PresupuestoPrintDocument = ({
             </div>
 
             {/* Footer Notes */}
-            <div className="presupuesto-footer mt-16 pt-8 border-t border-slate-200 text-center text-xs text-slate-400 font-medium">
+            <div className="presupuesto-footer mt-12 pt-6 border-t border-gray-200 text-center text-xs text-gray-500 font-medium">
                 <p>Este documento es un presupuesto no válido como factura y está sujeto a disponibilidad de stock.</p>
                 <p className="mt-1">Los precios pueden variar sin previo aviso una vez superado el tiempo de validez.</p>
             </div>
@@ -192,8 +192,7 @@ export default function BudgetPreviewModal({
             <style>{`
                 @media screen {
                     .presupuesto-print-root {
-                        display: none;
-                        visibility: hidden;
+                        display: none !important;
                     }
                 }
 
@@ -203,25 +202,29 @@ export default function BudgetPreviewModal({
                         margin: 10mm;
                     }
 
-                    html,
-                    body {
+                    html, body {
+                        width: 100% !important;
+                        height: 100% !important;
                         margin: 0 !important;
                         padding: 0 !important;
-                        width: auto !important;
-                        height: auto !important;
                         overflow: visible !important;
                         background: white !important;
                     }
 
-                    /* Ocultar toda la app normal de Next.js */
+                    /* Apagar por completo toda la app y su flujo para evitar hojas fantasma */
                     #__next,
                     .presupuesto-preview-modal,
                     .modal-backdrop,
-                    .admin-layout,
-                    aside,
-                    nav {
+                    #root,
+                    .admin-layout {
                         display: none !important;
-                        visibility: hidden !important;
+                        height: 0 !important;
+                        width: 0 !important;
+                        overflow: hidden !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        border: none !important;
+                        position: absolute !important;
                     }
 
                     body * {
@@ -235,7 +238,7 @@ export default function BudgetPreviewModal({
 
                     .presupuesto-print-root {
                         display: block !important;
-                        position: static !important;
+                        position: relative !important;
                         width: 100% !important;
                         height: auto !important;
                         overflow: visible !important;
@@ -246,15 +249,16 @@ export default function BudgetPreviewModal({
 
                     .presupuesto-print-document {
                         width: 100% !important;
-                        max-width: 190mm !important;
+                        max-width: 100% !important;
                         min-height: 0 !important;
                         height: auto !important;
-                        margin: 0 auto !important;
+                        margin: 0 !important;
                         padding: 0 !important;
                         box-shadow: none !important;
                         border: none !important;
                         overflow: visible !important;
                         transform: none !important;
+                        page-break-after: auto;
                     }
 
                     .presupuesto-table {
@@ -267,8 +271,8 @@ export default function BudgetPreviewModal({
                         display: table-header-group;
                     }
 
-                    .presupuesto-table tfoot {
-                        display: table-footer-group;
+                    .presupuesto-table tbody {
+                        display: table-row-group;
                     }
 
                     .presupuesto-table tr {
@@ -277,11 +281,10 @@ export default function BudgetPreviewModal({
                     }
 
                     .presupuesto-totals,
-                    .presupuesto-header,
                     .presupuesto-client-data,
                     .presupuesto-footer {
-                        break-inside: avoid;
                         page-break-inside: avoid;
+                        break-inside: avoid;
                     }
                 }
             `}</style>
@@ -318,9 +321,7 @@ export default function BudgetPreviewModal({
 
                     {/* Preview Scrollable Area */}
                     <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 custom-scrollbar">
-                        {/* Removemos el min-h-[297mm] en pantalla también para evitar overflow si no hay tantos items, 
-                            pero dejamos un padding razonable */}
-                        <div className="bg-white w-full max-w-[210mm] mx-auto p-8 sm:p-12 shadow-sm rounded-xl">
+                        <div className="bg-white w-full max-w-3xl mx-auto p-8 shadow-sm rounded-xl border border-slate-200">
                             {/* Reutilizamos el mismo componente visual para la pantalla */}
                             <PresupuestoPrintDocument
                                 cart={cart}
