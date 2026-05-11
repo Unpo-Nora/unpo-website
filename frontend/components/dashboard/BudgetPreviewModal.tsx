@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { X, Printer, Download } from 'lucide-react';
+import { generateBudgetPdf } from '../../utils/generateBudgetPdf';
 
 interface OrderItem {
     product_sku: string;
@@ -161,14 +162,20 @@ export default function BudgetPreviewModal({
     };
 
     const handleDownloadPdf = () => {
-        const originalTitle = document.title;
-        const clientName = lead?.full_name ? lead.full_name.replace(/[^a-z0-9]/gi, '_').toLowerCase() : 'cliente';
-        const dateStr = today.replace(/\//g, '-');
-        document.title = `presupuesto_UNPO_${clientName}_${dateStr}`;
-        window.print();
-        setTimeout(() => {
-            document.title = originalTitle;
-        }, 1000);
+        // Utilizamos la utilidad de generación programática en vez del motor de impresión del navegador
+        generateBudgetPdf({
+            client: lead,
+            items: cart,
+            discountPercent,
+            hasIva,
+            dateStr: today,
+            totals: {
+                subtotal: rawTotalAmount,
+                discountAmount: rawTotalAmount - discountedAmount,
+                ivaAmount,
+                total: finalTotalAmount
+            }
+        });
     };
 
     const printRootContent = (
