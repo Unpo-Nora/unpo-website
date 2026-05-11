@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import CloseSaleModal from './CloseSaleModal';
-import { generateCatalogPdf } from '../../utils/generateCatalogPdf';
 
 interface Lead {
     id: number;
@@ -83,10 +82,6 @@ export default function SellerDashboard() {
 
     // Mobile Card Accordion State
     const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
-
-    // Catalog PDF State
-    const [isGeneratingCatalog, setIsGeneratingCatalog] = useState(false);
-    const [catalogProgressMsg, setCatalogProgressMsg] = useState("");
 
     useEffect(() => {
         fetchLeads();
@@ -386,40 +381,30 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
     };
 
     const handleDownloadCatalog = async () => {
-        setIsGeneratingCatalog(true);
-        setCatalogProgressMsg("Obteniendo productos y tipo de cambio...");
         try {
             const token = localStorage.getItem('token');
-            
-            // 1. Obtener tipo de cambio
-            const exchangeRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/catalog/pdf`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
             });
-            let exchangeRate = 1;
-            if (exchangeRes.ok) {
-                const exData = await exchangeRes.json();
-                exchangeRate = Number(exData.value) || 1;
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Catalogo_UNPO.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            } else {
+                alert("Error al descargar el catálogo. Usted no tiene permisos o hubo un error en el servidor.");
             }
-
-            // 2. Obtener productos
-            const productsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=2000`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            
-            if (!productsRes.ok) throw new Error("No se pudieron cargar los productos");
-            const products = await productsRes.json();
-
-            // 3. Generar PDF programáticamente
-            await generateCatalogPdf(products, exchangeRate, (msg) => {
-                setCatalogProgressMsg(msg);
-            });
-
         } catch (error) {
             console.error("Error downloading catalog:", error);
-            alert("Error al generar el catálogo. Intente nuevamente.");
-        } finally {
-            setIsGeneratingCatalog(false);
-            setCatalogProgressMsg("");
+            alert("Error de red al intentar descargar.");
         }
     };
 
@@ -534,12 +519,11 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                     <div className="flex shrink-0">
                         <button
                             onClick={handleDownloadCatalog}
-                            disabled={isGeneratingCatalog}
-                            className={`px-5 py-2.5 mr-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${isGeneratingCatalog ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'}`}
+                            className="px-5 py-2.5 mr-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 whitespace-nowrap"
                             title="Descargar Catálogo en stock (PDF)"
                         >
                             <Download size={18} />
-                            {isGeneratingCatalog ? 'Generando...' : 'Catálogo PDF'}
+                            Catálogo PDF
                         </button>
                         <button
                             onClick={() => { setActiveTab("NEW"); setCurrentPage(1); }}
@@ -1234,17 +1218,6 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                         setLeads(leads.filter(l => l.id !== leadToClose.id));
                     }}
                 />
-            )}
-
-            {/* Catalog PDF Generation Progress Overlay */}
-            {isGeneratingCatalog && (
-                <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl flex flex-col items-center">
-                        <div className="w-16 h-16 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-6"></div>
-                        <h3 className="text-xl font-black text-slate-900 mb-2">Generando Catálogo</h3>
-                        <p className="text-sm font-bold text-slate-500 animate-pulse bg-slate-50 py-2 px-4 rounded-xl border border-slate-100 w-full">{catalogProgressMsg || "Aguarde un momento..."}</p>
-                    </div>
-                </div>
             )}
         </div >
     );
