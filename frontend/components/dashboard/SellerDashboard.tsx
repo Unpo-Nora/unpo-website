@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import CloseSaleModal from './CloseSaleModal';
+import { generateCatalogPdf } from '../../utils/generateCatalogPdf';
 
 interface Lead {
     id: number;
@@ -83,6 +84,10 @@ export default function SellerDashboard() {
     // Mobile Card Accordion State
     const [expandedCardId, setExpandedCardId] = useState<number | null>(null);
 
+    // Catalog PDF State
+    const [isGeneratingCatalog, setIsGeneratingCatalog] = useState(false);
+    const [catalogProgressMsg, setCatalogProgressMsg] = useState("");
+
     useEffect(() => {
         fetchLeads();
     }, []);
@@ -105,8 +110,8 @@ export default function SellerDashboard() {
     };
 
     const handleWhatsAppClick = async (lead: Lead) => {
-        // Open link immediately in a popup window
-        window.open(getWhatsAppLink(lead), 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes');
+        // Open link safely in a new tab without window features to avoid popup blockers and mobile app issues
+        window.open(getWhatsAppLink(lead), '_blank', 'noopener,noreferrer');
 
         // Move to contacted automatically if it was new
         if (lead.status === 'NEW' && currentUser?.email) {
@@ -292,7 +297,24 @@ export default function SellerDashboard() {
 
 
     const getWhatsAppLink = (lead: Lead) => {
-        const base = "https://wa.me/" + lead.phone.replace(/\+/g, '').replace(/\s/g, '');
+        // Normalizar teléfono quitando espacios, guiones, paréntesis y signos
+        let phone = (lead.phone || '').replace(/[\s\-\(\)\+\.]/g, '');
+        
+        // Quitar el 0 inicial si es código de área de Argentina (ej 011 -> 11)
+        if (phone.startsWith('0') && phone.length === 11) {
+            phone = phone.substring(1);
+        }
+        
+        // Formatear según longitud para agregar código de país si falta
+        if (phone.length === 10) {
+            phone = '549' + phone; // Celular local de 10 dígitos (ej 1144445555)
+        } else if (phone.length === 12 && phone.startsWith('54')) {
+            phone = '549' + phone.substring(2); // Código 54 sin el 9 intermedio
+        } else if (!phone.startsWith('54') && phone.length >= 10) {
+            phone = '549' + phone; // Fallback genérico para números sin 54
+        }
+
+        const base = "https://wa.me/" + phone;
         const sellerFirstName = currentUser?.full_name?.split(' ')[0] || "un vendedor";
         const platformMap: Record<string, string> = {
             'ig': 'Instagram',
@@ -364,30 +386,40 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
     };
 
     const handleDownloadCatalog = async () => {
+        setIsGeneratingCatalog(true);
+        setCatalogProgressMsg("Obteniendo productos y tipo de cambio...");
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/catalog/pdf`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            
+            // 1. Obtener tipo de cambio
+            const exchangeRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            let exchangeRate = 1;
+            if (exchangeRes.ok) {
+                const exData = await exchangeRes.json();
+                exchangeRate = Number(exData.value) || 1;
+            }
+
+            // 2. Obtener productos
+            const productsRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=2000`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            if (!productsRes.ok) throw new Error("No se pudieron cargar los productos");
+            const products = await productsRes.json();
+
+            // 3. Generar PDF programáticamente
+            await generateCatalogPdf(products, exchangeRate, (msg) => {
+                setCatalogProgressMsg(msg);
             });
 
-            if (response.ok) {
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `Catalogo_UNPO.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            } else {
-                alert("Error al descargar el catálogo. Usted no tiene permisos o hubo un error en el servidor.");
-            }
         } catch (error) {
             console.error("Error downloading catalog:", error);
-            alert("Error de red al intentar descargar.");
+            alert("Error al generar el catálogo. Intente nuevamente.");
+        } finally {
+            setIsGeneratingCatalog(false);
+            setCatalogProgressMsg("");
         }
     };
 
@@ -502,11 +534,12 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                     <div className="flex shrink-0">
                         <button
                             onClick={handleDownloadCatalog}
-                            className="px-5 py-2.5 mr-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 whitespace-nowrap"
+                            disabled={isGeneratingCatalog}
+                            className={`px-5 py-2.5 mr-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 whitespace-nowrap ${isGeneratingCatalog ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200'}`}
                             title="Descargar Catálogo en stock (PDF)"
                         >
                             <Download size={18} />
-                            Catálogo PDF
+                            {isGeneratingCatalog ? 'Generando...' : 'Catálogo PDF'}
                         </button>
                         <button
                             onClick={() => { setActiveTab("NEW"); setCurrentPage(1); }}
@@ -699,7 +732,7 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                                             ) : (
                                                 <>
                                                     <button
-                                                        onClick={() => window.open(getWhatsAppLink(lead), 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes')}
+                                                        onClick={() => window.open(getWhatsAppLink(lead), '_blank', 'noopener,noreferrer')}
                                                         className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-green-100"
                                                     >
                                                         <MessageCircle size={14} />
@@ -795,7 +828,7 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                                                 if (activeTab === "NEW") {
                                                     handleWhatsAppClick(lead);
                                                 } else {
-                                                    window.open(getWhatsAppLink(lead), 'whatsapp_window', 'width=800,height=600,scrollbars=yes,resizable=yes');
+                                                    window.open(getWhatsAppLink(lead), '_blank', 'noopener,noreferrer');
                                                 }
                                             }}
                                             className="w-full mt-2 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-green-200 transition-all active:scale-95"
@@ -1201,6 +1234,17 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                         setLeads(leads.filter(l => l.id !== leadToClose.id));
                     }}
                 />
+            )}
+
+            {/* Catalog PDF Generation Progress Overlay */}
+            {isGeneratingCatalog && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl flex flex-col items-center">
+                        <div className="w-16 h-16 border-4 border-emerald-100 border-t-emerald-600 rounded-full animate-spin mb-6"></div>
+                        <h3 className="text-xl font-black text-slate-900 mb-2">Generando Catálogo</h3>
+                        <p className="text-sm font-bold text-slate-500 animate-pulse bg-slate-50 py-2 px-4 rounded-xl border border-slate-100 w-full">{catalogProgressMsg || "Aguarde un momento..."}</p>
+                    </div>
+                </div>
             )}
         </div >
     );
