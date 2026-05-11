@@ -148,9 +148,7 @@ export default function BudgetPreviewModal({
     
     useEffect(() => {
         setMounted(true);
-        // Debug temporal para validar renderizados
-        console.log("Render PresupuestoPrintDocument - Items length:", cart.length, cart.map(i => i.product_sku));
-    }, [cart]);
+    }, []);
 
     const today = new Date().toLocaleDateString('es-AR', {
         day: '2-digit',
@@ -242,15 +240,19 @@ export default function BudgetPreviewModal({
                         height: auto !important;
                         overflow: visible !important;
                         background: white !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
                     }
 
                     .presupuesto-print-document {
-                        width: 190mm !important;
-                        min-height: auto !important;
+                        width: 100% !important;
+                        max-width: 190mm !important;
+                        min-height: 0 !important;
                         height: auto !important;
                         margin: 0 auto !important;
                         padding: 0 !important;
                         box-shadow: none !important;
+                        border: none !important;
                         overflow: visible !important;
                         transform: none !important;
                     }
@@ -316,7 +318,9 @@ export default function BudgetPreviewModal({
 
                     {/* Preview Scrollable Area */}
                     <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100 custom-scrollbar">
-                        <div className="bg-white w-full max-w-[210mm] mx-auto min-h-[297mm] p-8 sm:p-12 shadow-sm rounded-xl">
+                        {/* Removemos el min-h-[297mm] en pantalla también para evitar overflow si no hay tantos items, 
+                            pero dejamos un padding razonable */}
+                        <div className="bg-white w-full max-w-[210mm] mx-auto p-8 sm:p-12 shadow-sm rounded-xl">
                             {/* Reutilizamos el mismo componente visual para la pantalla */}
                             <PresupuestoPrintDocument
                                 cart={cart}
