@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom';
 import { X, Printer, Download } from 'lucide-react';
 
 interface OrderItem {
@@ -57,7 +58,7 @@ const PresupuestoPrintDocument = ({
 
             {/* Items Table */}
             <div className="mb-8">
-                <table className="presupuesto-table text-left text-sm">
+                <table className="presupuesto-table text-left text-sm w-full">
                     <thead>
                         <tr className="border-b-2 border-slate-200">
                             <th className="py-3 px-2 font-black text-slate-700 uppercase tracking-wider">SKU</th>
@@ -69,7 +70,7 @@ const PresupuestoPrintDocument = ({
                     </thead>
                     <tbody>
                         {cart.map((item: any, index: number) => (
-                            <tr key={index} className="border-b border-slate-100">
+                            <tr key={`${item.product_sku}-${index}`} className="border-b border-slate-100">
                                 <td className="py-3 px-2 text-slate-500 font-medium">{item.product_sku || "-"}</td>
                                 <td className="py-3 px-2 font-bold text-slate-800">{item.product_name}</td>
                                 <td className="py-3 px-2 text-center font-bold text-slate-700">{item.quantity}</td>
@@ -86,7 +87,7 @@ const PresupuestoPrintDocument = ({
             </div>
 
             {/* Totals Section */}
-            <div className="presupuesto-totals flex justify-end">
+            <div className="presupuesto-totals flex justify-end mt-8">
                 <div className="w-full max-w-sm space-y-3">
                     <div className="flex justify-between text-sm">
                         <span className="font-bold text-slate-500">Subtotal:</span>
@@ -143,6 +144,14 @@ export default function BudgetPreviewModal({
     finalTotalAmount,
     onClose
 }: BudgetPreviewModalProps) {
+    const [mounted, setMounted] = useState(false);
+    
+    useEffect(() => {
+        setMounted(true);
+        // Debug temporal para validar renderizados
+        console.log("Render PresupuestoPrintDocument - Items length:", cart.length, cart.map(i => i.product_sku));
+    }, [cart]);
+
     const today = new Date().toLocaleDateString('es-AR', {
         day: '2-digit',
         month: '2-digit',
@@ -164,15 +173,29 @@ export default function BudgetPreviewModal({
         }, 1000);
     };
 
+    const printRootContent = (
+        <div className="presupuesto-print-root">
+            <PresupuestoPrintDocument
+                cart={cart}
+                lead={lead}
+                discountPercent={discountPercent}
+                hasIva={hasIva}
+                rawTotalAmount={rawTotalAmount}
+                discountedAmount={discountedAmount}
+                ivaAmount={ivaAmount}
+                finalTotalAmount={finalTotalAmount}
+                today={today}
+            />
+        </div>
+    );
+
     return (
         <>
             <style>{`
                 @media screen {
                     .presupuesto-print-root {
-                        position: absolute;
-                        left: -99999px;
-                        top: 0;
-                        width: 210mm;
+                        display: none;
+                        visibility: hidden;
                     }
                 }
 
@@ -192,8 +215,19 @@ export default function BudgetPreviewModal({
                         background: white !important;
                     }
 
-                    body * {
+                    /* Ocultar toda la app normal de Next.js */
+                    #__next,
+                    .presupuesto-preview-modal,
+                    .modal-backdrop,
+                    .admin-layout,
+                    aside,
+                    nav {
+                        display: none !important;
                         visibility: hidden !important;
+                    }
+
+                    body * {
+                        visibility: hidden;
                     }
 
                     .presupuesto-print-root,
@@ -203,9 +237,7 @@ export default function BudgetPreviewModal({
 
                     .presupuesto-print-root {
                         display: block !important;
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
+                        position: static !important;
                         width: 100% !important;
                         height: auto !important;
                         overflow: visible !important;
@@ -221,15 +253,6 @@ export default function BudgetPreviewModal({
                         box-shadow: none !important;
                         overflow: visible !important;
                         transform: none !important;
-                    }
-
-                    .no-print,
-                    .presupuesto-preview-modal,
-                    .modal-backdrop,
-                    .admin-layout,
-                    aside,
-                    nav {
-                        display: none !important;
                     }
 
                     .presupuesto-table {
@@ -311,20 +334,8 @@ export default function BudgetPreviewModal({
                 </div>
             </div>
 
-            {/* Documento Exclusivo para Impresión (Oculto en pantalla) */}
-            <div className="presupuesto-print-root">
-                <PresupuestoPrintDocument
-                    cart={cart}
-                    lead={lead}
-                    discountPercent={discountPercent}
-                    hasIva={hasIva}
-                    rawTotalAmount={rawTotalAmount}
-                    discountedAmount={discountedAmount}
-                    ivaAmount={ivaAmount}
-                    finalTotalAmount={finalTotalAmount}
-                    today={today}
-                />
-            </div>
+            {/* Documento Exclusivo para Impresión adjunto directamente al body para evadir jerarquía DOM */}
+            {mounted && ReactDOM.createPortal(printRootContent, document.body)}
         </>
     );
 }
