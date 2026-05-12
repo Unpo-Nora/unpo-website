@@ -117,6 +117,7 @@ class Lead(Base):
     
     status = Column(Enum(LeadStatus), default=LeadStatus.NEW)
     contacted_at = Column(DateTime(timezone=True), nullable=True)
+    assigned_seller_phone = Column(String, nullable=True)
     
     # Billing & Shipping Info
     dni_cuit = Column(String, nullable=True)

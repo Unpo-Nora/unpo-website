@@ -103,6 +103,19 @@ def create_lead(db: Session, lead: schemas.LeadCreate):
         from datetime import datetime, timezone
         db_lead.contacted_at = datetime.now(timezone.utc)
         
+    # Alternating assignment logic for WEB_UNPO leads
+    if db_lead.source == "WEB_UNPO":
+        # Find the last WEB_UNPO lead that has an assigned seller phone, locking it to prevent race conditions
+        last_assigned = db.query(models.Lead).filter(
+            models.Lead.source == "WEB_UNPO",
+            models.Lead.assigned_seller_phone.isnot(None)
+        ).with_for_update().order_by(models.Lead.id.desc()).first()
+        
+        if last_assigned and last_assigned.assigned_seller_phone == "1144227969":
+            db_lead.assigned_seller_phone = "1167063123"
+        else:
+            db_lead.assigned_seller_phone = "1144227969"
+            
     db.add(db_lead)
     db.commit()
     db.refresh(db_lead)

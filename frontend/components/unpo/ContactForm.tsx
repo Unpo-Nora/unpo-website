@@ -45,10 +45,13 @@ export default function ContactForm() {
             });
 
             if (response.ok) {
+                const responseData = await response.json();
+                const assignedPhone = responseData.assigned_seller_phone || '1144227969';
+                
                 const text = `Hola! Acabo de completar el formulario en la web de UNPO.
 Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* y busco asesoramiento sobre *${formData.category_interest}*.`;
                 const encodedText = encodeURIComponent(text);
-                const link = `https://wa.me/5491144227969?text=${encodedText}`;
+                const link = `https://wa.me/549${assignedPhone}?text=${encodedText}`;
                 setWhatsappLink(link);
                 // Usar window.location.href en lugar de window.open para evitar bloqueos en iOS/Safari
                 window.location.href = link;

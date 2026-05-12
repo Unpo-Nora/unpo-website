@@ -49,6 +49,7 @@ class LeadResponse(LeadBase):
     id: int
     created_at: Optional[datetime] = None
     contacted_at: Optional[datetime] = None
+    assigned_seller_phone: Optional[str] = None
 
     class Config:
         from_attributes = True

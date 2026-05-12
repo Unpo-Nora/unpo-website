@@ -16,20 +16,6 @@ get_db = database.get_db
 @router.post("/", response_model=schemas.LeadResponse)
 def create_lead(lead: schemas.LeadCreate, db: Session = Depends(get_db)):
     created_lead = crud.create_lead(db=db, lead=lead)
-    
-    # Simple Logic to generate a customized WhatsApp link
-    if getattr(lead, "source", None) == "WEB_UNPO" or (hasattr(lead, "model_dump") and lead.model_dump().get("source") == "WEB_UNPO"):
-        base_url = "https://wa.me/5491144227969"
-    else:
-        base_url = "https://wa.me/5491131488378"
-    interest = lead.product_interest or lead.category_interest or "productos"
-    message = f"Hola, soy {lead.full_name}. Estoy interesado en {interest}."
-    encoded_message = urllib.parse.quote(message)
-    whatsapp_link = f"{base_url}?text={encoded_message}"
-    
-    # In a real scenario, we might return this link or trigger an automated message via an external API
-    # For now, we'll just log it or include it in a hypothetical response (if we changed the schema)
-    
     return created_lead
 
 from .auth import get_current_user
