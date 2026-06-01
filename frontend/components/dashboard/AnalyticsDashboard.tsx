@@ -61,7 +61,7 @@ interface AnalyticsData {
         daily_orders: { day: string; count: number }[];
         total_amount_sold?: number;
         total_expenses?: number;
-        historical_monthly_sales?: { month: string; total_amount: number; sales_count: number; expenses?: number }[];
+        historical_monthly_sales?: { month: string; total_amount: number; sales_count: number; expenses?: number; new_leads?: number }[];
     };
 }
 
@@ -980,29 +980,38 @@ export default function AnalyticsDashboard() {
                                             <div>
                                                 <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
                                                     <DollarSign size={20} className="text-blue-600" />
-                                                    Rentabilidad Histórica (Ingresos vs Egresos)
+                                                    Tendencia Mensual: Ingresos, Egresos y Leads nuevos
                                                 </h3>
                                                 <p className="text-sm text-slate-500 font-medium mt-1">
-                                                    Comparativa de flujos de dinero mes a mes en histórico.
+                                                    Comparativa de flujos de dinero y captación de leads mes a mes.
                                                 </p>
                                             </div>
                                         </div>
                                         <div className="h-[350px] w-full">
                                             <ResponsiveContainer width="100%" height="100%">
-                                                <ComposedChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({...m, rentabilidad: m.total_amount - (m.expenses || 0) })) || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
+                                                <ComposedChart data={data.monthly_metrics?.historical_monthly_sales?.map(m => ({
+                                                    ...m,
+                                                    rentabilidad: m.total_amount - (m.expenses || 0),
+                                                    new_leads: m.new_leads || 0
+                                                })) || []} margin={{ top: 10, right: 30, left: -10, bottom: 0 }}>
                                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                                                     <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} dy={10} />
-                                                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                                    <YAxis yAxisId="left" axisLine={false} tickLine={false} tick={{ fill: '#0f172a', fontSize: 12, fontWeight: 'bold' }} tickFormatter={(val) => `$${val > 1000 ? (val/1000).toFixed(0) + 'k' : val}`} />
+                                                    <YAxis yAxisId="right" orientation="right" axisLine={false} tickLine={false} tick={{ fill: '#f59e0b', fontSize: 12, fontWeight: 'bold' }} />
                                                     <RechartsTooltip
                                                         contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }}
                                                         cursor={{ fill: '#f8fafc' }}
-                                                        formatter={(value: number, name: string) => [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name === 'total_amount' ? 'Total Ingresos' : name === 'expenses' ? 'Total Egresos' : 'Rentabilidad Neta']}
+                                                        formatter={(value: number, name: string) => {
+                                                            if (name === 'Leads nuevos') return [value, name];
+                                                            return [`$ ${value.toLocaleString('es-AR', {minimumFractionDigits: 0})}`, name];
+                                                        }}
                                                         labelFormatter={(label) => `Mes: ${label}`}
                                                     />
                                                     <Legend wrapperStyle={{ paddingTop: "20px" }} />
-                                                    <Bar dataKey="total_amount" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                                    <Bar dataKey="expenses" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
-                                                    <Line type="monotone" dataKey="rentabilidad" name="Rentabilidad Neta" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
+                                                    <Bar yAxisId="left" dataKey="total_amount" name="Ingresos" fill="#10b981" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                                    <Bar yAxisId="left" dataKey="expenses" name="Egresos" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={40} />
+                                                    <Line yAxisId="left" type="monotone" dataKey="rentabilidad" name="Rentabilidad Neta" stroke="#3b82f6" strokeWidth={5} dot={{ r: 5, fill: '#3b82f6', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 7 }} />
+                                                    <Line yAxisId="right" type="monotone" dataKey="new_leads" name="Leads nuevos" stroke="#f59e0b" strokeWidth={4} dot={{ r: 4, fill: '#f59e0b', stroke: '#ffffff', strokeWidth: 2 }} activeDot={{ r: 6 }} />
                                                 </ComposedChart>
                                             </ResponsiveContainer>
                                         </div>

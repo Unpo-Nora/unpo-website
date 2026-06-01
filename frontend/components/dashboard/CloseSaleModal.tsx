@@ -323,10 +323,10 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                             </div>
 
                             {/* Cart Summary */}
-                            <div className="w-full lg:w-[350px] shrink-0 flex flex-col bg-slate-50/50 rounded-3xl p-4 sm:p-6 border border-slate-100 min-h-[300px] lg:h-full">
+                            <div className="w-full lg:w-[350px] shrink-0 flex flex-col bg-slate-50/50 rounded-3xl p-4 sm:p-6 border border-slate-100 min-h-[300px] lg:h-full min-h-0">
                                 <h4 className="font-black tracking-tight text-lg mb-6 flex items-center gap-2 shrink-0"><ShoppingCart size={20} className="text-blue-600" /> Carrito Actual</h4>
 
-                                <div className="flex-1 overflow-y-auto space-y-4">
+                                <div className="flex-1 min-h-0 overflow-y-auto max-h-[40vh] lg:max-h-[320px] space-y-4 pr-1">
                                     {cart.length === 0 ? (
                                         <div className="text-center text-slate-400 py-10 italic text-sm">El carrito está vacío</div>
                                     ) : (
@@ -358,7 +358,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                     )}
                                 </div>
 
-                                <div className="pt-6 border-t border-slate-200 mt-6">
+                                <div className="shrink-0 pt-6 border-t border-slate-200 mt-6">
                                     {rawTotalAmount >= 150000 && (
                                         <div className="flex justify-between items-center mb-4">
                                             <span className="text-slate-500 font-bold uppercase tracking-widest text-xs flex items-center gap-2">

@@ -325,7 +325,7 @@ def get_analytics_summary(
         if not created_at: continue
         month_key = created_at.strftime("%Y-%m")
         if month_key not in monthly_stats_dict:
-            monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0}
+            monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0, "new_leads": 0}
         monthly_stats_dict[month_key]["amount"] += float(amount or 0)
         monthly_stats_dict[month_key]["count"] += 1
 
@@ -333,19 +333,39 @@ def get_analytics_summary(
         if not extx.fecha: continue
         month_key = extx.fecha.strftime("%Y-%m")
         if month_key not in monthly_stats_dict:
-            monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0}
+            monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0, "new_leads": 0}
         
         amt = float(extx.monto)
         if extx.moneda == "USD":
             amt *= exchange_rate
         monthly_stats_dict[month_key]["expenses"] += amt
 
+    # Query leads count grouped by month directly in database
+    if db.bind.dialect.name == "postgresql":
+        leads_by_month = db.query(
+            func.to_char(models.Lead.created_at, 'YYYY-MM').label('month'),
+            func.count(models.Lead.id).label('count')
+        ).filter(models.Lead.created_at != None).group_by('month').all()
+    else:
+        leads_by_month = db.query(
+            func.strftime('%Y-%m', models.Lead.created_at).label('month'),
+            func.count(models.Lead.id).label('count')
+        ).filter(models.Lead.created_at != None).group_by('month').all()
+
+    leads_by_month_dict = {row.month: row.count for row in leads_by_month if row.month}
+
+    for month_key, count in leads_by_month_dict.items():
+        if month_key not in monthly_stats_dict:
+            monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0, "new_leads": 0}
+        monthly_stats_dict[month_key]["new_leads"] = count
+
     historical_monthly_sales = [
         {
             "month": k, 
             "total_amount": v["amount"], 
             "sales_count": v["count"],
-            "expenses": v["expenses"]
+            "expenses": v["expenses"],
+            "new_leads": v.get("new_leads", 0)
         } for k, v in sorted(monthly_stats_dict.items())
     ][-12:]
 
