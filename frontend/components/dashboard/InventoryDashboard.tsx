@@ -80,7 +80,7 @@ export default function InventoryDashboard() {
     const fetchProducts = async () => {
         try {
             const token = localStorage.getItem('token');
-            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/`;
+            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=10000`;
             const response = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });

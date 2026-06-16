@@ -173,7 +173,7 @@ def create_category(
 @router.get("/", response_model=List[schemas.Product])
 def read_products(
     skip: int = 0, 
-    limit: int = 200, 
+    limit: int = 10000, 
     brand: Optional[str] = None, 
     category_id: Optional[int] = None,
     in_stock: bool = False,

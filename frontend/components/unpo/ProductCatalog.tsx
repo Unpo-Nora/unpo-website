@@ -63,7 +63,7 @@ export default function ProductCatalog() {
             const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
             // Fetch more products to handle local filtering better if needed, 
             // but the user wants it organized.
-            let apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=200`;
+            let apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=10000`;
 
             const response = await fetch(apiUrl);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
