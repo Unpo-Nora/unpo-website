@@ -154,11 +154,21 @@ def create_category(
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="No tiene permisos para crear categorías")
         
-    db_cat = models.Category(name=category.name)
+    normalized_name = category.name.strip()
+    from sqlalchemy import func
+    existing_cat = db.query(models.Category).filter(
+        func.lower(func.trim(models.Category.name)) == normalized_name.lower()
+    ).first()
+    
+    if existing_cat:
+        return existing_cat
+        
+    db_cat = models.Category(name=normalized_name)
     db.add(db_cat)
     db.commit()
     db.refresh(db_cat)
     return db_cat
+
 
 @router.get("/", response_model=List[schemas.Product])
 def read_products(

@@ -168,10 +168,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
             return;
         }
 
-        if (!product && selectedFiles.length === 0) {
-            setError("Debes subir al menos una imagen para el nuevo producto.");
-            return;
-        }
+
 
         setSaving(true);
         setError('');
@@ -373,10 +370,10 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                 >
                                      <option value="" disabled>Seleccione una categoría</option>
                                     {categories
-                                        .filter(c => ['DECORACION', 'HOGAR', 'MARROQUINERIA', 'BAZAR', 'TECNOLOGIA', 'JUGUETE'].includes(c.name.toUpperCase()))
+                                        .filter(c => ['DECORACION', 'HOGAR', 'MARROQUINERIA', 'BAZAR', 'TECNOLOGIA', 'JUGUETE'].includes(c.name.trim().toUpperCase()))
                                         .sort((a,b) => a.name.localeCompare(b.name))
                                         .map(c => (
-                                        <option key={c.id} value={c.id}>{c.name.toUpperCase()}</option>
+                                        <option key={c.id} value={c.id}>{c.name.trim().toUpperCase()}</option>
                                     ))}
                                 </select>
                         </div>

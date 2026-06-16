@@ -8,10 +8,17 @@ def get_brand_by_slug(db: Session, slug: str):
     return db.query(models.Brand).filter(models.Brand.slug == slug).first()
 
 def get_categories(db: Session):
-    return db.query(models.Category).join(models.Product).filter(
-        models.Product.stock_quantity > 0,
-        models.Product.is_active == True
-    ).distinct().all()
+    all_cats = db.query(models.Category).all()
+    seen = set()
+    unique_cats = []
+    for cat in all_cats:
+        norm_name = cat.name.strip().upper() if cat.name else ""
+        if norm_name and norm_name not in seen:
+            seen.add(norm_name)
+            unique_cats.append(cat)
+    unique_cats.sort(key=lambda x: x.name.strip().upper() if x.name else "")
+    return unique_cats
+
 
 def get_products(db: Session, skip: int = 0, limit: int = 200, brand_slug: str = None, category_id: int = None, in_stock: bool = False):
     query = db.query(models.Product).filter(models.Product.is_active == True)
