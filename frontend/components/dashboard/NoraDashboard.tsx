@@ -46,13 +46,13 @@ export default function NoraDashboard() {
     const fetchLeads = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/?brand=nora`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
             });
             const data = await response.json();
-            // Filtrar solo los de NORA
+            // Filtrar solo los de NORA (defensa en profundidad: el backend ya filtra por brand=nora)
             const noraLeads = data.filter((l: Lead) => l.source === 'WEB_NORA');
             setLeads(noraLeads);
             setLoading(false);

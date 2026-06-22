@@ -22,38 +22,39 @@ from .auth import get_current_user
 
 @router.get("/", response_model=List[schemas.LeadResponse])
 def read_leads(
-    skip: int = 0, 
-    limit: int = 5000, 
+    skip: int = 0,
+    limit: int = 5000,
     status: str = Query(None),
+    brand: str = Query(None),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    print(f"DEBUG: User {current_user.email} with role {current_user.role} requesting leads. status={status}")
+    print(f"DEBUG: User {current_user.email} with role {current_user.role} requesting leads. status={status} brand={brand}")
     if current_user.role == "admin":
-        results = crud.get_leads(db, skip=skip, limit=limit, status=status)
+        results = crud.get_leads(db, skip=skip, limit=limit, status=status, brand=brand)
         print(f"DEBUG: Admin results count: {len(results)}")
         return results
-    
+
     # For sellers:
     # 1. If searching for NEW, show all NEW.
     # 2. If searching for CONTACTED, show only OWNED.
     # 3. If no status (initial fetch), return all NEW + OWNED CONTACTED.
-    
+
     if status == "NEW":
-        return crud.get_leads(db, skip=skip, limit=limit, status="NEW")
+        return crud.get_leads(db, skip=skip, limit=limit, status="NEW", brand=brand)
     elif status == "CONTACTED":
-        return crud.get_leads(db, skip=skip, limit=limit, status="CONTACTED", seller=current_user.email)
+        return crud.get_leads(db, skip=skip, limit=limit, status="CONTACTED", seller=current_user.email, brand=brand)
     elif status == "CLIENT":
-        return crud.get_leads(db, skip=skip, limit=limit, status="CLIENT", seller=current_user.email)
+        return crud.get_leads(db, skip=skip, limit=limit, status="CLIENT", seller=current_user.email, brand=brand)
     elif status:
-        return crud.get_leads(db, skip=skip, limit=limit, status=status, seller=current_user.email)
+        return crud.get_leads(db, skip=skip, limit=limit, status=status, seller=current_user.email, brand=brand)
     else:
         # Prioritize owned contacted leads
-        owned_contacted = crud.get_leads(db, limit=limit, status="CONTACTED", seller=current_user.email)
+        owned_contacted = crud.get_leads(db, limit=limit, status="CONTACTED", seller=current_user.email, brand=brand)
         remaining_limit = limit - len(owned_contacted)
         all_new = []
         if remaining_limit > 0:
-            all_new = crud.get_leads(db, limit=remaining_limit, status="NEW")
+            all_new = crud.get_leads(db, limit=remaining_limit, status="NEW", brand=brand)
         return owned_contacted + all_new
 
 @router.patch("/{lead_id}", response_model=schemas.LeadResponse)

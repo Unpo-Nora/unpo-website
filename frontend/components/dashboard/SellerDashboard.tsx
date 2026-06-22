@@ -90,7 +90,7 @@ export default function SellerDashboard() {
     const fetchLeads = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/?brand=unpo`, {
                 headers: {
                     'Authorization': `Bearer ${token}`
                 }
