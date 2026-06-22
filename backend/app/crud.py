@@ -122,7 +122,11 @@ def create_lead(db: Session, lead: schemas.LeadCreate):
             db_lead.assigned_seller_phone = "1167063123"
         else:
             db_lead.assigned_seller_phone = "1144227969"
-            
+
+    # NORA leads are assigned to the dedicated NORA seller.
+    elif db_lead.source == "WEB_NORA":
+        db_lead.assigned_seller_phone = "1131488378"
+
     db.add(db_lead)
     db.commit()
     db.refresh(db_lead)
@@ -143,12 +147,19 @@ def get_lead_by_contact(db: Session, email: str = None, phone: str = None):
         
     return db.query(models.Lead).filter(or_(*filters)).first()
 
-def get_leads(db: Session, skip: int = 0, limit: int = 5000, status: str = None, seller: str = None):
+def get_leads(db: Session, skip: int = 0, limit: int = 5000, status: str = None, seller: str = None, brand: str = None):
     query = db.query(models.Lead)
     if status:
         query = query.filter(models.Lead.status == status)
     if seller:
         query = query.filter(models.Lead.seller == seller)
+    # Brand segregation by source. NORA leads use source == "WEB_NORA";
+    # everything else (WEB_UNPO, SELLER, Meta/Excel, NULL, ...) belongs to UNPO.
+    if brand:
+        if brand.lower() == "nora":
+            query = query.filter(models.Lead.source == "WEB_NORA")
+        elif brand.lower() == "unpo":
+            query = query.filter(or_(models.Lead.source != "WEB_NORA", models.Lead.source.is_(None)))
     return query.order_by(models.Lead.id.desc()).offset(skip).limit(limit).all()
 
 def update_lead(db: Session, lead_id: int, lead_data: dict):
