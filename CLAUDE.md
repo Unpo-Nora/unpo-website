@@ -84,3 +84,10 @@ JWT bearer tokens. `auth.get_current_user` (in `routers/auth.py`) decodes the to
 - The product domain keys on **SKU** (string) as much as on numeric id (see `crud.get_product(db, sku=...)`).
 - Finance/purchasing models and fields are in **Spanish** (`monto`, `fecha`, `tipo_movimiento`, `EGRESO`/`INGRESO`); product/lead/sales models are mostly English. Match whichever domain you're editing.
 - User-facing strings (API error `detail`, UI copy) are in Spanish.
+
+## Language
+
+- Respond to the user **in Spanish** (Rioplatense / neutral).
+- Keep technical names, commands, paths, variables, error messages, and code in **English** where that is their natural form — do not translate identifiers or CLI output.
+- If the user pastes logs or errors in English, explain them in Spanish (the explanation is in Spanish; quote the original English text as-is).
+- Commit messages may be written in Spanish unless the project indicates otherwise.
