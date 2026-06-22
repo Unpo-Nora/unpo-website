@@ -39,6 +39,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# TypeScript build info (cache incremental, autogenerado)
+*.tsbuildinfo
+
 # Variables de entorno
 .env
 *.env
