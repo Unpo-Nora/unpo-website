@@ -32,13 +32,6 @@ export default function Navbar() {
                         <Link href="/nora#waitlist" className="px-5 py-2.5 bg-slate-900 text-white rounded-full text-xs font-bold tracking-widest uppercase hover:bg-slate-800 transition-colors shadow-md hidden sm:block">
                             Unirse a Waitlist
                         </Link>
-
-                        {/* UNPO Back Link */}
-                        <div className="pl-6 border-l border-slate-200">
-                            <Link href="/" className="text-xs font-bold tracking-widest text-slate-400 hover:text-slate-900 transition-colors">
-                                UNPO
-                            </Link>
-                        </div>
                     </div>
                 </div>
             </div>
