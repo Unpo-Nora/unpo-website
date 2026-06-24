@@ -1,14 +1,20 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 
 export default function VisitorTracker() {
     const hasTracked = useRef(false);
+    const pathname = usePathname();
 
     useEffect(() => {
         // Prevent tracking multiple times in development strictly mode
         if (hasTracked.current) return;
-        
+
+        // NORA public surfaces must NOT feed UNPO analytics (Etapa 3.2-B).
+        // NORA has no dedicated analytics yet; revisit when backend supports brand.
+        if (pathname?.startsWith("/nora")) return;
+
         const trackVisit = async () => {
             try {
                 let visitorId = localStorage.getItem("unpo_visitor_id");
