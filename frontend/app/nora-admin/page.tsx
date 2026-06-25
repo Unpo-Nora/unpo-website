@@ -1,4 +1,9 @@
+import type { Metadata } from "next";
 import NoraDashboard from "@/components/dashboard/NoraDashboard";
+
+export const metadata: Metadata = {
+    title: "CRM NORA",
+};
 
 export default function NoraAdminPage() {
     return (

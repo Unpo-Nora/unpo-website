@@ -13,7 +13,7 @@ interface User {
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: (token: string) => Promise<void>;
+    login: (token: string, redirectTo?: string) => Promise<void>;
     logout: () => void;
 }
 
@@ -54,16 +54,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     };
 
-    const login = async (token: string) => {
+    const login = async (token: string, redirectTo: string = '/admin/sales') => {
         localStorage.setItem('token', token);
-        const userData = await validateToken(token);
+        await validateToken(token);
 
-        // Redirección inteligente
-        if (userData?.role === 'admin') {
-            router.push('/admin/sales'); // Podría ser un dashboard general
-        } else {
-            router.push('/admin/sales');
-        }
+        // Redirect configurable. Default '/admin/sales' (UNPO sin cambios);
+        // el login NORA pasa '/nora-admin'.
+        router.push(redirectTo);
     };
 
     const logout = () => {
