@@ -26,8 +26,7 @@ export default function NoraAdminLayout({
 
     useEffect(() => {
         if (!isLoginPage && !loading && !user) {
-            // El redirect propio a /nora-admin/login se ajusta en 3.4-C.
-            router.push("/admin/login");
+            router.push("/nora-admin/login");
         }
     }, [user, loading, router, isLoginPage]);
 

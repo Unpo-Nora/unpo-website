@@ -30,9 +30,7 @@ export default function NoraLoginPage() {
             const data = await response.json();
 
             if (response.ok) {
-                // NOTA: por ahora login() redirige a /admin/sales (AuthContext).
-                // El redirect propio a /nora-admin se implementa en 3.4-C.
-                await login(data.access_token);
+                await login(data.access_token, "/nora-admin");
             } else {
                 setError(data.detail || "Email o contraseña incorrectos");
             }
