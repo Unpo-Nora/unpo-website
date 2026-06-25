@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@/context/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Loader2, Menu } from "lucide-react";
 
@@ -17,14 +17,24 @@ export default function NoraAdminLayout({
 }) {
     const { user, loading } = useAuth();
     const router = useRouter();
+    const pathname = usePathname();
 
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
+    // La pantalla de login NORA queda fuera del gate de auth.
+    const isLoginPage = pathname === "/nora-admin/login";
+
     useEffect(() => {
-        if (!loading && !user) {
+        if (!isLoginPage && !loading && !user) {
+            // El redirect propio a /nora-admin/login se ajusta en 3.4-C.
             router.push("/admin/login");
         }
-    }, [user, loading, router]);
+    }, [user, loading, router, isLoginPage]);
+
+    // Login NORA: render sin sidebar ni gate.
+    if (isLoginPage) {
+        return <>{children}</>;
+    }
 
     if (loading) {
         return (
