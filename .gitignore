@@ -26,6 +26,10 @@ wheels/
 *.egg
 
 # Node.js / Frontend
+# Excepción: la regla Python `lib/` (sección de arriba) también ignora
+# frontend/lib/. Re-incluimos el namespace de utilidades del frontend
+# (p. ej. frontend/lib/nora/), que sí debe versionarse.
+!frontend/lib/
 node_modules/
 .next/
 out/

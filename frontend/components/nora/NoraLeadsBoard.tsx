@@ -27,6 +27,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import type { NoraLead } from './types';
 import { NoraLeadStatus, getNoraLeadStatusLabel } from './leadStatus';
+import { fetchNoraLeads, updateNoraLeadStatus } from '@/lib/nora/api';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -44,16 +45,9 @@ export default function NoraLeadsBoard() {
 
     const fetchLeads = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/?brand=nora`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-            const data = await response.json();
-            // Filtro defensivo: el backend ya filtra por brand=nora, pero igual
-            // nos quedamos solo con los de NORA (source === "WEB_NORA").
-            const noraLeads = data.filter((l: NoraLead) => l.source === 'WEB_NORA');
+            const token = localStorage.getItem('token') ?? '';
+            // El wrapper centraliza brand=nora + filtro defensivo source === "WEB_NORA".
+            const noraLeads = await fetchNoraLeads(token);
             setLeads(noraLeads);
             setLoading(false);
         } catch (error) {
@@ -69,20 +63,13 @@ export default function NoraLeadsBoard() {
 
         if (lead.status === 'NEW' && currentUser?.email) {
             try {
-                const token = localStorage.getItem('token');
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
-                    method: 'PATCH',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
-                    },
-                    body: JSON.stringify({
-                        status: 'CONTACTED',
-                        seller: currentUser.email
-                    })
+                const token = localStorage.getItem('token') ?? '';
+                const ok = await updateNoraLeadStatus(token, lead.id, {
+                    status: 'CONTACTED',
+                    seller: currentUser.email
                 });
 
-                if (response.ok) {
+                if (ok) {
                     setLeads(leads.map(l =>
                         l.id === lead.id
                             ? { ...l, status: 'CONTACTED', seller: currentUser.email }
@@ -97,21 +84,14 @@ export default function NoraLeadsBoard() {
 
     const handleRevertToNew = async (lead: NoraLead) => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
-                method: 'PATCH',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    status: 'NEW',
-                    feedback_status: null,
-                    seller: null
-                })
+            const token = localStorage.getItem('token') ?? '';
+            const ok = await updateNoraLeadStatus(token, lead.id, {
+                status: 'NEW',
+                feedback_status: null,
+                seller: null
             });
 
-            if (response.ok) {
+            if (ok) {
                 setLeads(leads.map(l => l.id === lead.id ? { ...l, status: 'NEW', feedback_status: null, seller: null } : l));
             }
         } catch (error) {
