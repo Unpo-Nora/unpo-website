@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import NoraDashboard from "@/components/dashboard/NoraDashboard";
+import NoraLeadsBoard from "@/components/nora/NoraLeadsBoard";
 
 export const metadata: Metadata = {
     title: "CRM NORA",
@@ -14,7 +14,7 @@ export default function NoraAdminPage() {
                     <p className="text-slate-500 mt-2">Gestiona los prospectos interesados en la línea NORA.</p>
                 </div>
 
-                <NoraDashboard />
+                <NoraLeadsBoard />
             </div>
         </div>
     );
