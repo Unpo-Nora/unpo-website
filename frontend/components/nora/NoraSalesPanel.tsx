@@ -1,28 +1,31 @@
 "use client";
 
-// Etapa 4.2-A.5 — Panel de Ventas NORA: carga + métricas + filtros + orden +
-// acciones básicas (WhatsApp etapa 1).
+// Etapa 4.2-A.6 — Panel de Ventas NORA: carga + métricas + filtros + orden +
+// acciones (WhatsApp etapa 1) + vista responsive (tabla desktop / cards mobile)
+// + paginación client-side.
 //
 // Carga los leads NORA reales vía fetchNoraLeads (wrapper centralizado que ya
 // fuerza brand=nora + filtro defensivo source === "WEB_NORA"), aplica filtros y
-// ordenamiento client-side y permite acciones por prospecto:
+// ordenamiento client-side, pagina el resultado y permite acciones por prospecto:
 //   - Contactar por WhatsApp con deep-link wa.me (NO WhatsApp Business API).
 //   - Marcado automático a CONTACTED cuando el lead está en NEW.
 //   - Volver un lead CONTACTED a NEW.
 // Los cambios de estado usan el endpoint existente (PATCH /leads/{id}) vía
 // updateNoraLeadStatus; no se crea backend nuevo ni se toca la DB.
+// Pipeline de datos: leads → filteredLeads → sortedLeads → paginatedLeads.
 //
-// TODAVÍA NO incluye: rango de fechas, paginación, ficha/drawer ni cards mobile
-// (subetapas 4.2-A.6+). No toca CLIENT, no crea estados nuevos, no usa WhatsApp
-// Business API / Meta API y no copia NADA del Panel de Ventas UNPO
-// (SellerDashboard).
+// TODAVÍA NO incluye: rango de fechas, ficha/drawer, edición de notas, etiquetas,
+// tareas, presupuestos ni ventas (subetapas posteriores). No toca CLIENT, no crea
+// estados nuevos, no usa WhatsApp Business API / Meta API y no copia NADA del
+// Panel de Ventas UNPO (SellerDashboard).
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Users, UserPlus, History } from 'lucide-react';
+import { Users, UserPlus, History, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { NoraLead } from './types';
 import { useAuth } from '@/context/AuthContext';
 import { fetchNoraLeads, updateNoraLeadStatus, type NoraLeadUpdate } from '@/lib/nora/api';
 import NoraLeadsTable from './NoraLeadsTable';
+import NoraLeadCards from './NoraLeadCards';
 import NoraSalesToolbar, {
     NoraSalesFilters,
     NORA_DEFAULT_FILTERS,
@@ -31,6 +34,9 @@ import NoraSalesToolbar, {
     NORA_DEFAULT_SORT_KEY,
     NORA_DEFAULT_SORT_DIR,
 } from './NoraSalesToolbar';
+
+/** Cantidad de prospectos por página (paginación client-side). */
+const PAGE_SIZE = 10;
 
 /** Orden lógico del pipeline para el sort por estado. */
 const STATUS_ORDER: Record<string, number> = { NEW: 0, CONTACTED: 1, CLIENT: 2 };
@@ -88,6 +94,7 @@ export default function NoraSalesPanel() {
     const [sortDir, setSortDir] = useState<NoraSortDir>(NORA_DEFAULT_SORT_DIR);
     const [updatingLeadId, setUpdatingLeadId] = useState<number | null>(null);
     const [actionError, setActionError] = useState<string | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
 
     useEffect(() => {
         let cancelled = false;
@@ -112,6 +119,11 @@ export default function NoraSalesPanel() {
             cancelled = true;
         };
     }, []);
+
+    // Reset a página 1 cuando cambian filtros u ordenamiento.
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filters, sortKey, sortDir]);
 
     // Métricas: SIEMPRE sobre el total real de leads cargados (no filtrados).
     const totalCount = leads.length;
@@ -278,6 +290,19 @@ export default function NoraSalesPanel() {
         );
     };
 
+    // Paginación client-side, SIEMPRE después del ordenamiento.
+    const totalPages = Math.max(1, Math.ceil(sortedLeads.length / PAGE_SIZE));
+    const safePage = Math.min(currentPage, totalPages);
+    const startIndex = (safePage - 1) * PAGE_SIZE;
+    const endIndex = Math.min(startIndex + PAGE_SIZE, sortedLeads.length);
+    const paginatedLeads = useMemo(
+        () => sortedLeads.slice(startIndex, endIndex),
+        [sortedLeads, startIndex, endIndex]
+    );
+
+    const goPrev = () => setCurrentPage(Math.max(1, safePage - 1));
+    const goNext = () => setCurrentPage(Math.min(totalPages, safePage + 1));
+
     const hasLeads = !loading && !error && leads.length > 0;
 
     return (
@@ -308,9 +333,11 @@ export default function NoraSalesPanel() {
                         sortDir={sortDir}
                         onSortChange={handleSortChange}
                     />
-                    <div className="text-xs font-bold text-slate-400 px-1">
-                        Mostrando {filteredLeads.length} de {leads.length} prospectos
-                    </div>
+                    {sortedLeads.length > 0 && (
+                        <div className="text-xs font-bold text-slate-400 px-1">
+                            Mostrando {startIndex + 1}-{endIndex} de {sortedLeads.length} prospectos filtrados
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -336,12 +363,54 @@ export default function NoraSalesPanel() {
                         No hay prospectos que coincidan con los filtros seleccionados.
                     </div>
                 ) : (
-                    <NoraLeadsTable
-                        leads={sortedLeads}
-                        onWhatsApp={handleWhatsApp}
-                        onRevertToNew={handleRevertToNew}
-                        updatingLeadId={updatingLeadId}
-                    />
+                    <>
+                        {/* Desktop */}
+                        <div className="hidden lg:block">
+                            <NoraLeadsTable
+                                leads={paginatedLeads}
+                                onWhatsApp={handleWhatsApp}
+                                onRevertToNew={handleRevertToNew}
+                                updatingLeadId={updatingLeadId}
+                            />
+                        </div>
+
+                        {/* Mobile / tablet */}
+                        <div className="lg:hidden">
+                            <NoraLeadCards
+                                leads={paginatedLeads}
+                                onWhatsApp={handleWhatsApp}
+                                onRevertToNew={handleRevertToNew}
+                                updatingLeadId={updatingLeadId}
+                            />
+                        </div>
+
+                        {/* Paginación */}
+                        {totalPages > 1 && (
+                            <div className="px-6 py-5 bg-slate-50/50 border-t border-slate-100 flex items-center justify-between gap-3">
+                                <button
+                                    type="button"
+                                    onClick={goPrev}
+                                    disabled={safePage === 1}
+                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    <ChevronLeft size={18} />
+                                    Anterior
+                                </button>
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                    Página {safePage} de {totalPages}
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={goNext}
+                                    disabled={safePage === totalPages}
+                                    className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-xl border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Siguiente
+                                    <ChevronRight size={18} />
+                                </button>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>
