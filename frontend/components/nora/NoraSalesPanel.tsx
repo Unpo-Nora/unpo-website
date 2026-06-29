@@ -17,13 +17,32 @@ import { Users, UserPlus, History } from 'lucide-react';
 import type { NoraLead } from './types';
 import { fetchNoraLeads } from '@/lib/nora/api';
 import NoraLeadsTable from './NoraLeadsTable';
-import NoraSalesToolbar, { NoraSalesFilters, NORA_DEFAULT_FILTERS } from './NoraSalesToolbar';
+import NoraSalesToolbar, {
+    NoraSalesFilters,
+    NORA_DEFAULT_FILTERS,
+    NoraSortKey,
+    NoraSortDir,
+    NORA_DEFAULT_SORT_KEY,
+    NORA_DEFAULT_SORT_DIR,
+} from './NoraSalesToolbar';
+
+/** Orden lógico del pipeline para el sort por estado. */
+const STATUS_ORDER: Record<string, number> = { NEW: 0, CONTACTED: 1, CLIENT: 2 };
+
+/** Epoch en ms de una fecha; null si falta o es inválida. */
+function timeOf(value?: string | null): number | null {
+    if (!value) return null;
+    const t = new Date(value).getTime();
+    return isNaN(t) ? null : t;
+}
 
 export default function NoraSalesPanel() {
     const [leads, setLeads] = useState<NoraLead[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
     const [filters, setFilters] = useState<NoraSalesFilters>(NORA_DEFAULT_FILTERS);
+    const [sortKey, setSortKey] = useState<NoraSortKey>(NORA_DEFAULT_SORT_KEY);
+    const [sortDir, setSortDir] = useState<NoraSortDir>(NORA_DEFAULT_SORT_DIR);
 
     useEffect(() => {
         let cancelled = false;
@@ -98,10 +117,62 @@ export default function NoraSalesPanel() {
         });
     }, [leads, filters]);
 
+    // Ordenamiento client-side, SIEMPRE después del filtrado.
+    const sortedLeads = useMemo(() => {
+        const dirMul = sortDir === 'asc' ? 1 : -1;
+        const arr = [...filteredLeads];
+
+        arr.sort((a, b) => {
+            switch (sortKey) {
+                case 'nombre':
+                    return (a.full_name || '').localeCompare(b.full_name || '', 'es', { sensitivity: 'base' }) * dirMul;
+
+                case 'ultimo_contacto': {
+                    const ta = timeOf(a.contacted_at);
+                    const tb = timeOf(b.contacted_at);
+                    // Nulos SIEMPRE al final, sin importar la dirección.
+                    if (ta === null && tb === null) return 0;
+                    if (ta === null) return 1;
+                    if (tb === null) return -1;
+                    return (ta - tb) * dirMul;
+                }
+
+                case 'estado': {
+                    const ra = STATUS_ORDER[a.status];
+                    const rb = STATUS_ORDER[b.status];
+                    const aKnown = ra !== undefined;
+                    const bKnown = rb !== undefined;
+                    // Estados desconocidos SIEMPRE al final, sin importar la dirección.
+                    if (!aKnown && !bKnown) return 0;
+                    if (!aKnown) return 1;
+                    if (!bKnown) return -1;
+                    return (ra - rb) * dirMul;
+                }
+
+                case 'ingreso':
+                default: {
+                    const ta = timeOf(a.lead_date || a.created_at);
+                    const tb = timeOf(b.lead_date || b.created_at);
+                    if (ta === null && tb === null) return 0;
+                    if (ta === null) return 1;
+                    if (tb === null) return -1;
+                    return (ta - tb) * dirMul;
+                }
+            }
+        });
+
+        return arr;
+    }, [filteredLeads, sortKey, sortDir]);
+
     const handleFilterChange = (next: Partial<NoraSalesFilters>) =>
         setFilters((prev) => ({ ...prev, ...next }));
 
     const handleClearFilters = () => setFilters(NORA_DEFAULT_FILTERS);
+
+    const handleSortChange = (key: NoraSortKey, dir: NoraSortDir) => {
+        setSortKey(key);
+        setSortDir(dir);
+    };
 
     const hasLeads = !loading && !error && leads.length > 0;
 
@@ -129,6 +200,9 @@ export default function NoraSalesPanel() {
                         onClear={handleClearFilters}
                         sellerOptions={sellerOptions}
                         channelOptions={channelOptions}
+                        sortKey={sortKey}
+                        sortDir={sortDir}
+                        onSortChange={handleSortChange}
                     />
                     <div className="text-xs font-bold text-slate-400 px-1">
                         Mostrando {filteredLeads.length} de {leads.length} prospectos
@@ -151,7 +225,7 @@ export default function NoraSalesPanel() {
                         No hay prospectos que coincidan con los filtros seleccionados.
                     </div>
                 ) : (
-                    <NoraLeadsTable leads={filteredLeads} />
+                    <NoraLeadsTable leads={sortedLeads} />
                 )}
             </div>
         </div>

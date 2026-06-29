@@ -30,6 +30,15 @@ export const NORA_DEFAULT_FILTERS: NoraSalesFilters = {
     channel: 'ALL',
 };
 
+/** Clave de ordenamiento del listado. */
+export type NoraSortKey = 'ingreso' | 'nombre' | 'ultimo_contacto' | 'estado';
+/** Dirección de ordenamiento. */
+export type NoraSortDir = 'asc' | 'desc';
+
+/** Defaults de orden: por fecha de ingreso, más nuevos primero. */
+export const NORA_DEFAULT_SORT_KEY: NoraSortKey = 'ingreso';
+export const NORA_DEFAULT_SORT_DIR: NoraSortDir = 'desc';
+
 interface NoraSalesToolbarProps {
     filters: NoraSalesFilters;
     onChange: (next: Partial<NoraSalesFilters>) => void;
@@ -38,6 +47,10 @@ interface NoraSalesToolbarProps {
     sellerOptions: string[];
     /** Valores de source presentes en los leads cargados. */
     channelOptions: string[];
+    /** Estado de ordenamiento (controlado desde el panel). */
+    sortKey: NoraSortKey;
+    sortDir: NoraSortDir;
+    onSortChange: (key: NoraSortKey, dir: NoraSortDir) => void;
 }
 
 /** Etiqueta legible del canal de adquisición. */
@@ -54,6 +67,9 @@ export default function NoraSalesToolbar({
     onClear,
     sellerOptions,
     channelOptions,
+    sortKey,
+    sortDir,
+    onSortChange,
 }: NoraSalesToolbarProps) {
     return (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex flex-col lg:flex-row lg:items-center gap-3">
@@ -111,6 +127,30 @@ export default function NoraSalesToolbar({
                         {channelLabel(c)}
                     </option>
                 ))}
+            </select>
+
+            {/* Ordenar por */}
+            <select
+                aria-label="Ordenar por"
+                className={SELECT_CLASS}
+                value={sortKey}
+                onChange={(e) => onSortChange(e.target.value as NoraSortKey, sortDir)}
+            >
+                <option value="ingreso">Ingreso</option>
+                <option value="nombre">Nombre</option>
+                <option value="ultimo_contacto">Último contacto</option>
+                <option value="estado">Estado</option>
+            </select>
+
+            {/* Dirección */}
+            <select
+                aria-label="Dirección de orden"
+                className={SELECT_CLASS}
+                value={sortDir}
+                onChange={(e) => onSortChange(sortKey, e.target.value as NoraSortDir)}
+            >
+                <option value="desc">Descendente</option>
+                <option value="asc">Ascendente</option>
             </select>
 
             {/* Limpiar filtros */}
