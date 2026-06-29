@@ -1,16 +1,24 @@
-// Etapa 4.2-A.2 — Tabla base (desktop) del Panel de Ventas NORA.
+// Etapa 4.2-A.5 — Tabla base (desktop) del Panel de Ventas NORA.
 //
-// Componente PRESENTACIONAL: recibe los leads ya cargados y solo los renderiza.
-// No fetchea, no modifica datos, no usa AuthContext ni llama APIs. Filtros,
-// ordenamiento, paginación, cards mobile y acciones reales llegan en subetapas
-// posteriores (4.2-A.3+). La columna "Acciones" es un placeholder deshabilitado.
+// Componente PRESENTACIONAL: recibe los leads ya cargados/filtrados/ordenados y
+// los renderiza. No fetchea, no modifica datos, no usa AuthContext ni llama APIs:
+// las acciones se delegan al panel vía callbacks (onWhatsApp / onRevertToNew) y
+// el panel maneja el loading por lead (updatingLeadId). Paginación y cards mobile
+// llegan en subetapas posteriores (4.2-A.6+).
 
 import React from 'react';
+import { MessageCircle, RotateCcw } from 'lucide-react';
 import type { NoraLead } from './types';
 import NoraStatusBadge from './NoraStatusBadge';
 
 interface NoraLeadsTableProps {
     leads: NoraLead[];
+    /** Abre WhatsApp y (si corresponde) marca el lead como contactado. */
+    onWhatsApp: (lead: NoraLead) => void;
+    /** Devuelve un lead CONTACTED al estado NEW. */
+    onRevertToNew: (lead: NoraLead) => void;
+    /** Id del lead que está actualizándose (deshabilita sus acciones). */
+    updatingLeadId: number | null;
 }
 
 /** Fecha en formato argentino simple; "—" si falta o es inválida. */
@@ -27,7 +35,12 @@ function formatChannel(source: string): string {
     return source || '—';
 }
 
-export default function NoraLeadsTable({ leads }: NoraLeadsTableProps) {
+export default function NoraLeadsTable({
+    leads,
+    onWhatsApp,
+    onRevertToNew,
+    updatingLeadId,
+}: NoraLeadsTableProps) {
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -95,16 +108,38 @@ export default function NoraLeadsTable({ leads }: NoraLeadsTableProps) {
                                     {lead.notes || '—'}
                                 </span>
                             </td>
-                            {/* Acciones (placeholder) */}
+                            {/* Acciones */}
                             <td className="px-6 py-5 text-right">
-                                <button
-                                    type="button"
-                                    disabled
-                                    className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-100 text-slate-400 cursor-not-allowed"
-                                    title="Disponible en una próxima subetapa"
-                                >
-                                    Próximamente
-                                </button>
+                                {(() => {
+                                    const isUpdating = updatingLeadId === lead.id;
+                                    const hasPhone = Boolean(lead.phone && lead.phone.trim());
+                                    return (
+                                        <div className="flex items-center justify-end gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => onWhatsApp(lead)}
+                                                disabled={!hasPhone || isUpdating}
+                                                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-slate-900 hover:bg-slate-800 text-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                title={hasPhone ? 'Contactar por WhatsApp' : 'Sin teléfono válido'}
+                                            >
+                                                <MessageCircle size={16} />
+                                                WhatsApp
+                                            </button>
+                                            {lead.status === 'CONTACTED' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onRevertToNew(lead)}
+                                                    disabled={isUpdating}
+                                                    className="inline-flex items-center gap-2 px-3 py-2 text-xs font-bold rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    title="Volver a Nuevo"
+                                                >
+                                                    <RotateCcw size={15} />
+                                                    Volver a Nuevo
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                             </td>
                         </tr>
                     ))}

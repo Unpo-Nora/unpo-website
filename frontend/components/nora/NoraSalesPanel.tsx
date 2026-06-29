@@ -1,21 +1,27 @@
 "use client";
 
-// Etapa 4.2-A.3 — Panel de Ventas NORA: carga + métricas + toolbar de filtros.
+// Etapa 4.2-A.5 — Panel de Ventas NORA: carga + métricas + filtros + orden +
+// acciones básicas (WhatsApp etapa 1).
 //
 // Carga los leads NORA reales vía fetchNoraLeads (wrapper centralizado que ya
-// fuerza brand=nora + filtro defensivo source === "WEB_NORA") y los muestra en
-// una tabla desktop. Suma una toolbar de filtros y el filtrado client-side sobre
-// los leads ya cargados.
+// fuerza brand=nora + filtro defensivo source === "WEB_NORA"), aplica filtros y
+// ordenamiento client-side y permite acciones por prospecto:
+//   - Contactar por WhatsApp con deep-link wa.me (NO WhatsApp Business API).
+//   - Marcado automático a CONTACTED cuando el lead está en NEW.
+//   - Volver un lead CONTACTED a NEW.
+// Los cambios de estado usan el endpoint existente (PATCH /leads/{id}) vía
+// updateNoraLeadStatus; no se crea backend nuevo ni se toca la DB.
 //
-// TODAVÍA NO incluye: ordenamiento, rango de fechas, paginación, ficha/drawer,
-// cards mobile ni acciones comerciales (subetapas 4.2-A.4+). No modifica estados
-// (no llama updateNoraLeadStatus), no toca WhatsApp y no copia NADA del Panel de
-// Ventas UNPO (SellerDashboard).
+// TODAVÍA NO incluye: rango de fechas, paginación, ficha/drawer ni cards mobile
+// (subetapas 4.2-A.6+). No toca CLIENT, no crea estados nuevos, no usa WhatsApp
+// Business API / Meta API y no copia NADA del Panel de Ventas UNPO
+// (SellerDashboard).
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Users, UserPlus, History } from 'lucide-react';
 import type { NoraLead } from './types';
-import { fetchNoraLeads } from '@/lib/nora/api';
+import { useAuth } from '@/context/AuthContext';
+import { fetchNoraLeads, updateNoraLeadStatus, type NoraLeadUpdate } from '@/lib/nora/api';
 import NoraLeadsTable from './NoraLeadsTable';
 import NoraSalesToolbar, {
     NoraSalesFilters,
@@ -36,13 +42,52 @@ function timeOf(value?: string | null): number | null {
     return isNaN(t) ? null : t;
 }
 
+/**
+ * Normaliza un teléfono a formato wa.me para Argentina.
+ * Quita todo lo no numérico; saca el 0 inicial; asegura el 9 de celular y el
+ * código país 54. Devuelve null si está vacío o queda demasiado corto.
+ */
+function normalizeArPhone(raw?: string | null): string | null {
+    if (!raw) return null;
+    let phone = raw.replace(/\D/g, ''); // solo dígitos
+    if (!phone) return null;
+
+    // quitar 0 inicial de código de área nacional (ej 011 -> 11)
+    if (phone.startsWith('0')) phone = phone.slice(1);
+
+    if (phone.startsWith('54')) {
+        let rest = phone.slice(2);
+        if (!rest.startsWith('9')) rest = '9' + rest; // celular AR
+        phone = '54' + rest;
+    } else {
+        phone = '549' + phone; // sin código país: asumir AR celular
+    }
+
+    // validación mínima de longitud (54 + 9 + área/número)
+    if (phone.length < 12) return null;
+    return phone;
+}
+
+/** Mensaje inicial propio de NORA (B2C). Sin nada de UNPO. */
+function buildNoraMessage(lead: NoraLead): string {
+    const greeting = lead.full_name ? `Hola ${lead.full_name}, ¿cómo estás?` : 'Hola, ¿cómo estás?';
+    const interest = lead.product_interest?.trim();
+    if (interest) {
+        return `${greeting} Te escribo de NORA por tu consulta sobre ${interest}.`;
+    }
+    return `${greeting} Te escribo de NORA por tu consulta sobre nuestras mesas inteligentes.`;
+}
+
 export default function NoraSalesPanel() {
+    const { user } = useAuth();
     const [leads, setLeads] = useState<NoraLead[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
     const [filters, setFilters] = useState<NoraSalesFilters>(NORA_DEFAULT_FILTERS);
     const [sortKey, setSortKey] = useState<NoraSortKey>(NORA_DEFAULT_SORT_KEY);
     const [sortDir, setSortDir] = useState<NoraSortDir>(NORA_DEFAULT_SORT_DIR);
+    const [updatingLeadId, setUpdatingLeadId] = useState<number | null>(null);
+    const [actionError, setActionError] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -174,6 +219,65 @@ export default function NoraSalesPanel() {
         setSortDir(dir);
     };
 
+    /**
+     * Aplica un cambio de estado vía el endpoint existente (PATCH /leads/{id})
+     * y refleja el cambio en el estado local sin recargar. Maneja loading por
+     * lead y error simple. No crea backend nuevo ni toca WhatsApp API.
+     */
+    const applyStatusUpdate = async (
+        lead: NoraLead,
+        payload: NoraLeadUpdate,
+        optimistic: Partial<NoraLead>
+    ) => {
+        if (updatingLeadId !== null) return; // evita doble click / acciones simultáneas
+        setUpdatingLeadId(lead.id);
+        setActionError(null);
+        try {
+            const token = localStorage.getItem('token') ?? '';
+            const ok = await updateNoraLeadStatus(token, lead.id, payload);
+            if (ok) {
+                setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, ...optimistic } : l)));
+            } else {
+                setActionError('No se pudo actualizar el prospecto. Intentá nuevamente.');
+            }
+        } catch (err) {
+            console.error('Error updating NORA lead:', err);
+            setActionError('Ocurrió un error al actualizar el prospecto.');
+        } finally {
+            setUpdatingLeadId(null);
+        }
+    };
+
+    const handleWhatsApp = async (lead: NoraLead) => {
+        const phone = normalizeArPhone(lead.phone);
+        if (!phone) {
+            setActionError(`El teléfono de ${lead.full_name || 'el prospecto'} no es válido o está vacío.`);
+            return;
+        }
+        setActionError(null);
+
+        const url = `https://wa.me/${phone}?text=${encodeURIComponent(buildNoraMessage(lead))}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+
+        // Marcado automático a contactado solo si está NEW. No toca CLIENT.
+        if (lead.status === 'NEW') {
+            const seller = user?.email ?? null;
+            await applyStatusUpdate(
+                lead,
+                { status: 'CONTACTED', seller },
+                { status: 'CONTACTED', seller }
+            );
+        }
+    };
+
+    const handleRevertToNew = async (lead: NoraLead) => {
+        await applyStatusUpdate(
+            lead,
+            { status: 'NEW', seller: null, feedback_status: null },
+            { status: 'NEW', seller: null, feedback_status: null }
+        );
+    };
+
     const hasLeads = !loading && !error && leads.length > 0;
 
     return (
@@ -210,6 +314,13 @@ export default function NoraSalesPanel() {
                 </div>
             )}
 
+            {/* Error de acción (simple) */}
+            {actionError && (
+                <div className="bg-rose-50 border border-rose-200 text-rose-600 text-sm font-medium rounded-2xl px-4 py-3">
+                    {actionError}
+                </div>
+            )}
+
             {/* Contenido */}
             <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
                 {loading ? (
@@ -225,7 +336,12 @@ export default function NoraSalesPanel() {
                         No hay prospectos que coincidan con los filtros seleccionados.
                     </div>
                 ) : (
-                    <NoraLeadsTable leads={sortedLeads} />
+                    <NoraLeadsTable
+                        leads={sortedLeads}
+                        onWhatsApp={handleWhatsApp}
+                        onRevertToNew={handleRevertToNew}
+                        updatingLeadId={updatingLeadId}
+                    />
                 )}
             </div>
         </div>
