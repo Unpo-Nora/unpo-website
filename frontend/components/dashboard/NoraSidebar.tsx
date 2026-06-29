@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
     Users,
+    LineChart,
     LogOut,
     UserCircle,
     X
@@ -27,6 +28,11 @@ export default function NoraSidebar({ isOpen = false, setIsOpen }: NoraSidebarPr
             title: 'Waitlist / Leads NORA',
             path: '/nora-admin',
             icon: <Users size={20} />,
+        },
+        {
+            title: 'Panel de Ventas',
+            path: '/nora-admin/sales',
+            icon: <LineChart size={20} />,
         }
     ];
 
