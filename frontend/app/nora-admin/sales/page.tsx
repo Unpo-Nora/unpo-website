@@ -1,16 +1,8 @@
-import type { Metadata } from "next";
-import NoraSalesPanel from "@/components/nora/NoraSalesPanel";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = {
-    title: "Panel de Ventas NORA",
-};
-
-export default function NoraSalesPage() {
-    return (
-        <div className="min-h-screen py-12 bg-slate-50">
-            <div className="w-full max-w-[1800px] mx-auto px-4 md:px-8">
-                <NoraSalesPanel />
-            </div>
-        </div>
-    );
+// Consolidación de superficies (Etapa 4.3): el CRM NORA tiene un único panel de
+// prospectos en /nora-admin. /nora-admin/sales se mantiene como compat temporal y
+// redirige al panel principal; ya no se muestra como opción separada en el sidebar.
+export default function NoraSalesRedirect() {
+    redirect("/nora-admin");
 }

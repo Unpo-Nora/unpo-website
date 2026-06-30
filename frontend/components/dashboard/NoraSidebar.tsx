@@ -6,7 +6,6 @@ import { usePathname } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
     Users,
-    LineChart,
     LogOut,
     UserCircle,
     X
@@ -18,21 +17,17 @@ interface NoraSidebarProps {
 }
 
 // Sidebar propio del CRM NORA. Branding NORA, sin referencias UNPO.
-// Aislado: todavia no se usa en ninguna ruta (se integrara en /nora-admin).
+// Un único eje: Prospectos. Se eliminó el concepto de "waitlist" y el
+// "Panel de Ventas" separado (la superficie de ventas redirige a /nora-admin).
 export default function NoraSidebar({ isOpen = false, setIsOpen }: NoraSidebarProps) {
     const { user, logout } = useAuth();
     const pathname = usePathname();
 
     const menuItems = [
         {
-            title: 'Waitlist / Leads NORA',
+            title: 'Prospectos',
             path: '/nora-admin',
             icon: <Users size={20} />,
-        },
-        {
-            title: 'Panel de Ventas',
-            path: '/nora-admin/sales',
-            icon: <LineChart size={20} />,
         }
     ];
 
@@ -52,7 +47,7 @@ export default function NoraSidebar({ isOpen = false, setIsOpen }: NoraSidebarPr
                     </div>
                     <div className="overflow-hidden">
                         <h1 className="text-white font-serif font-medium tracking-wide truncate">NORA</h1>
-                        <p className="text-xs text-slate-500 truncate">Gestión de Leads</p>
+                        <p className="text-xs text-slate-500 truncate">Prospectos</p>
                     </div>
                 </div>
                 {setIsOpen && (
