@@ -1,21 +1,12 @@
 import type { Metadata } from "next";
-import NoraLeadsBoard from "@/components/nora/NoraLeadsBoard";
+import NoraProspectsPanel from "@/components/nora/NoraProspectsPanel";
 
 export const metadata: Metadata = {
-    title: "CRM NORA",
+    title: "Prospectos · NORA",
 };
 
+// Panel principal del CRM NORA: un único panel comercial de prospectos
+// (estilo Clienty). El shell (layout) ya provee contenedor, padding y branding.
 export default function NoraAdminPage() {
-    return (
-        <div className="min-h-screen py-12 bg-slate-50">
-            <div className="w-full max-w-[1800px] mx-auto px-4 md:px-8">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-serif font-medium text-slate-900">CRM NORA</h1>
-                    <p className="text-slate-500 mt-2">Gestiona los prospectos interesados en la línea NORA.</p>
-                </div>
-
-                <NoraLeadsBoard />
-            </div>
-        </div>
-    );
+    return <NoraProspectsPanel />;
 }

@@ -34,4 +34,9 @@ export interface NoraLead {
     seller: string | null;
     notes: string | null;
     feedback_status: string | null;
+    // Tracking de origen (columnas YA existentes en la tabla `leads`; opcionales
+    // porque pueden venir null). Las usa la ficha para "Landing / origen" y el
+    // etiquetado de canal. No se inventan campos: son parte del Lead serializado.
+    platform?: string | null;
+    campaign?: string | null;
 }
