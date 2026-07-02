@@ -8,10 +8,10 @@
 // de fechas) + orden + paginación + ficha lateral + acciones (WhatsApp deep link,
 // cambio de estado básico).
 //
-// Datos: vía fetchNoraLeads (wrapper que fuerza brand=nora + filtro defensivo
-// source === "WEB_NORA"). Cambios de estado vía updateNoraLeadStatus (PATCH
-// /leads/{id}). NO toca backend, DB ni WhatsApp Business API. NO copia nada del
-// Panel de Ventas UNPO (SellerDashboard).
+// Datos: vía fetchNoraLeads (wrapper que fuerza brand=nora + filtro defensivo por
+// los sources NORA: WEB_NORA / FACEBOOK_NORA / INSTAGRAM_NORA). Cambios de estado
+// vía updateNoraLeadStatus (PATCH /leads/{id}). NO toca backend, DB ni WhatsApp
+// Business API. NO copia nada del Panel de Ventas UNPO (SellerDashboard).
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Users, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -39,13 +39,13 @@ const STATUS_ORDER: Record<string, number> = { NEW: 0, CONTACTED: 1, CLIENT: 2 }
 
 /**
  * Canales de adquisición conocidos de NORA. Se muestran SIEMPRE en el filtro para
- * dejar la UI lista, aunque hoy el wrapper de datos sólo devuelva WEB_NORA: la
- * ingesta real de Facebook/Instagram es trabajo de backend (fuera de alcance).
+ * dejar la UI lista. Los `value` coinciden con los sources reales que emite el
+ * backend (webhook Meta Lead Ads NORA), de modo que el filtro por canal matchea.
  */
 const KNOWN_CHANNELS: NoraChannelOption[] = [
     { value: 'WEB_NORA', label: 'Web NORA' },
-    { value: 'FACEBOOK', label: 'Facebook' },
-    { value: 'INSTAGRAM', label: 'Instagram' },
+    { value: 'FACEBOOK_NORA', label: 'Facebook' },
+    { value: 'INSTAGRAM_NORA', label: 'Instagram' },
 ];
 
 export default function NoraProspectsPanel() {
