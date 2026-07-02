@@ -9,6 +9,7 @@ export default function WaitlistForm() {
     const [formData, setFormData] = useState({
         full_name: '',
         email: '',
+        phone: '',
         product_interest: '',
         notes: ''
     });
@@ -20,8 +21,8 @@ export default function WaitlistForm() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!formData.full_name || !formData.email || !formData.product_interest) {
-            alert("Por favor, completa todos los campos del formulario para unirte a la Waitlist.");
+        if (!formData.full_name || !formData.email || !formData.phone.trim() || !formData.product_interest) {
+            alert("Por favor, completá tu nombre, email, teléfono y el producto de interés para que un asesor de NORA te contacte.");
             return;
         }
 
@@ -35,12 +36,13 @@ export default function WaitlistForm() {
                 },
                 body: JSON.stringify({
                     ...formData,
-                    source: 'WEB_NORA'
+                    source: 'WEB_NORA',
+                    platform: 'web'
                 }),
             });
 
             if (response.ok) {
-                const text = `Hola! Me acabo de sumar a la Premium Waitlist de NORA. Mi nombre es *${formData.full_name}* y me interesó la opción: *${formData.product_interest}*.`;
+                const text = `Hola! Quiero recibir asesoramiento sobre NORA. Mi nombre es *${formData.full_name}* y me interesó la opción: *${formData.product_interest}*.`;
                 const encodedText = encodeURIComponent(text);
                 window.open(`https://wa.me/5491131488378?text=${encodedText}`, '_blank');
 
@@ -48,11 +50,12 @@ export default function WaitlistForm() {
                 setFormData({
                     full_name: '',
                     email: '',
+                    phone: '',
                     product_interest: '',
                     notes: ''
                 });
             } else {
-                alert("Hubo un error al unirte a la lista. Por favor intenta nuevamente.");
+                alert("Hubo un error al enviar tus datos. Por favor intentá nuevamente.");
             }
         } catch (error) {
             console.error(error);
@@ -68,9 +71,9 @@ export default function WaitlistForm() {
                 <div className="flex justify-center mb-4">
                     <CheckCircle className="w-16 h-16 text-green-400" />
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-2">¡Estás en la lista!</h3>
+                <h3 className="text-2xl font-bold text-white mb-2">¡Recibimos tus datos!</h3>
                 <p className="text-slate-300">
-                    Te avisaremos apenas NORA esté disponible en tu zona.
+                    Un asesor de NORA te va a contactar a la brevedad.
                 </p>
             </div>
         );
@@ -80,10 +83,10 @@ export default function WaitlistForm() {
         <section id="waitlist" className="py-24 bg-slate-900">
             <div className="max-w-xl mx-auto px-6">
                 <div className="text-center mb-12">
-                    <span className="text-blue-400 text-sm font-bold tracking-widest uppercase mb-2 block">Premium Waitlist</span>
-                    <h2 className="text-4xl font-bold text-white mb-4">Sé el Primero en Tener NORA</h2>
+                    <span className="text-blue-400 text-sm font-bold tracking-widest uppercase mb-2 block">Asesoramiento NORA</span>
+                    <h2 className="text-4xl font-bold text-white mb-4">Consultá por NORA</h2>
                     <p className="text-lg text-slate-400">
-                        Únete a la lista de espera exclusiva y recibe beneficios especiales de lanzamiento.
+                        Dejanos tus datos y un asesor de NORA te contacta para ayudarte a elegir tu equipo.
                     </p>
                 </div>
 
@@ -113,6 +116,18 @@ export default function WaitlistForm() {
                         />
                     </div>
                     <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">Teléfono / WhatsApp</label>
+                        <input
+                            required
+                            name="phone"
+                            value={formData.phone}
+                            onChange={handleChange}
+                            type="tel"
+                            className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                            placeholder="Ej: 11 2345 6789"
+                        />
+                    </div>
+                    <div>
                         <label className="block text-sm font-medium text-slate-300 mb-2">¿Qué producto te interesa más?</label>
                         <select
                             required
@@ -136,11 +151,11 @@ export default function WaitlistForm() {
                         {isLoading ? (
                             <>
                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>Uniendo...</span>
+                                <span>Enviando...</span>
                             </>
                         ) : (
                             <>
-                                <span>Unirme a la Waitlist</span>
+                                <span>Quiero que me contacten</span>
                                 <Send className="w-5 h-5" />
                             </>
                         )}
