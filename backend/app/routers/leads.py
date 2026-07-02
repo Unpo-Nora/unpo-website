@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, UploadFile, File
+from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
 from typing import List
 from .. import crud, models, schemas, database, meta_api
 from ..utils import importer
 import urllib.parse
 import os
+import json
+import hmac
+import hashlib
 
 router = APIRouter(
     prefix="/leads",
@@ -131,6 +135,122 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                         else:
                             print(f"❌ Error: Graph API no devolvió datos para auth token. ¿Token vencido o sin permisos?")
     return {"status": "ok"}
+
+# --- Webhook Meta Lead Ads NORA (marca NORA, separado del webhook UNPO de arriba) ---
+
+def _verify_meta_signature(app_secret: str, raw_body: bytes, signature_header: str) -> bool:
+    """
+    Valida la firma X-Hub-Signature-256 de Meta: HMAC-SHA256 del body crudo con el
+    App Secret. Comparación en tiempo constante. No logea ni el secreto ni el body.
+    """
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+    received = signature_header.split("=", 1)[1]
+    expected = hmac.new(app_secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, received)
+
+
+@router.get("/nora/webhook")
+async def verify_nora_webhook(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token"),
+):
+    """
+    Verificación (handshake) del webhook de Meta Lead Ads para NORA. Usa su propio
+    verify token (NORA_META_VERIFY_TOKEN), separado del de UNPO. Si el token no
+    está configurado en el entorno, falla de forma controlada (503) en vez de
+    validar contra un string vacío.
+    """
+    verify_token = os.getenv("NORA_META_VERIFY_TOKEN", "")
+    if not verify_token:
+        raise HTTPException(
+            status_code=503,
+            detail="NORA_META_VERIFY_TOKEN no está configurado en el entorno.",
+        )
+    if hub_mode == "subscribe" and hub_verify_token and hmac.compare_digest(hub_verify_token, verify_token):
+        print("[nora-webhook] verificación OK")
+        # Meta espera el echo del hub.challenge como texto plano.
+        return PlainTextResponse(content=hub_challenge or "")
+    raise HTTPException(status_code=403, detail="Verification failed")
+
+
+@router.post("/nora/webhook")
+async def receive_nora_webhook(request: Request, db: Session = Depends(get_db)):
+    """
+    Ingesta de leads de Meta Lead Ads como Prospectos NORA.
+
+    - Valida la firma X-Hub-Signature-256 cuando META_APP_SECRET está configurado
+      (si no está, en local se omite la validación de firma de forma controlada).
+    - Usa NORA_META_PAGE_ACCESS_TOKEN (separado de UNPO) para pedir el detalle del
+      lead a la Graph API.
+    - Crea leads NORA con source FACEBOOK_NORA / INSTAGRAM_NORA (la asignación del
+      vendedor NORA la hace crud.create_lead).
+    - Modo test local: si el `value` del cambio trae `field_data` embebido, se usa
+      directamente sin llamar a la Graph API (permite probar sin Meta real).
+    - No logea tokens ni payloads con datos personales.
+    """
+    raw_body = await request.body()
+
+    # 1) Validación de firma (sólo si hay App Secret configurado).
+    app_secret = os.getenv("META_APP_SECRET", "")
+    if app_secret:
+        signature = request.headers.get("X-Hub-Signature-256", "")
+        if not _verify_meta_signature(app_secret, raw_body, signature):
+            raise HTTPException(status_code=403, detail="Firma X-Hub-Signature-256 inválida")
+    else:
+        print("[nora-webhook] META_APP_SECRET no configurado: validación de firma omitida (modo local)")
+
+    # 2) Parseo controlado del JSON.
+    try:
+        body = json.loads(raw_body or b"{}")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Payload JSON inválido")
+
+    if body.get("object") != "page":
+        return {"status": "ignored", "reason": "objeto no soportado"}
+
+    page_token = os.getenv("NORA_META_PAGE_ACCESS_TOKEN", "")
+    created = 0
+
+    for entry in body.get("entry", []):
+        for change in entry.get("changes", []):
+            if change.get("field") != "leadgen":
+                continue
+            value = change.get("value", {})
+
+            # Modo test local: field_data embebido evita llamar a la Graph API.
+            if value.get("field_data") is not None:
+                lead_data = {
+                    "field_data": value.get("field_data"),
+                    "platform": value.get("platform"),
+                    "created_time": value.get("created_time"),
+                    "ad_name": value.get("ad_name"),
+                    "campaign_name": value.get("campaign_name"),
+                }
+            else:
+                leadgen_id = value.get("leadgen_id")
+                if not leadgen_id:
+                    continue
+                if not page_token:
+                    # Falla controlada: sin token no se puede pedir el detalle a Meta.
+                    raise HTTPException(
+                        status_code=503,
+                        detail="NORA_META_PAGE_ACCESS_TOKEN no está configurado en el entorno.",
+                    )
+                lead_data = await meta_api.get_lead_data(leadgen_id, page_token)
+                if lead_data is None:
+                    print(f"[nora-webhook] Graph API no devolvió datos para leadgen_id={leadgen_id}")
+                    continue
+
+            transformed = meta_api.transform_meta_lead_to_schemas(lead_data, brand="nora")
+            transformed["status"] = "NEW"
+            lead_create = schemas.LeadCreate(**transformed)
+            crud.create_lead(db=db, lead=lead_create)
+            created += 1
+            print(f"[nora-webhook] prospecto NORA creado (source={transformed.get('source')})")
+
+    return {"status": "ok", "created": created}
 
 @router.post("/import/")
 async def import_leads_excel(

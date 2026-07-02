@@ -98,6 +98,11 @@ def delete_capital_iva(db: Session, iva_id: int):
     return False
 
 # --- Leads ---
+# Sources que pertenecen a la marca NORA (web + Meta Lead Ads). Se centraliza acá
+# para que la asignación de vendedor y el filtro por marca no se desincronicen.
+NORA_SOURCES = ("WEB_NORA", "FACEBOOK_NORA", "INSTAGRAM_NORA")
+
+
 def create_lead(db: Session, lead: schemas.LeadCreate):
     db_lead = models.Lead(**lead.model_dump())
     
@@ -123,8 +128,8 @@ def create_lead(db: Session, lead: schemas.LeadCreate):
         else:
             db_lead.assigned_seller_phone = "1144227969"
 
-    # NORA leads are assigned to the dedicated NORA seller.
-    elif db_lead.source == "WEB_NORA":
+    # NORA leads (web + Meta Lead Ads) are assigned to the dedicated NORA seller.
+    elif db_lead.source in NORA_SOURCES:
         db_lead.assigned_seller_phone = "1131488378"
 
     db.add(db_lead)
@@ -153,13 +158,14 @@ def get_leads(db: Session, skip: int = 0, limit: int = 5000, status: str = None,
         query = query.filter(models.Lead.status == status)
     if seller:
         query = query.filter(models.Lead.seller == seller)
-    # Brand segregation by source. NORA leads use source == "WEB_NORA";
-    # everything else (WEB_UNPO, SELLER, Meta/Excel, NULL, ...) belongs to UNPO.
+    # Brand segregation by source. NORA leads use the NORA_SOURCES set
+    # (WEB_NORA + FACEBOOK_NORA + INSTAGRAM_NORA); everything else (WEB_UNPO,
+    # SELLER, Meta/Excel UNPO, NULL, ...) belongs to UNPO.
     if brand:
         if brand.lower() == "nora":
-            query = query.filter(models.Lead.source == "WEB_NORA")
+            query = query.filter(models.Lead.source.in_(NORA_SOURCES))
         elif brand.lower() == "unpo":
-            query = query.filter(or_(models.Lead.source != "WEB_NORA", models.Lead.source.is_(None)))
+            query = query.filter(or_(models.Lead.source.notin_(NORA_SOURCES), models.Lead.source.is_(None)))
     return query.order_by(models.Lead.id.desc()).offset(skip).limit(limit).all()
 
 def update_lead(db: Session, lead_id: int, lead_data: dict):
