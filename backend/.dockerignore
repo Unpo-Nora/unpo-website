@@ -1,0 +1,50 @@
+# ---- Secrets / environment ----
+.env
+.env.*
+
+# ---- Local databases (never ship these) ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- Python bytecode / caches ----
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+
+# ---- VCS / editor / OS noise ----
+.git
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ---- Docker files (avoid recursive self-inclusion) ----
+Dockerfile
+.dockerignore
+
+# ---- Dev dumps / scratch artifacts (root-level) ----
+# NOTE: in .dockerignore, '*.txt' matches root-level files only, but we still
+# whitelist requirements.txt explicitly so the image can build.
+*.txt
+!requirements.txt
+*.sql
+*.tmp
+*.bak
+tmp_*
+
+# Kept on purpose (do NOT ignore): app/, scripts/, alembic/, data/, requirements.txt
