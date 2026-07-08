@@ -1,0 +1,31 @@
+# Terraform — nunca versionar state ni artefactos locales.
+
+# State (puede contener datos sensibles)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Directorio de trabajo / plugins locales
+.terraform/
+.terraform.tfstate.lock.info
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Variables REALES: se ignoran. Solo se versiona *.tfvars.example
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Overrides locales
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Config de CLI con posibles credenciales
+.terraformrc
+terraform.rc
+
+# NOTA: .terraform.lock.hcl SÍ debe versionarse (no se ignora a propósito).
