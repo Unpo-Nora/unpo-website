@@ -88,7 +88,7 @@ class Lead(Base):
     __tablename__ = "leads"
 
     id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime(timezone=True), default=get_ar_time)
+    created_at = Column(DateTime(timezone=True), default=get_ar_time, server_default=func.now())
     lead_date = Column(DateTime(timezone=True), nullable=True) # Fecha original del lead (de Excel o Meta)
     
     # Core Contact Info
@@ -137,7 +137,7 @@ class SaleOrder(Base):
     __tablename__ = "sale_orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    created_at = Column(DateTime(timezone=True), default=get_ar_time)
+    created_at = Column(DateTime(timezone=True), default=get_ar_time, server_default=func.now())
     lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False)
     status = Column(Enum(SaleOrderStatus), default=SaleOrderStatus.COMPLETED)
     
@@ -182,7 +182,7 @@ class PageView(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     visitor_id = Column(String, unique=True, index=True)
-    created_at = Column(DateTime(timezone=True), default=get_ar_time)
+    created_at = Column(DateTime(timezone=True), default=get_ar_time, server_default=func.now())
 
 class Expense(Base):
     __tablename__ = "expenses"
@@ -190,7 +190,7 @@ class Expense(Base):
     id = Column(Integer, primary_key=True, index=True)
     amount = Column(Numeric(12, 2), nullable=False)
     description = Column(String, nullable=False)
-    date = Column(DateTime(timezone=True), default=get_ar_time)
+    date = Column(DateTime(timezone=True), default=get_ar_time, server_default=func.now())
     user_email = Column(String, nullable=True)
 
 class InventoryAuditLog(Base):
@@ -200,7 +200,7 @@ class InventoryAuditLog(Base):
     user_email = Column(String, index=True)
     action = Column(String) # e.g. "STOCK_UPDATE", "PRICE_UPDATE", "NEW_PRODUCT", "EXCHANGE_RATE"
     details = Column(String)
-    created_at = Column(DateTime(timezone=True), default=get_ar_time)
+    created_at = Column(DateTime(timezone=True), default=get_ar_time, server_default=func.now())
 
 class Employee(Base):
     __tablename__ = "employees"
