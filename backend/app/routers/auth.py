@@ -69,43 +69,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
 async def read_users_me(current_user = Depends(get_current_user)):
     return current_user
 
-@router.get("/reset-nico")
-async def reset_password_nico(db: Session = Depends(get_db)):
-    user = crud.get_user_by_email(db, email="nicolasr@unpo.com.ar")
-    if not user:
-        return {"status": "error", "message": "User not found"}
-    user.hashed_password = auth.get_password_hash("Nico*2024")
-    db.commit()
-    return {"status": "success", "message": "Password for nicolasr reset to Nico*2024"}
-
-@router.get("/fix-roles")
-async def fix_roles(db: Session = Depends(get_db)):
-    from .. import models
-    users = db.query(models.User).all()
-    fixed = []
-    for u in users:
-        if u.role not in ['admin', 'vendedor'] and u.role is not None:
-            if u.full_name in ['admin', 'vendedor']:
-                temp = u.role
-                u.role = u.full_name
-                u.full_name = temp
-                fixed.append(u.email)
-    db.commit()
-    return {"status": "success", "fixed": fixed}
-
-@router.get("/setup-admin")
-async def setup_initial_admin(db: Session = Depends(get_db)):
-    from .. import models
-    # Check if any user exists
-    user_count = db.query(models.User).count()
-    if user_count > 0:
-        return {"status": "error", "message": "Admin already exists"}
-    
-    # Create default admin
-    crud.create_user(db, {
-        "email": "admin@unpo.com.ar",
-        "password": "admin",
-        "full_name": "Administrador Principal",
-        "role": "admin"
-    })
-    return {"status": "success", "message": "Initial admin created. Email: admin@unpo.com.ar / Password: admin"}
+# NOTA DE SEGURIDAD (Etapa 0A): se eliminaron los endpoints HTTP sin autenticación
+# `GET /auth/reset-nico`, `GET /auth/fix-roles` y `GET /auth/setup-admin`. Permitían,
+# de forma anónima, resetear contraseñas, mutar roles y crear un admin por defecto.
+# Ya no se registran como rutas (responden 404). Su lógica de mantenimiento, cuando
+# hace falta, se ejecuta manualmente por scripts locales equivalentes ya existentes
+# (p. ej. `backend/reset_nico.py`, `backend/seed_user.py`), fuera de la API pública.

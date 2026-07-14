@@ -27,13 +27,20 @@ if SUPABASE_URL and SUPABASE_KEY:
 get_db = database.get_db
 
 from .auth import get_current_user
+from ..dependencies.permissions import require_roles
 from ..utils.product_importer import sync_products_from_excel
 from ..utils.pdf_generator import generate_catalog_pdf
 from fastapi.responses import Response
+import logging
 import os
 
+logger = logging.getLogger("uvicorn.error")
+
 @router.get("/fix-images")
-def fix_all_images_endpoint(db: Session = Depends(get_db)):
+def fix_all_images_endpoint(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("admin")),
+):
     products = db.query(models.Product).all()
     img_dir = "data/images"
     count = 0
@@ -64,7 +71,10 @@ def fix_all_images_endpoint(db: Session = Depends(get_db)):
     }
 
 @router.get("/fix-valija")
-def fix_valija_category(db: Session = Depends(get_db)):
+def fix_valija_category(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("admin")),
+):
     valija = db.query(models.Category).filter(models.Category.name.ilike('%VALIJA%')).first()
     bazar = db.query(models.Category).filter(models.Category.name.ilike('%BAZAR%')).first()
     
@@ -291,8 +301,9 @@ def read_product(sku: str, db: Session = Depends(get_db)):
 
 @router.post("/debug_post", response_model=schemas.Product)
 def debug_post_product(
-    product: schemas.ProductCreate, 
-    db: Session = Depends(get_db)
+    product: schemas.ProductCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("admin")),
 ):
     try:
         if not product.sku or product.sku.strip() == "":
@@ -312,9 +323,11 @@ def debug_post_product(
         
         new_product = crud.create_product(db=db, product=product)
         return new_product # Note: No create_audit_log
-    except Exception as e:
-        import traceback
-        raise HTTPException(status_code=400, detail=f"DEBUG TRACEBACK: {traceback.format_exc()}")
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error en debug_post_product")
+        raise HTTPException(status_code=400, detail="No se pudo crear el producto")
 
 @router.post("/", response_model=schemas.Product)
 def create_product(
@@ -352,46 +365,49 @@ def create_product(
 def debug_update_product(
     sku: str,
     product: schemas.ProductCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("admin")),
 ):
     try:
         db_product = crud.get_product(db, sku)
         if not db_product:
-            return {"error": "Not found"}
+            raise HTTPException(status_code=404, detail="Product not found")
         for key, value in product.model_dump(exclude_unset=True).items():
             setattr(db_product, key, value)
         db.commit()
         db.refresh(db_product)
         return {"success": True, "product": db_product.sku}
-    except Exception as e:
-        import traceback
-        return {"error": str(e), "traceback": traceback.format_exc()}
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Error en debug_update_product")
+        raise HTTPException(status_code=400, detail="No se pudo actualizar el producto")
 
 @router.put("/{sku}", response_model=schemas.Product)
 def update_product(
     sku: str,
     product: schemas.ProductCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin")),
 ):
     try:
-        if current_user.role != "admin":
-            raise HTTPException(status_code=403, detail="No tiene permisos para editar productos")
-            
         db_product = crud.update_product(db, sku=sku, product_data=product.model_dump(exclude_unset=True))
         if db_product is None:
             raise HTTPException(status_code=404, detail="Product not found")
-            
+
         crud.create_audit_log(db, schemas.InventoryAuditLogBase(
             user_email=current_user.email,
             action="PRODUCT_EDITED",
             details=f"Producto editado: {db_product.name} (SKU: {sku})"
         ))
         return db_product
-    except Exception as e:
-        import traceback
-        # Return 400 to pass CORS, but contain the traceback
-        raise HTTPException(status_code=400, detail=f"TRACEBACK: {traceback.format_exc()}")
+    except HTTPException:
+        raise
+    except Exception:
+        # No se filtra el traceback al cliente: se registra server-side y se devuelve
+        # un error genérico (el middleware CORS agrega los headers igual).
+        logger.exception("Error actualizando producto %s", sku)
+        raise HTTPException(status_code=400, detail="No se pudo actualizar el producto")
 
 @router.patch("/{sku}/stock", response_model=schemas.Product)
 def adjust_stock(
