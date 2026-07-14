@@ -48,7 +48,20 @@ export default function ClientsDashboard() {
 
     const handleDownloadPDF = async (orderId: number) => {
         try {
-            window.open(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderId}/pdf`, '_blank');
+            // El endpoint del remito ahora exige Authorization (Etapa 0A de seguridad).
+            // window.open no envía headers, así que se descarga con fetch autenticado y se
+            // abre el blob resultante.
+            const token = localStorage.getItem('token');
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderId}/pdf`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (!res.ok) {
+                alert("No se pudo descargar el remito (sesión vencida o sin permisos).");
+                return;
+            }
+            const blobUrl = window.URL.createObjectURL(await res.blob());
+            window.open(blobUrl, '_blank');
+            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60000);
         } catch (error) {
             console.error(error);
         }

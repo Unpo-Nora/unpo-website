@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from .. import crud, models, schemas, database, meta_api
 from ..utils import importer
+from ..dependencies.permissions import require_roles
 import urllib.parse
 import os
 import json
@@ -63,14 +64,45 @@ def read_leads(
 
 @router.patch("/{lead_id}", response_model=schemas.LeadResponse)
 def update_lead(
-    lead_id: int, 
-    lead_update: schemas.LeadUpdate, 
+    lead_id: int,
+    lead_update: schemas.LeadUpdate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin", "vendedor")),
 ):
-    # Here we could add logic to prevent a seller from updating a lead owned by someone else
-    # But for now, we'll allow any authenticated staff to update (basic security)
-    updated_lead = crud.update_lead(db, lead_id, lead_update.model_dump(exclude_unset=True))
+    """
+    Actualiza un lead con aislamiento por vendedor.
+
+    - Admin: puede modificar cualquier lead, incluido reasignar `seller` y estados.
+    - Vendedor: solo puede modificar leads que le pertenecen (lead.seller == su email)
+      y únicamente los campos `status`, `notes`, `feedback_status`. NO puede tocar
+      `seller` de ninguna forma (ni liberar con null ni apropiarse enviando su email),
+      ni `assigned_seller_phone`/tracking (no forman parte de LeadUpdate). Los leads
+      NEW globales se toman exclusivamente por PUT /leads/{id}/mark-contacted, no por
+      este PATCH.
+    """
+    payload = lead_update.model_dump(exclude_unset=True)
+
+    if current_user.role != "admin":
+        # Un vendedor no puede reasignar el responsable bajo ninguna forma
+        # (incluye seller=null para liberar y seller=<su email> para apropiarse).
+        if "seller" in payload:
+            raise HTTPException(
+                status_code=403,
+                detail="Un vendedor no puede reasignar el responsable (seller) de un lead.",
+            )
+        # Ownership: solo sobre leads propios.
+        db_lead = db.query(models.Lead).filter(models.Lead.id == lead_id).first()
+        if not db_lead:
+            raise HTTPException(status_code=404, detail="Lead no encontrado")
+        if db_lead.seller != current_user.email:
+            raise HTTPException(
+                status_code=403,
+                detail="No podés modificar un lead que no te pertenece. Los leads nuevos se toman desde 'Contactar'.",
+            )
+        # Whitelist de campos editables por un vendedor.
+        payload = {k: v for k, v in payload.items() if k in {"status", "notes", "feedback_status"}}
+
+    updated_lead = crud.update_lead(db, lead_id, payload)
     if not updated_lead:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     return updated_lead
@@ -79,16 +111,46 @@ def update_lead(
 def mark_contacted(
     lead_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin", "vendedor")),
 ):
-    updated_lead = crud.update_lead(
-        db, 
-        lead_id, 
-        {
-            "status": "CONTACTED",
-            "seller": current_user.email
-        }
+    """
+    Toma/marca un lead como contactado, con protección contra carrera entre vendedores.
+
+    - Admin: puede marcar cualquier lead (sin robar el `seller` si ya tiene dueño).
+    - Vendedor: solo puede tomar un lead libre (sin seller) o ya propio. Si el lead
+      pertenece a otro vendedor -> 403.
+
+    Serializa la toma simultánea con `with_for_update()` (bloqueo de fila en Postgres)
+    y revalida `seller`/`status` después de adquirir el lock, de modo que ante dos
+    vendedores tomando el mismo lead solo uno lo reclama y el otro recibe 403.
+    Idempotente: si el lead ya está CONTACTED y es del mismo vendedor no re-escribe
+    `contacted_at`.
+    """
+    db_lead = (
+        db.query(models.Lead)
+        .filter(models.Lead.id == lead_id)
+        .with_for_update()
+        .first()
     )
+    if not db_lead:
+        raise HTTPException(status_code=404, detail="Lead no encontrado")
+
+    owned_by_me = db_lead.seller == current_user.email
+
+    if current_user.role != "admin" and db_lead.seller and not owned_by_me:
+        # Ya tomado por otro vendedor (incluye al perdedor de una carrera).
+        raise HTTPException(status_code=403, detail="Este lead ya fue tomado por otro vendedor.")
+
+    # Idempotencia: ya contactado y propio -> no re-escribir contacted_at.
+    if db_lead.status == models.LeadStatus.CONTACTED and owned_by_me:
+        return {"status": "success", "idempotent": True}
+
+    updates = {"status": "CONTACTED"}
+    # No robar el seller si el lead ya tiene dueño (caso admin sobre lead ajeno).
+    if not db_lead.seller or owned_by_me:
+        updates["seller"] = current_user.email
+
+    updated_lead = crud.update_lead(db, lead_id, updates)
     if not updated_lead:
         raise HTTPException(status_code=404, detail="Lead no encontrado")
     return {"status": "success"}

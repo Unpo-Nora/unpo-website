@@ -189,8 +189,21 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
             if (response.ok) {
                 const orderData = await response.json();
 
-                // Immediately trigger PDF download safely
-                window.open(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderData.id}/pdf`, '_blank');
+                // El remito ahora requiere Authorization (Etapa 0A de seguridad); window.open
+                // directo no envía el header y daría 401. Se descarga con fetch autenticado
+                // (reutilizando el token de arriba) y se abre el blob.
+                try {
+                    const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderData.id}/pdf`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (pdfRes.ok) {
+                        const blobUrl = window.URL.createObjectURL(await pdfRes.blob());
+                        window.open(blobUrl, '_blank');
+                        setTimeout(() => window.URL.revokeObjectURL(blobUrl), 60000);
+                    }
+                } catch (e) {
+                    console.error("No se pudo abrir el remito automáticamente", e);
+                }
 
                 onSuccess(orderData.id);
             } else {

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import pytz
 
 from .. import models, schemas, database, crud
-from .auth import get_current_user
+from ..dependencies.permissions import require_roles
 
 router = APIRouter(
     prefix="/finance",
@@ -40,11 +40,11 @@ def _update_overdue_transactions(db: Session):
 # --- SUPPLIERS ---
 
 @router.get("/suppliers", response_model=List[schemas.Supplier])
-def get_suppliers(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def get_suppliers(db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     return db.query(models.Supplier).all()
 
 @router.post("/suppliers", response_model=schemas.Supplier)
-def create_supplier(supplier: schemas.SupplierCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def create_supplier(supplier: schemas.SupplierCreate, db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     db_supplier = models.Supplier(**supplier.model_dump())
     db.add(db_supplier)
     db.commit()
@@ -59,7 +59,7 @@ def get_transactions(
     categoria: Optional[str] = None,
     estado: Optional[str] = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
     _update_overdue_transactions(db)
     
@@ -77,7 +77,7 @@ def get_transactions(
 def create_transaction(
     tx: schemas.FinancialTransactionCreate, 
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
     if tx.tipo_movimiento == models.TransactionType.INGRESO and tx.estado != models.TransactionStatus.PAGADO:
         tx.estado = models.TransactionStatus.PAGADO
@@ -103,7 +103,7 @@ def create_transaction(
 def create_purchase(
     purchase_data: schemas.PurchaseCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
     # Calculate totals
     total_cost = sum(d.monto for d in purchase_data.cost_details)
@@ -188,12 +188,12 @@ def _populate_purchase_real_cost(purchase: models.Purchase):
     return purchase
 
 @router.get("/purchases", response_model=List[schemas.Purchase])
-def get_purchases(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def get_purchases(db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     purchases = db.query(models.Purchase).order_by(models.Purchase.fecha_compra.desc()).all()
     return [_populate_purchase_real_cost(p) for p in purchases]
 
 @router.get("/purchases/{purchase_id}", response_model=schemas.Purchase)
-def get_purchase(purchase_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def get_purchase(purchase_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     purchase = db.query(models.Purchase).filter(models.Purchase.id == purchase_id).first()
     if not purchase:
         raise HTTPException(status_code=404, detail="Compra no encontrada")
@@ -203,7 +203,7 @@ def get_purchase(purchase_id: int, db: Session = Depends(get_db), current_user: 
 def pay_purchase(
     purchase_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
     purchase = db.query(models.Purchase).filter(models.Purchase.id == purchase_id).first()
     if not purchase:
@@ -244,7 +244,7 @@ def pay_purchase(
 # --- DASHBOARD METRICS ---
 
 @router.get("/dashboard/finance")
-def get_finance_dashboard(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
+def get_finance_dashboard(db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     _update_overdue_transactions(db)
     exchange_rate = _get_exchange_rate(db)
     
