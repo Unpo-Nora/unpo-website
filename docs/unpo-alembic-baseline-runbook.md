@@ -19,11 +19,41 @@ a la baseline). Alembic está restringido a `public` (ver `backend/alembic/env.p
 
 ---
 
+## Validación real sobre copia productiva — Etapa 0B-2.4B
+
+Ejecutada el 2026-07-15 sobre una **copia restaurada** de producción en PostgreSQL 17
+efímero y descartable (nunca contra Supabase productivo). Datos técnicos agregados (sin
+nombres, teléfonos, emails ni contenido de filas):
+
+| Ítem | Valor |
+|---|---|
+| Dump | `pg_dump` custom, schema `public` |
+| Cliente / restore PostgreSQL | 17 |
+| Revision PRE | `c9e8340fc9d6` |
+| Revision POST | `71e9e987f7d2` |
+| Tablas / Columnas / Constraints / Índices / Secuencias / Enums | 18 / 144 / 31 / 47 / 16 / 8 |
+| Resultado | **ADOPTION_VALIDATION_PASSED** |
+
+Permanecieron **idénticos** (PRE == POST): hash del esquema, hash de datos (excluyendo
+`public.alembic_version`), conteos de filas, valores de secuencias, valores de enums y
+defaults. **El único cambio fue** `public.alembic_version: c9e8340fc9d6 → 71e9e987f7d2`.
+
+---
+
 ## 12.1 — Validación sobre una COPIA restaurada (obligatoria antes de prod)
 
 1. **Restaurar** el último backup productivo en un PostgreSQL **aislado** (no Supabase de
    prod, no Ripoll, no local persistente). Puede ser un contenedor efímero o una instancia
    dedicada. La copia debe tener los datos reales.
+   > ⚠️ El dump custom `--schema=public` **recrea** el schema `public`. En la base
+   > **efímera y descartable** de validación, antes de `pg_restore` ejecutar:
+   > ```sql
+   > DROP SCHEMA IF EXISTS public CASCADE;
+   > ```
+   > **Este `DROP SCHEMA` se usa exclusivamente sobre la base efímera y descartable de
+   > validación. Nunca debe ejecutarse contra Supabase productivo.** Alternativa equivalente:
+   > `pg_restore --clean --if-exists`. (Procedimiento validado en 0B-2.4B: `DROP SCHEMA` +
+   > `pg_restore --exit-on-error --no-owner --no-privileges`.)
 2. **Snapshot previo** del esquema y métricas de la copia:
    - `pg_dump --schema-only -n public > pre_schema.sql`
    - conteos de filas por tabla (`pg_stat_user_tables` o `count(*)` acotado).
@@ -47,17 +77,32 @@ a la baseline). Alembic está restringido a `public` (ver `backend/alembic/env.p
    - constraints, FKs, índices y enums iguales.
 6. **Arrancar el backend** contra la copia y correr **pruebas funcionales** (login, listar
    leads, cerrar venta, etc.).
-7. **Verificar que autogenerate NO proponga cambios** (esquema == modelo):
+7. **Verificar que no hay drift** (esquema == modelo) con **`alembic check`** — no crea
+   archivos ni revisiones temporales:
    ```bash
-   alembic revision --autogenerate -m "check_no_drift"   # inspeccionar: debe salir "No changes detected" o un archivo vacío
+   alembic check   # esperado: "No new upgrade operations detected."
    ```
-   Si detecta cambios, **detenerse** y analizar (drift no contemplado). Borrar ese archivo
-   de prueba.
+   Si detecta cambios, **detenerse** y analizar (drift no contemplado).
 8. Recién con 1–7 en verde, planificar producción.
 
 ---
 
 ## 12.2 — Producción (DESCRIBIR, no ejecutar en esta etapa)
+
+**Mecanismo de ejecución del `stamp`:** puede correrse **desde el Shell del backend de
+Render** o **desde un contenedor backend local** correspondiente al commit desplegado,
+conectado mediante la `DATABASE_URL` productiva autorizada. El Shell de Render **no** es
+obligatorio. En ambos casos:
+```bash
+DATABASE_URL="<PRODUCTION_DATABASE_URL>" \
+ALEMBIC_ALLOW_SUPABASE=true \
+alembic stamp --purge 71e9e987f7d2
+```
+- `ALEMBIC_ALLOW_SUPABASE=true` se pasa **únicamente al proceso/comando**; **no** debe
+  guardarse como variable persistente del servicio en Render.
+- El código utilizado debe **contener** la baseline `71e9e987f7d2` (deploy de `763b7c5` o
+  posterior); desde un deploy sin la baseline el comando fallaría ("Can't locate revision").
+- **Nunca** ejecutar `alembic upgrade head` sobre la base existente.
 
 Precondiciones y pasos (todos con aprobación explícita y ventana coordinada):
 
@@ -102,27 +147,38 @@ revertir es únicamente restaurar el bookkeeping de Alembic a `c9e8340fc9d6`.
 ### Opción principal — volver al release anterior
 
 1. Detener nuevas operaciones de migración.
-2. Re-desplegar el commit **anterior** a la baseline: **`3927a3d`** (donde `c9e8340fc9d6`
-   todavía existe en `backend/alembic/versions/`).
-3. Desde ese release, ejecutar la reversión del bookkeeping:
+2. Re-desplegar **temporalmente** el commit **anterior** a la baseline en `main`:
+   **`e417906`** (último commit de `main` antes de la baseline, donde la cadena histórica y
+   la revisión `c9e8340fc9d6` todavía existen en `backend/alembic/versions/`).
+   > ⚠️ **No** usar el hash de seguridad **obsoleto** previo a la corrección de identidad:
+   > se reemplazó por `c521ac7`, que quedó mergeado en `main` como `e417906`.
+3. Confirmar que ese release contiene la cadena histórica y `c9e8340fc9d6` en
+   `backend/alembic/versions/`.
+4. Desde ese release, revertir el bookkeeping:
    ```bash
    alembic stamp --purge c9e8340fc9d6
    ```
-4. Confirmar:
+5. Verificar **una sola fila** en `public.alembic_version`:
    ```sql
-   SELECT version_num FROM public.alembic_version;   -- esperado: c9e8340fc9d6
+   SELECT version_num FROM public.alembic_version;   -- esperado: c9e8340fc9d6 (1 fila)
    ```
+6. Revalidar el servicio (login, leads, productos, ventas, logs).
 
 ### Opción de emergencia — restaurar el bookkeeping por SQL (solo con autorización)
 
-Si no fuera viable re-desplegar `3927a3d`, y **solo** después de verificar la identidad de la
-base, dentro de una ventana controlada y con backup disponible:
+Si no fuera viable re-desplegar `e417906`, y **solo** después de verificar la identidad de la
+base y que **`public.alembic_version` contiene una única fila**, dentro de una ventana
+controlada y con backup disponible:
 ```sql
 BEGIN;
 DELETE FROM public.alembic_version;
 INSERT INTO public.alembic_version (version_num) VALUES ('c9e8340fc9d6');
 COMMIT;
 ```
+> ⚠️ El SQL de emergencia **solo modifica el bookkeeping de Alembic** (la tabla
+> `public.alembic_version`); no toca tablas comerciales ni el esquema. **Antes de ejecutarlo
+> debe comprobarse que `public.alembic_version` contiene una única fila.**
+
 - Solo modifica el **bookkeeping** de Alembic; **no** toca tablas comerciales.
 - No revierte DDL, porque durante la adopción solo se ejecutó `stamp`.
 - **No** se crea una revisión stub para `c9e8340fc9d6` ni se devuelven las migraciones
