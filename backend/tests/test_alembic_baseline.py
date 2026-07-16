@@ -151,16 +151,37 @@ class AlembicBaselineTest(unittest.TestCase):
     @unittest.skipUnless(os.path.exists(RUNBOOK), "runbook fuera del contexto (docs/ no montado)")
     def test_runbook_rollback_via_previous_release(self):
         rb = _read(RUNBOOK)
-        # Debe apuntar al release anterior (3927a3d) y advertir que el stamp del árbol nuevo falla.
-        self.assertIn("3927a3d", rb)
+        # El release de rollback correcto es e417906; el obsoleto 3927a3d NO debe aparecer.
+        self.assertIn("e417906", rb)
+        self.assertNotIn("3927a3d", rb)
         self.assertIn("c9e8340fc9d6", rb)
-        self.assertRegex(rb, r"(?i)no\s+.*(sirve|se puede).*c9e8340fc9d6|Can't locate")
+        self.assertIn("Can't locate", rb)
 
     @unittest.skipUnless(os.path.exists(RUNBOOK), "runbook fuera del contexto (docs/ no montado)")
     def test_runbook_has_emergency_sql(self):
         rb = _read(RUNBOOK)
         self.assertIn("DELETE FROM public.alembic_version", rb)
         self.assertIn("INSERT INTO public.alembic_version", rb)
+
+    @unittest.skipUnless(os.path.exists(RUNBOOK), "runbook fuera del contexto (docs/ no montado)")
+    def test_runbook_restore_drop_schema_only_ephemeral(self):
+        rb = _read(RUNBOOK)
+        self.assertIn("DROP SCHEMA IF EXISTS public CASCADE", rb)
+        self.assertIn("efímera y descartable", rb)
+        self.assertIn("Nunca debe ejecutarse contra Supabase productivo", rb)
+
+    @unittest.skipUnless(os.path.exists(RUNBOOK), "runbook fuera del contexto (docs/ no montado)")
+    def test_runbook_recommends_alembic_check(self):
+        self.assertIn("alembic check", _read(RUNBOOK))
+
+    @unittest.skipUnless(os.path.exists(RUNBOOK), "runbook fuera del contexto (docs/ no montado)")
+    def test_runbook_has_validation_evidence(self):
+        self.assertIn("ADOPTION_VALIDATION_PASSED", _read(RUNBOOK))
+
+    @unittest.skipUnless(os.path.exists(RUNBOOK), "runbook fuera del contexto (docs/ no montado)")
+    def test_runbook_allow_supabase_not_persistent(self):
+        # No debe recomendarse persistir ALEMBIC_ALLOW_SUPABASE en Render.
+        self.assertIn("variable persistente", _read(RUNBOOK))
 
 
 if __name__ == "__main__":
