@@ -5,15 +5,15 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from .database import engine, Base, get_db
+from .database import get_db
 from .routers import products, leads, auth, analytics, sales, settings
 import logging
 import os
 
 logger = logging.getLogger("uvicorn.error")
 
-# Create database tables (Simple migration for dev)
-Base.metadata.create_all(bind=engine)
+# El esquema PostgreSQL lo gestiona EXCLUSIVAMENTE Alembic (baseline 71e9e987f7d2).
+# El arranque NO ejecuta DDL: nada de Base.metadata.create_all() ni `alembic upgrade`.
 
 app = FastAPI(
     title="UNPO & NORA Ecosystem API",
