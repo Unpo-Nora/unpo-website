@@ -127,9 +127,37 @@ class AlembicBaselineTest(unittest.TestCase):
         self.assertIsNone(models.CapitalIva.__table__.c["created_at"].server_default)
         self.assertIsNone(models.FinancialTransaction.__table__.c["created_at"].server_default)
 
-    def test_main_still_has_create_all(self):
-        main = _read(os.path.join(BACKEND_DIR, "app", "main.py"))
-        self.assertIn("create_all", main, "create_all debe seguir en main.py durante esta fase")
+    def test_main_does_not_call_create_all(self):
+        # El arranque productivo NO debe ejecutar create_all: Alembic es el único gestor de
+        # esquema. Se analiza por AST para ignorar comentarios/strings (el comentario
+        # explicativo de main.py menciona create_all a propósito).
+        import ast
+        tree = ast.parse(_read(os.path.join(BACKEND_DIR, "app", "main.py")))
+        create_all_calls = [
+            n for n in ast.walk(tree)
+            if isinstance(n, ast.Call)
+            and isinstance(n.func, ast.Attribute)
+            and n.func.attr == "create_all"
+        ]
+        self.assertEqual(create_all_calls, [], "main.py no debe llamar a create_all() en el arranque")
+
+    def test_main_does_not_import_or_run_alembic(self):
+        # El arranque no debe importar ni ejecutar Alembic automáticamente (AST evita falsos
+        # positivos del comentario explicativo).
+        import ast
+        tree = ast.parse(_read(os.path.join(BACKEND_DIR, "app", "main.py")))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    self.assertFalse(
+                        alias.name == "alembic" or alias.name.startswith("alembic."),
+                        "main.py no debe importar alembic",
+                    )
+            if isinstance(node, ast.ImportFrom) and node.module:
+                self.assertFalse(
+                    node.module == "alembic" or node.module.startswith("alembic."),
+                    "main.py no debe importar desde alembic",
+                )
 
     # ---- Correcciones 0B-2.3 (offline / guardas / runbook) ----
 
