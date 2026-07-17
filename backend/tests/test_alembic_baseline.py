@@ -54,19 +54,27 @@ def _versions_py():
     return [f for f in os.listdir(VERSIONS_DIR) if f.endswith(".py")]
 
 
+BASELINE_FILE = "71e9e987f7d2_unpo_schema_baseline.py"
+BASELINE_REV = "71e9e987f7d2"
+
+
 def _baseline_source():
-    files = _versions_py()
-    assert len(files) == 1, f"Se esperaba 1 baseline en versions/, hay {files}"
-    return _read(os.path.join(VERSIONS_DIR, files[0]))
+    # La baseline se ubica por su nombre canónico. A partir de la Etapa 1B pueden coexistir
+    # otras migraciones encadenadas (p. ej. WhatsApp), así que ya NO se asume que versions/
+    # contenga un único archivo.
+    return _read(os.path.join(VERSIONS_DIR, BASELINE_FILE))
 
 
 class AlembicBaselineTest(unittest.TestCase):
     def test_single_active_revision_head_base(self):
+        # Cadena LINEAL: un único head y una única base. La base (raíz, down_revision=None)
+        # debe seguir siendo la baseline aunque por encima se encadenen otras migraciones.
         script = _script_dir()
         self.assertEqual(len(script.get_heads()), 1, "Debe haber un único head")
         self.assertEqual(len(script.get_bases()), 1, "Debe haber una única base")
         revs = list(script.walk_revisions())
-        self.assertEqual(len(revs), 1, "Debe haber una única revisión activa (la baseline)")
+        self.assertGreaterEqual(len(revs), 1)
+        self.assertEqual(revs[-1].revision, BASELINE_REV, "La revisión raíz debe ser la baseline")
 
     def test_baseline_down_revision_is_none(self):
         script = _script_dir()
@@ -74,8 +82,12 @@ class AlembicBaselineTest(unittest.TestCase):
         self.assertIsNone(base_rev.down_revision, "La baseline debe tener down_revision=None")
         self.assertIsNone(base_rev.branch_labels or None)
 
-    def test_versions_dir_has_only_baseline(self):
-        self.assertEqual(len(_versions_py()), 1, "versions/ debe tener solo la baseline")
+    def test_versions_dir_has_baseline_and_no_legacy(self):
+        # versions/ debe contener la baseline y NINGUNA de las migraciones históricas
+        # archivadas. Puede contener migraciones nuevas encadenadas (WhatsApp, etc.).
+        files = set(_versions_py())
+        self.assertIn(BASELINE_FILE, files, "La baseline debe estar en versions/")
+        self.assertEqual(files & LEGACY_FILES, set(), "Ninguna migración legacy debe estar en versions/")
 
     def test_historical_migrations_are_archived(self):
         legacy = set(os.listdir(LEGACY_DIR))
