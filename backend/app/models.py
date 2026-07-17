@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Numeric, Text, TIMESTAMP, JSON, Enum, DateTime, func
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, Numeric, Text, TIMESTAMP, JSON, Enum, DateTime, func, Index, UniqueConstraint, text, UUID
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import relationship
 from .database import Base
 import enum
@@ -326,3 +327,266 @@ class FinancialTransaction(Base):
 
     supplier = relationship("Supplier")
     purchase = relationship("Purchase")
+
+
+# ===========================================================================
+# WhatsApp Cloud API — modelo de datos multiagente (Etapa 1B)
+#
+# Diseño aprobado en docs/unpo-whatsapp-cloud-api-architecture.md. Reglas clave:
+#  - Estados como String (validados por aplicación / CHECK futuro), NO enums PG nativos,
+#    para evitar ALTER TYPE en migraciones posteriores.
+#  - Contactos GLOBALES (sin line_id); las conversaciones son por (línea, contacto).
+#  - Idempotencia: unique parcial de mensajes (external_message_id / client_request_id),
+#    unique de event_key en eventos de estado y de webhook.
+#  - NUNCA se almacenan tokens ni secretos en la base (solo config no secreta de líneas).
+#  - Política ondelete: FKs hacia users/leads en SET NULL (conservar historial); tablas
+#    hijas propias del módulo en CASCADE; line_id/contact_id de conversaciones en RESTRICT
+#    (las líneas se desactivan con is_active, no se borran físicamente).
+# ===========================================================================
+
+class WhatsAppLine(Base):
+    """Configuración NO secreta de cada línea de WhatsApp. NUNCA almacena tokens."""
+    __tablename__ = "whatsapp_lines"
+
+    id = Column(Integer, primary_key=True)
+    provider = Column(String(32), nullable=False, default="meta")
+    phone_number_id = Column(String(128), nullable=False)
+    waba_id = Column(String(128), nullable=False)
+    display_number = Column(String(32), nullable=False)
+    label = Column(String(100), nullable=False)
+    is_active = Column(Boolean, nullable=False, server_default=text("true"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    user_access = relationship("WhatsAppLineUserAccess", back_populates="line", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "phone_number_id", name="uq_whatsapp_lines_provider_phone_number_id"),
+        UniqueConstraint("provider", "display_number", name="uq_whatsapp_lines_provider_display_number"),
+    )
+
+
+class WhatsAppLineUserAccess(Base):
+    """Permisos por línea y por usuario (ver/enviar). Config viva, no historial → CASCADE."""
+    __tablename__ = "whatsapp_line_user_access"
+
+    id = Column(Integer, primary_key=True)
+    line_id = Column(Integer, ForeignKey("whatsapp_lines.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    can_view = Column(Boolean, nullable=False, server_default=text("true"))
+    can_send = Column(Boolean, nullable=False, server_default=text("true"))
+    is_default = Column(Boolean, nullable=False, server_default=text("false"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    line = relationship("WhatsAppLine", back_populates="user_access")
+
+    __table_args__ = (
+        UniqueConstraint("line_id", "user_id", name="uq_whatsapp_line_user_access_line_user"),
+        Index("ix_whatsapp_line_user_access_user_id", "user_id"),
+        Index("ix_whatsapp_line_user_access_line_id", "line_id"),
+    )
+
+
+class WhatsAppContact(Base):
+    """Persona GLOBAL (sin line_id). No se asume que siempre tenga teléfono."""
+    __tablename__ = "whatsapp_contacts"
+
+    id = Column(Integer, primary_key=True)
+    display_name = Column(String(255), nullable=True)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    first_seen_at = Column(DateTime(timezone=True), nullable=True)
+    last_seen_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    identifiers = relationship("WhatsAppContactIdentifier", back_populates="contact", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        Index("ix_whatsapp_contacts_lead_id", "lead_id"),
+    )
+
+
+class WhatsAppContactIdentifier(Base):
+    """Identificadores de un contacto: wa_id | phone_e164 | bsuid. Dependientes → CASCADE."""
+    __tablename__ = "whatsapp_contact_identifiers"
+
+    id = Column(Integer, primary_key=True)
+    contact_id = Column(Integer, ForeignKey("whatsapp_contacts.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(String(32), nullable=False, default="meta")
+    identifier_type = Column(String(32), nullable=False)
+    identifier_value = Column(String(255), nullable=False)
+    is_primary = Column(Boolean, nullable=False, server_default=text("false"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    contact = relationship("WhatsAppContact", back_populates="identifiers")
+
+    __table_args__ = (
+        UniqueConstraint("provider", "identifier_type", "identifier_value", name="uq_whatsapp_contact_identifiers_value"),
+        Index("ix_whatsapp_contact_identifiers_contact_id", "contact_id"),
+        Index("ix_whatsapp_contact_identifiers_identifier_value", "identifier_value"),
+    )
+
+
+class WhatsAppConversation(Base):
+    """Hilo por (línea, contacto). status: open | closed | archived."""
+    __tablename__ = "whatsapp_conversations"
+
+    id = Column(Integer, primary_key=True)
+    line_id = Column(Integer, ForeignKey("whatsapp_lines.id", ondelete="RESTRICT"), nullable=False)
+    contact_id = Column(Integer, ForeignKey("whatsapp_contacts.id", ondelete="RESTRICT"), nullable=False)
+    lead_id = Column(Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True)
+    assigned_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status = Column(String(32), nullable=False, default="open")
+    assignment_source = Column(String(32), nullable=True)
+    last_message_at = Column(DateTime(timezone=True), nullable=True)
+    last_inbound_at = Column(DateTime(timezone=True), nullable=True)
+    customer_service_window_expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    messages = relationship("WhatsAppMessage", back_populates="conversation", cascade="all, delete-orphan")
+    reads = relationship("WhatsAppConversationRead", back_populates="conversation", cascade="all, delete-orphan")
+    assignments = relationship("WhatsAppConversationAssignment", back_populates="conversation", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("line_id", "contact_id", name="uq_whatsapp_conversations_line_contact"),
+        Index("ix_whatsapp_conversations_assigned_status_last_msg", "assigned_user_id", "status", "last_message_at"),
+        Index("ix_whatsapp_conversations_line_status_last_msg", "line_id", "status", "last_message_at"),
+        Index("ix_whatsapp_conversations_lead_id", "lead_id"),
+        Index("ix_whatsapp_conversations_contact_id", "contact_id"),
+    )
+
+
+class WhatsAppMessage(Base):
+    """Mensaje in/out. Idempotencia por unique parcial de external_message_id / client_request_id.
+    Los salientes se crean como 'pending' ANTES de llamar a Meta."""
+    __tablename__ = "whatsapp_messages"
+
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("whatsapp_conversations.id", ondelete="CASCADE"), nullable=False)
+    provider = Column(String(32), nullable=False, default="meta")
+    external_message_id = Column(String(255), nullable=True)
+    # UUID genérico (cross-dialect): nativo `uuid` en PostgreSQL, CHAR en SQLite (tests).
+    client_request_id = Column(UUID(as_uuid=True), nullable=True)
+    direction = Column(String(32), nullable=False)
+    message_type = Column(String(32), nullable=False)
+    text_body = Column(Text, nullable=True)
+    current_status = Column(String(32), nullable=False, default="pending")
+    context_external_message_id = Column(String(255), nullable=True)
+    sender_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    origin = Column(String(32), nullable=False, default="unknown")
+    provider_timestamp = Column(DateTime(timezone=True), nullable=True)
+    received_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    error_code = Column(String(64), nullable=True)
+    error_message_safe = Column(Text, nullable=True)
+
+    conversation = relationship("WhatsAppConversation", back_populates="messages")
+    status_events = relationship("WhatsAppMessageStatusEvent", back_populates="message", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        # Idempotencia: unique PARCIAL (solo cuando el valor no es NULL).
+        Index("uq_whatsapp_messages_provider_external_id", "provider", "external_message_id",
+              unique=True, postgresql_where=text("external_message_id IS NOT NULL")),
+        Index("uq_whatsapp_messages_client_request_id", "client_request_id",
+              unique=True, postgresql_where=text("client_request_id IS NOT NULL")),
+        Index("ix_whatsapp_messages_conversation_provider_ts", "conversation_id", "provider_timestamp"),
+        Index("ix_whatsapp_messages_conversation_created_at", "conversation_id", "created_at"),
+        Index("ix_whatsapp_messages_sender_user_id", "sender_user_id"),
+        Index("ix_whatsapp_messages_current_status", "current_status"),
+    )
+
+
+class WhatsAppConversationRead(Base):
+    """Estado de lectura POR usuario (no un unread_count global).
+    La FK last_read_message_id → whatsapp_messages tiene nombre explícito y la migración la
+    agrega con op.create_foreign_key() DESPUÉS de crear ambas tablas. No usa use_alter: no
+    existe un ciclo real (whatsapp_messages no depende de whatsapp_conversation_reads), por lo
+    que el orden topológico de create_all() alcanza y se evita ALTER ADD CONSTRAINT en SQLite."""
+    __tablename__ = "whatsapp_conversation_reads"
+
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("whatsapp_conversations.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    last_read_message_id = Column(
+        Integer,
+        ForeignKey("whatsapp_messages.id", ondelete="SET NULL",
+                   name="fk_whatsapp_conversation_reads_last_read_message_id"),
+        nullable=True,
+    )
+    last_read_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    conversation = relationship("WhatsAppConversation", back_populates="reads")
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "user_id", name="uq_whatsapp_conversation_reads_conversation_user"),
+    )
+
+
+class WhatsAppMessageStatusEvent(Base):
+    """Eventos de estado (sent/delivered/read/failed). APPEND-ONLY. Dedupe por event_key."""
+    __tablename__ = "whatsapp_message_status_events"
+
+    id = Column(Integer, primary_key=True)
+    message_id = Column(Integer, ForeignKey("whatsapp_messages.id", ondelete="CASCADE"), nullable=False)
+    event_key = Column(String(255), nullable=False)
+    status = Column(String(32), nullable=False)
+    provider_timestamp = Column(DateTime(timezone=True), nullable=True)
+    received_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    # JSONB en PostgreSQL; degrada a JSON en SQLite (solo para create_all() de los tests).
+    safe_payload = Column(postgresql.JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+
+    message = relationship("WhatsAppMessage", back_populates="status_events")
+
+    __table_args__ = (
+        UniqueConstraint("event_key", name="uq_whatsapp_message_status_events_event_key"),
+        Index("ix_whatsapp_message_status_events_message_id", "message_id"),
+    )
+
+
+class WhatsAppWebhookEvent(Base):
+    """Cola/dedupe persistente de webhooks crudos. event_key determinístico (no ext_id)."""
+    __tablename__ = "whatsapp_webhook_events"
+
+    id = Column(Integer, primary_key=True)
+    provider = Column(String(32), nullable=False, default="meta")
+    event_key = Column(String(255), nullable=False)
+    payload_hash = Column(String(64), nullable=True)
+    event_type = Column(String(64), nullable=True)
+    processing_status = Column(String(32), nullable=False, default="pending")
+    attempt_count = Column(Integer, nullable=False, server_default=text("0"))
+    received_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    last_error_safe = Column(Text, nullable=True)
+    raw_payload = Column(postgresql.JSONB().with_variant(JSON(), "sqlite"), nullable=True)
+    raw_payload_expires_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("provider", "event_key", name="uq_whatsapp_webhook_events_provider_event_key"),
+        Index("ix_whatsapp_webhook_events_status_received", "processing_status", "received_at"),
+        Index("ix_whatsapp_webhook_events_raw_payload_expires_at", "raw_payload_expires_at"),
+    )
+
+
+class WhatsAppConversationAssignment(Base):
+    """Historial de asignaciones (auditoría). FKs a users en SET NULL para conservar historial."""
+    __tablename__ = "whatsapp_conversation_assignments"
+
+    id = Column(Integer, primary_key=True)
+    conversation_id = Column(Integer, ForeignKey("whatsapp_conversations.id", ondelete="CASCADE"), nullable=False)
+    from_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    to_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assigned_by_user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    assignment_source = Column(String(32), nullable=False)
+    reason = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    conversation = relationship("WhatsAppConversation", back_populates="assignments")
+
+    __table_args__ = (
+        Index("ix_whatsapp_conversation_assignments_conversation_created", "conversation_id", "created_at"),
+        Index("ix_whatsapp_conversation_assignments_to_user_id", "to_user_id"),
+    )
