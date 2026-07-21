@@ -73,9 +73,13 @@ X-Hub-Signature-256: sha256=<digest hexadecimal>
 - La lógica vive en `app/services/whatsapp/signature.py`, fuera del router, y no está
   duplicada.
 
-Otros códigos del `POST`: **400** JSON inválido con firma válida · **413** cuerpo mayor
-a `MAX_WEBHOOK_BODY_BYTES` (1 MiB) · **500** si el evento **no** pudo almacenarse ·
+Otros códigos del `POST`: **400** JSON inválido —o con anidamiento tan profundo que
+desborda la pila al recorrerlo— con firma válida · **413** cuerpo mayor a
+`MAX_WEBHOOK_BODY_BYTES` (1 MiB) · **500** si el evento **no** pudo almacenarse ·
 **200** si el evento quedó almacenado.
+
+El anidamiento extremo se responde **400 y no 500** a propósito: es un problema del
+payload, y un 500 haría que Meta lo reintentara indefinidamente con el mismo resultado.
 
 El límite de tamaño es una protección **local** de este endpoint (el proyecto no tiene
 middleware global de tamaño y no se agregó uno para no alterar la subida de imágenes ni
@@ -143,9 +147,22 @@ Un elemento defectuoso no arrastra a los demás: se hace `rollback` de ese ítem
 continúa con el siguiente. No se usan SAVEPOINTs (se comportan distinto en SQLite y
 PostgreSQL). No se introdujeron Redis, Celery, Kafka ni servicios externos.
 
-Estados de `processing_status`: `processed` (hubo al menos un elemento manejado),
-`ignored` (nada aplicable: objeto/field/tipo no soportado, línea desconocida o
-inactiva, estado de un mensaje que no conocemos) y `failed` (hubo errores).
+Estados de `processing_status`:
+
+| Estado | Significado |
+|---|---|
+| `processed` | Hubo al menos un elemento manejado (creado o deduplicado) |
+| `ignored` | Nada aplicable: objeto/`field`/tipo no soportado, línea desconocida o inactiva, estado de un mensaje que no conocemos |
+| `failed` | Hubo errores, **o** el envelope no se pudo leer |
+
+Un envelope ilegible (un tipo distinto del esperado, no un campo nuevo) se marca
+`failed` y **no** `ignored`: `ignored` significa "correctamente no aplicable" y dejaría
+el evento fuera del radar del reprocesador con un diagnóstico falso.
+
+`last_error_safe` guarda el error cuando lo hay; si no hubo errores pero sí elementos
+descartados, guarda los motivos con el prefijo explícito **`skipped:`**. Así un evento
+`processed` con un elemento ignorado deja traza sin parecer fallado, y el reprocesador
+sabe qué quedó afuera aunque el `raw_payload` ya se haya purgado.
 
 ## 7. Resolución de línea
 
@@ -231,9 +248,19 @@ línea desconocida/inactiva, mensaje procesado, estado procesado, tipo/field/obj
 soportado y fallo de procesamiento.
 
 **Nunca** se registran: cuerpo completo, teléfono completo, nombre del contacto,
-contenido del mensaje, tokens, secretos ni la firma. Para correlacionar se usan IDs
-internos (`line_id`, `conversation_id`, `contact_id`, `message_id`), hashes truncados
-(`sha256:60e91a0f6eff…`) e identificadores enmascarados (`***0000`).
+contenido del mensaje, **identificadores externos completos** (`wamid`), tokens,
+secretos ni la firma. Para correlacionar se usan:
+
+| Dato | En el log |
+|---|---|
+| Registros propios | ID interno: `line_id`, `conversation_id`, `contact_id`, `message_id` |
+| `event_key` (ya es un hash) | Prefijo truncado: `sha256:60e91a0f6eff…` |
+| Teléfono / `wa_id` / `phone_number_id` | Enmascarado: `***0000` |
+| `wamid` y otros ids externos | Huella no reversible: `ext:9f2a1c7b04` (`mask_external_id`) |
+
+> Para los ids externos **no alcanza truncar**: un `wamid` más corto que el largo de
+> truncado quedaría completo en el log. Por eso se emite un prefijo del sha256, que
+> correlaciona dos apariciones del mismo id sin exponerlo nunca entero.
 
 > **Regla dura del módulo: no se usa `logger.exception` en el camino del webhook.** El
 > traceback de un error de SQLAlchemy incluye `[SQL: …]` y `[parameters: …]`, es decir
@@ -359,6 +386,45 @@ salieron correcciones que ningún test con SQLite podía detectar:
 | Diferencia | Qué pasaba | Cómo se resolvió |
 |---|---|---|
 | Largos de `VARCHAR` (22001) | Un `profile_name`, `wa_id`, `wamid` o `context.id` de más de 255 caracteres abortaba el INSERT y perdía el mensaje | El normalizador trunca lo cosmético y descarta como no soportado lo que no se puede truncar sin romper identidad/idempotencia |
-| `jsonb` rechaza ` ` | Un payload con NUL devolvía 500 sin almacenar el evento: Meta lo reintentaba indefinidamente | Se guarda una copia sin NUL; el hash se sigue calculando sobre el payload original |
+| `jsonb` rechaza el caracter NUL | Un payload con NUL devolvía 500 sin almacenar el evento: Meta lo reintentaba indefinidamente | Se guarda una copia sin NUL; el hash se sigue calculando sobre el payload original |
 | Unicidad bajo concurrencia | Dos entregas simultáneas de un contacto nuevo chocaban en `uq_whatsapp_contact_identifiers_value` y un mensaje se perdía | `_process_message` reintenta una vez tras `IntegrityError` y reusa lo que la otra transacción confirmó |
 | Errores con sentencia y parámetros | El traceback de SQLAlchemy incluye el SQL y los valores bindeados (texto del mensaje, teléfono, nombre) | No se usa `logger.exception` en este módulo y `safe_error` recorta `[SQL:`, `[parameters:` y `DETAIL:` |
+| Surrogates sueltos (U+D800–U+DFFF) | `json.loads` los acepta pero UTF-8 no los puede codificar: el hash canónico lanzaba `UnicodeEncodeError` (que no es `UnicodeDecodeError`) y escapaba como 500 en bucle | El hash usa `ensure_ascii=True`, el saneado los quita junto con el NUL, y el router captura `ValueError` → 400 |
+| `event_type` sin sanear | El `field` del payload iba crudo a `VARCHAR(64)`: un NUL ahí rompía el INSERT del evento aunque el `raw_payload` estuviera limpio | Se sanea `field` y `object` en el normalizador |
+
+### 15.1 Comportamientos verificados que NO son defectos
+
+Salieron de la revisión y quedan documentados para no volver a auditarlos a ciegas:
+
+- **`Content-Length` menor que el cuerpo real**: la aplicación no compara ambos; el
+  servidor ASGI (uvicorn/h11) trunca el cuerpo al `Content-Length` declarado antes de
+  que el endpoint lo vea, así que la firma no valida y se responde 403. Un
+  `Content-Length` inválido o negativo tampoco llega a la aplicación.
+- **Corte de conexión a mitad del cuerpo**: se captura `ClientDisconnect` y se responde
+  400. No se persiste nada y la sesión queda sana. Sin la captura, la excepción llegaba
+  al handler global de `main.py`, que la logea con traceback completo: ruido de logs
+  provocable de forma anónima y previa a la validación de firma.
+- **Estado de un mensaje de otra línea**: `_process_status` localiza el mensaje por
+  `wamid` sin validar que pertenezca a la línea del webhook. Los `wamid` son únicos a
+  nivel global y los emite Meta, así que no hay ambigüedad posible; queda anotado por
+  si alguna vez se admiten proveedores distintos.
+- **Payloads degenerados** (`entry` vacío, sin `changes`, `value` nulo, listas nulas,
+  `contacts[]` repetidos, envelope que no es un objeto): todos responden 200, quedan
+  registrados y no producen escrituras comerciales.
+
+### 15.2 Riesgos residuales conocidos
+
+- **`main.py` usa `logger.exception` en su handler global** (línea 57). Este módulo ya
+  no deja escapar excepciones, pero la regla de redacción vale solo mientras eso siga
+  siendo cierto. El refuerzo global sería `hide_parameters=True` en el engine de
+  `app/database.py`; **afecta a toda la aplicación**, así que requiere aprobación
+  aparte y no se aplicó en esta etapa.
+- **Validación del envelope todo-o-nada**: Pydantic valida el payload completo, así que
+  un tipo inesperado en un solo elemento invalida el webhook entero (queda `failed`,
+  revisable). La validación por elemento —para que un `messages[]` roto no arrastre a
+  los `statuses[]` del mismo `change`— corresponde a la etapa del reprocesador.
+- **Reintento amplio ante `IntegrityError`**: un conflicto no transitorio reejecuta una
+  vez la resolución de contacto y conversación antes de fallar. Está acotado (un solo
+  reintento) pero podría condicionarse al nombre de la constraint.
+- **Los estados no se acotan a la línea**: `_process_status` busca el mensaje por
+  `wamid` sin filtrar por línea (ver §15.1).

@@ -41,7 +41,7 @@ from .normalizer import (
     NormalizedStatus,
     normalize_wa_id_to_e164,
 )
-from .redaction import mask_identifier, safe_error, short_key
+from .redaction import mask_external_id, mask_identifier, safe_error, short_key
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -68,6 +68,7 @@ CUSTOMER_SERVICE_WINDOW = timedelta(hours=24)
 REASON_UNKNOWN_LINE = "unknown_line"
 REASON_INACTIVE_LINE = "inactive_line"
 REASON_UNSUPPORTED_OBJECT = "unsupported_object"
+REASON_INVALID_ENVELOPE = "invalid_envelope"
 REASON_UNSUPPORTED_FIELD = "unsupported_field"
 REASON_UNSUPPORTED_STATUS = "unsupported_status"
 # `REASON_UNSUPPORTED_MESSAGE_TYPE` y los motivos por elemento vienen del normalizador.
@@ -101,14 +102,19 @@ class ProcessingReport:
 
     def summary_error(self) -> Optional[str]:
         """
-        Texto para `last_error_safe`. En un evento `processed` se deja en NULL: la
-        columna es de error, y llenarla con motivos de descarte de un evento exitoso
-        confunde al monitoreo y al futuro reprocesador.
+        Texto para `last_error_safe`.
+
+        Los errores van tal cual. Los motivos de DESCARTE se guardan con el prefijo
+        explícito `skipped:` — sin él, un evento `processed` con elementos descartados
+        (un `text` procesado y una `image` ignorada) no dejaría ninguna traza salvo el
+        `raw_payload`, que se purga a los 30 días; y sin prefijo un evento exitoso
+        parecería fallado. Un evento sin descartes ni errores deja la columna en NULL.
         """
         if self.errors:
             return safe_error("; ".join(self.errors))
-        if self.skipped_reasons and self.resolve_status() != "processed":
-            return safe_error(",".join(sorted(set(self.skipped_reasons))))
+        if self.skipped_reasons:
+            motivos = ",".join(sorted(set(self.skipped_reasons)))
+            return safe_error(f"skipped:{motivos}")
         return None
 
 
@@ -184,10 +190,12 @@ def _find_identifier(db: Session, identifier_type: str, value: str):
 
 
 def _has_primary_identifier(db: Session, contact_id: int) -> bool:
+    """¿El contacto ya tiene un identificador primario para ESTE proveedor?"""
     return (
         db.query(models.WhatsAppContactIdentifier)
         .filter(
             models.WhatsAppContactIdentifier.contact_id == contact_id,
+            models.WhatsAppContactIdentifier.provider == PROVIDER,
             models.WhatsAppContactIdentifier.is_primary.is_(True),
         )
         .first()
@@ -312,6 +320,14 @@ def _resolve_conversation(db: Session, line: models.WhatsAppLine, contact: model
 # --------------------------------------------------------------------------- #
 # Elementos
 # --------------------------------------------------------------------------- #
+def _find_status_event(db: Session, event_key: str) -> Optional[models.WhatsAppMessageStatusEvent]:
+    return (
+        db.query(models.WhatsAppMessageStatusEvent)
+        .filter(models.WhatsAppMessageStatusEvent.event_key == event_key)
+        .first()
+    )
+
+
 def _find_message_by_external_id(db: Session, external_id: str) -> Optional[models.WhatsAppMessage]:
     return (
         db.query(models.WhatsAppMessage)
@@ -335,12 +351,16 @@ def _process_message(db: Session, line: models.WhatsAppLine, item: NormalizedMes
     recuperación). En el reintento las filas de la otra transacción ya son visibles y el
     mensaje se inserta reusando el contacto.
     """
+    # `line.id` se guarda ANTES: tras el rollback la instancia queda expirada y leer el
+    # atributo dispararía un SELECT extra (o `ObjectDeletedError` si la fila cambió),
+    # enmascarando el IntegrityError original.
+    line_id = line.id
     try:
         _process_message_once(db, line, item, report)
     except IntegrityError:
         db.rollback()
         logger.info("[whatsapp-webhook] conflicto de unicidad, reintento único line_id=%s",
-                    line.id)
+                    line_id)
         _process_message_once(db, line, item, report)
 
 
@@ -359,9 +379,9 @@ def _process_message_once(db: Session, line: models.WhatsAppLine, item: Normaliz
 
     if _find_message_by_external_id(db, item.external_id) is not None:
         report.messages_duplicated += 1
-        # Sin id interno todavía: se usa el identificador externo TRUNCADO.
-        logger.info("[whatsapp-webhook] mensaje duplicado ext_id=%s line_id=%s",
-                    short_key(item.external_id, 16), line.id)
+        # Todavía no hay id interno: se usa una huella del id externo, nunca el id.
+        logger.info("[whatsapp-webhook] mensaje duplicado ext=%s line_id=%s",
+                    mask_external_id(item.external_id), line.id)
         return
 
     contact = _resolve_contact(db, item.wa_id, item.profile_name, item.provider_timestamp)
@@ -408,16 +428,11 @@ def _process_status(db: Session, line: models.WhatsAppLine, item: NormalizedStat
         # Estado de un mensaje que no conocemos (p. ej. enviado desde la app de
         # WhatsApp Business antes de integrar la línea). Se ignora sin romper.
         report.skipped_reasons.append(REASON_UNKNOWN_MESSAGE)
-        logger.info("[whatsapp-webhook] estado sin mensaje conocido ext_id=%s line_id=%s",
-                    short_key(item.external_message_id, 16), line.id)
+        logger.info("[whatsapp-webhook] estado sin mensaje conocido ext=%s line_id=%s",
+                    mask_external_id(item.external_message_id), line.id)
         return
 
-    existing = (
-        db.query(models.WhatsAppMessageStatusEvent)
-        .filter(models.WhatsAppMessageStatusEvent.event_key == item.event_key)
-        .first()
-    )
-    if existing is not None:
+    if _find_status_event(db, item.event_key) is not None:
         report.statuses_duplicated += 1
         return
 
@@ -442,8 +457,11 @@ def _process_status(db: Session, line: models.WhatsAppLine, item: NormalizedStat
     # no logra superar a `delivered`/`read` no ensucia el mensaje, y un `delivered`
     # posterior a un `failed` limpia el error que ya no aplica.
     if nuevo == STATUS_FAILED:
-        message.error_code = item.error_code
-        message.error_message_safe = safe_error(item.error_title) or None
+        # Solo se pisa la causa si el evento nuevo trae una: un segundo `failed` sin
+        # bloque `errors[]` no puede borrar el motivo que ya estaba registrado.
+        if item.error_code or item.error_title:
+            message.error_code = item.error_code
+            message.error_message_safe = safe_error(item.error_title) or None
     elif anterior == STATUS_FAILED and nuevo in TERMINAL_DELIVERY_STATES:
         message.error_code = None
         message.error_message_safe = None
@@ -456,12 +474,7 @@ def _process_status(db: Session, line: models.WhatsAppLine, item: NormalizedStat
         # Solo es duplicado si la fila realmente está: cualquier otro IntegrityError
         # (FK, not-null) no puede contarse como éxito, o el evento quedaría marcado
         # `processed` sin haber persistido el estado.
-        ya_registrado = (
-            db.query(models.WhatsAppMessageStatusEvent)
-            .filter(models.WhatsAppMessageStatusEvent.event_key == item.event_key)
-            .first()
-        )
-        if ya_registrado is None:
+        if _find_status_event(db, item.event_key) is None:
             raise
         report.statuses_duplicated += 1
         return
@@ -483,6 +496,14 @@ def process_event(db: Session, normalized: NormalizedEvent) -> ProcessingReport:
     reproceso, respondiendo igualmente 200 a Meta (arquitectura §7).
     """
     report = ProcessingReport()
+
+    if normalized.invalid_envelope:
+        # No es "no aplicable": es un payload que no se pudo leer. Se reporta como error
+        # para que el evento quede `failed` y el reprocesador lo revise, en vez de
+        # `ignored`, que lo dejaría fuera de su radar con un diagnóstico falso.
+        report.errors.append(REASON_INVALID_ENVELOPE)
+        logger.warning("[whatsapp-webhook] envelope ilegible: no se pudo normalizar")
+        return report
 
     if not normalized.supported_object:
         report.skipped_reasons.append(REASON_UNSUPPORTED_OBJECT)

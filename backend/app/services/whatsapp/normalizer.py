@@ -24,6 +24,7 @@ mismo webhook puede reenviar el mismo estado dentro de payloads distintos.
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -57,29 +58,33 @@ REASON_OVERSIZED_EXTERNAL_ID = "oversized_external_id"
 REASON_INVALID_SENDER_IDENTIFIER = "invalid_sender_identifier"
 
 
-def strip_nul(value):
-    """
-    Quita el carácter NUL de una cadena.
+# Caracteres que PostgreSQL NO puede almacenar y SQLite sí acepta:
+#  - NUL: rechazado en `text` y en `jsonb` (`unsupported Unicode escape sequence`);
+#  - surrogates sueltos (U+D800–U+DFFF): `json.loads` los acepta, pero no son
+#    codificables en UTF-8, así que rompen tanto el hash como el INSERT.
+# Si llegan sin filtrar, el evento no se persiste, se responde 500 y Meta reintenta el
+# mismo webhook para siempre.
+_TEXTO_INVALIDO = re.compile("[\x00\ud800-\udfff]")
 
-    PostgreSQL lo rechaza tanto en `text` como en `jsonb` (`unsupported Unicode escape
-    sequence`), mientras que SQLite lo acepta: un payload firmado con `\\u0000` haría
-    fallar el INSERT del evento y Meta reintentaría indefinidamente el mismo webhook.
-    """
-    if isinstance(value, str) and "\x00" in value:
-        return value.replace("\x00", "")
+
+def scrub_text(value):
+    """Quita de una cadena los caracteres que PostgreSQL no puede almacenar."""
+    if isinstance(value, str) and _TEXTO_INVALIDO.search(value):
+        return _TEXTO_INVALIDO.sub("", value)
     return value
 
 
 def sanitize_payload_for_storage(payload):
-    """Copia del payload sin caracteres NUL, apta para la columna JSONB.
+    """
+    Copia del payload apta para la columna JSONB (sin NUL ni surrogates sueltos).
 
     El `payload_hash` / `event_key` se calculan sobre el payload ORIGINAL, así que la
     idempotencia no cambia: esto solo afecta lo que se almacena.
     """
     if isinstance(payload, str):
-        return strip_nul(payload)
+        return scrub_text(payload)
     if isinstance(payload, dict):
-        return {strip_nul(k): sanitize_payload_for_storage(v) for k, v in payload.items()}
+        return {scrub_text(k): sanitize_payload_for_storage(v) for k, v in payload.items()}
     if isinstance(payload, list):
         return [sanitize_payload_for_storage(v) for v in payload]
     return payload
@@ -134,6 +139,8 @@ class NormalizedEvent:
     payload_hash: str
     changes: List[NormalizedChange] = field(default_factory=list)
     supported_object: bool = False
+    # El envelope no se pudo leer (tipo inesperado): distinto de "objeto no soportado".
+    invalid_envelope: bool = False
 
     @property
     def total_messages(self) -> int:
@@ -153,9 +160,16 @@ def canonical_payload_hash(payload: Any) -> str:
 
     Canónica = JSON con claves ordenadas y sin espacios, de modo que dos entregas del
     mismo evento con distinto orden de claves produzcan el mismo hash.
+
+    `ensure_ascii=True` no es cosmético: `json.loads` acepta surrogates sueltos
+    (`"\\ud800"`) que después NO se pueden codificar en UTF-8. Con `ensure_ascii=False`
+    esa codificación lanzaba `UnicodeEncodeError` — que no es `UnicodeDecodeError`— y
+    escapaba del endpoint como 500, dejando el evento sin persistir y a Meta
+    reintentando el mismo webhook para siempre. Escapando a ASCII el hash siempre se
+    puede calcular y sigue siendo determinístico.
     """
     canonical = json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str
     )
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -176,7 +190,7 @@ def build_status_event_key(external_message_id: Optional[str], status: Optional[
     """
     if not external_message_id or not status:
         return None
-    ts = "" if raw_timestamp is None else strip_nul(str(raw_timestamp))
+    ts = "" if raw_timestamp is None else scrub_text(str(raw_timestamp))
     raw = f"meta:{external_message_id}:{status}:{ts}"
     if len(raw) <= _STATUS_EVENT_KEY_MAX:
         return raw
@@ -224,7 +238,7 @@ def _profile_name_by_wa_id(value) -> Dict[str, str]:
         if contact.wa_id and contact.profile and contact.profile.name:
             # La clave se normaliza igual que el `from` del mensaje (sin NUL), o el
             # cruce entre `contacts[]` y `messages[]` no encontraría el perfil.
-            names[strip_nul(str(contact.wa_id))] = contact.profile.name
+            names[scrub_text(str(contact.wa_id))] = contact.profile.name
     return names
 
 
@@ -242,13 +256,13 @@ def _normalize_message(msg, profile_names: Dict[str, str]) -> NormalizedMessage:
     msg_type = (msg.type or "").strip().lower()
     tipo_soportado = msg_type in SUPPORTED_MESSAGE_TYPES
 
-    external_id = strip_nul(msg.id) if msg.id else None
-    wa_id = strip_nul(msg.from_) if msg.from_ else None
+    external_id = scrub_text(msg.id) if msg.id else None
+    wa_id = scrub_text(msg.from_) if msg.from_ else None
     profile_name = profile_names.get(str(wa_id)) if wa_id else None
     if profile_name:
-        profile_name = strip_nul(profile_name)[:MAX_DISPLAY_NAME_LEN]
+        profile_name = scrub_text(profile_name)[:MAX_DISPLAY_NAME_LEN]
 
-    context_external_id = strip_nul(msg.context.id) if (msg.context and msg.context.id) else None
+    context_external_id = scrub_text(msg.context.id) if (msg.context and msg.context.id) else None
     if context_external_id and len(context_external_id) > MAX_EXTERNAL_ID_LEN:
         context_external_id = None
 
@@ -267,7 +281,7 @@ def _normalize_message(msg, profile_names: Dict[str, str]) -> NormalizedMessage:
         wa_id=wa_id,
         profile_name=profile_name,
         message_type=msg_type or "unknown",
-        text_body=(strip_nul(msg.text.body) if (tipo_soportado and msg.text) else None),
+        text_body=(scrub_text(msg.text.body) if (tipo_soportado and msg.text) else None),
         provider_timestamp=parse_provider_timestamp(msg.timestamp),
         context_external_id=context_external_id,
         supported=(reason is None),
@@ -277,21 +291,21 @@ def _normalize_message(msg, profile_names: Dict[str, str]) -> NormalizedMessage:
 
 def _normalize_status(st) -> NormalizedStatus:
     status = (st.status or "").strip().lower()
-    external_id = strip_nul(st.id) if st.id else None
+    external_id = scrub_text(st.id) if st.id else None
     error_code = None
     error_title = None
     if st.errors:
         first = st.errors[0]
         # `error_code` va a VARCHAR(64) y `error_title` a un campo sanitizado.
-        error_code = None if first.code is None else strip_nul(str(first.code))[:64]
+        error_code = None if first.code is None else scrub_text(str(first.code))[:64]
         error_title = (first.title or None)
         if error_title:
-            error_title = " ".join(strip_nul(str(error_title)).split())[:200]
+            error_title = " ".join(scrub_text(str(error_title)).split())[:200]
     return NormalizedStatus(
         external_message_id=external_id,
         status=status or None,
         provider_timestamp=parse_provider_timestamp(st.timestamp),
-        recipient_id=strip_nul(st.recipient_id) if st.recipient_id else None,
+        recipient_id=scrub_text(st.recipient_id) if st.recipient_id else None,
         error_code=error_code,
         error_title=error_title,
         event_key=build_status_event_key(external_id, status, st.timestamp),
@@ -314,17 +328,23 @@ def normalize_envelope(payload: Any) -> NormalizedEvent:
         return NormalizedEvent(
             object_type=None, event_type="invalid", event_key=event_key,
             payload_hash=payload_hash, changes=[], supported_object=False,
+            invalid_envelope=True,
         )
 
     try:
         envelope = WhatsAppWebhookEnvelope.model_validate(payload)
     except Exception:  # noqa: BLE001 — un envelope ilegible no debe romper el webhook
+        # Se distingue de `unsupported_object`: acá el payload PODÍA ser de WhatsApp
+        # pero no se pudo leer (p. ej. un tipo distinto del esperado). Se marca como
+        # inválido para que el evento quede en `failed` y sea revisable, en vez de
+        # `ignored`, que significaría "correctamente no aplicable".
         return NormalizedEvent(
             object_type=None, event_type="invalid", event_key=event_key,
             payload_hash=payload_hash, changes=[], supported_object=False,
+            invalid_envelope=True,
         )
 
-    object_type = envelope.object_
+    object_type = scrub_text(envelope.object_)
     supported_object = (object_type == SUPPORTED_OBJECT)
 
     changes: List[NormalizedChange] = []
@@ -332,7 +352,8 @@ def normalize_envelope(payload: Any) -> NormalizedEvent:
 
     for entry in (envelope.entry or []):
         for change in (entry.changes or []):
-            field_name = change.field
+            # `field` va a `event_type` (VARCHAR(64)) y viene del payload sin filtrar.
+            field_name = scrub_text(change.field)
             if field_name:
                 fields_seen.append(field_name)
             value = change.value

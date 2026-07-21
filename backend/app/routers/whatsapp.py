@@ -20,6 +20,7 @@ import hmac
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
+from starlette.requests import ClientDisconnect
 
 from ..database import get_db
 from ..services.whatsapp import config as wa_config
@@ -109,11 +110,18 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
     # cliente anónimo con `transfer-encoding: chunked` (sin content-length, y antes de
     # validar la firma) podría agotar la RAM del worker.
     buffer = bytearray()
-    async for chunk in request.stream():
-        buffer.extend(chunk)
-        if len(buffer) > wa_config.MAX_WEBHOOK_BODY_BYTES:
-            logger.warning("[whatsapp-webhook] cuerpo rechazado por tamaño en streaming")
-            raise HTTPException(status_code=413, detail="Payload demasiado grande")
+    try:
+        async for chunk in request.stream():
+            buffer.extend(chunk)
+            if len(buffer) > wa_config.MAX_WEBHOOK_BODY_BYTES:
+                logger.warning("[whatsapp-webhook] cuerpo rechazado por tamaño en streaming")
+                raise HTTPException(status_code=413, detail="Payload demasiado grande")
+    except ClientDisconnect:
+        # El peer cortó antes de terminar de mandar el cuerpo. Sin esta captura la
+        # excepción escapaba al handler global, que la logea con traceback completo:
+        # un vector de ruido en los logs, anónimo y previo a validar la firma.
+        logger.warning("[whatsapp-webhook] conexión cortada durante la lectura del cuerpo")
+        raise HTTPException(status_code=400, detail="Cuerpo incompleto")
     raw_body = bytes(buffer)
 
     app_secret = wa_config.get_app_secret()
@@ -132,13 +140,21 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
                        bool(signature))
         raise HTTPException(status_code=403, detail="Firma X-Hub-Signature-256 inválida")
 
+    # `RecursionError`: un JSON con más de ~1000 niveles de anidamiento agota la pila
+    # tanto al parsear como al recorrerlo. Se trata como payload inválido (400) en vez
+    # de dejar que escale a un 500 sin cerrar el ciclo.
     try:
         payload = json.loads(raw_body or b"{}")
-    except (json.JSONDecodeError, UnicodeDecodeError):
+        normalized = normalize_envelope(payload)
+    except RecursionError:
+        logger.warning("[whatsapp-webhook] payload rechazado por anidamiento excesivo")
+        raise HTTPException(status_code=400, detail="Payload JSON inválido")
+    except (ValueError, TypeError):
+        # `ValueError` cubre `json.JSONDecodeError`, `UnicodeDecodeError` y también
+        # `UnicodeEncodeError` (surrogates sueltos al calcular el hash canónico), que
+        # antes escapaba como 500 y hacía que Meta reintentara el mismo cuerpo siempre.
         logger.warning("[whatsapp-webhook] JSON inválido con firma válida")
         raise HTTPException(status_code=400, detail="Payload JSON inválido")
-
-    normalized = normalize_envelope(payload)
 
     try:
         persisted = wa_events.persist_event(
@@ -148,6 +164,13 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
             event_type=normalized.event_type,
             raw_payload=payload,
         )
+    except RecursionError:
+        # El saneado del payload también recorre la estructura: un anidamiento extremo
+        # es un problema del payload, no de la base. 500 haría que Meta lo reintente
+        # para siempre con el mismo resultado.
+        db.rollback()
+        logger.warning("[whatsapp-webhook] payload rechazado por anidamiento excesivo")
+        raise HTTPException(status_code=400, detail="Payload JSON inválido")
     except Exception as exc:  # noqa: BLE001 — sin evento almacenado no hay garantía
         db.rollback()
         # Sin `logger.exception`: el traceback de un error de base de datos incluye la
