@@ -41,6 +41,49 @@ SUPPORTED_STATUSES = frozenset({"sent", "delivered", "read", "failed"})
 
 _STATUS_EVENT_KEY_MAX = 255
 
+# Largos REALES de las columnas VARCHAR del esquema (backend/app/models.py). PostgreSQL
+# los hace cumplir (error 22001 `StringDataRightTruncation`) mientras que SQLite los
+# ignora: sin este acotado, un payload con un campo desmedido dejaría el evento en
+# `failed` y perdería el mensaje. No se "arregla" con una migración: el código se adapta
+# al esquema aprobado.
+MAX_EXTERNAL_ID_LEN = 255      # whatsapp_messages.external_message_id / context_...
+MAX_IDENTIFIER_LEN = 255       # whatsapp_contact_identifiers.identifier_value
+MAX_DISPLAY_NAME_LEN = 255     # whatsapp_contacts.display_name
+
+# Motivos por los que un elemento no se procesa (se reportan y se logean).
+REASON_UNSUPPORTED_MESSAGE_TYPE = "unsupported_message_type"
+REASON_MISSING_EXTERNAL_ID = "missing_external_id"
+REASON_OVERSIZED_EXTERNAL_ID = "oversized_external_id"
+REASON_INVALID_SENDER_IDENTIFIER = "invalid_sender_identifier"
+
+
+def strip_nul(value):
+    """
+    Quita el carácter NUL de una cadena.
+
+    PostgreSQL lo rechaza tanto en `text` como en `jsonb` (`unsupported Unicode escape
+    sequence`), mientras que SQLite lo acepta: un payload firmado con `\\u0000` haría
+    fallar el INSERT del evento y Meta reintentaría indefinidamente el mismo webhook.
+    """
+    if isinstance(value, str) and "\x00" in value:
+        return value.replace("\x00", "")
+    return value
+
+
+def sanitize_payload_for_storage(payload):
+    """Copia del payload sin caracteres NUL, apta para la columna JSONB.
+
+    El `payload_hash` / `event_key` se calculan sobre el payload ORIGINAL, así que la
+    idempotencia no cambia: esto solo afecta lo que se almacena.
+    """
+    if isinstance(payload, str):
+        return strip_nul(payload)
+    if isinstance(payload, dict):
+        return {strip_nul(k): sanitize_payload_for_storage(v) for k, v in payload.items()}
+    if isinstance(payload, list):
+        return [sanitize_payload_for_storage(v) for v in payload]
+    return payload
+
 
 # --------------------------------------------------------------------------- #
 # Estructuras normalizadas
@@ -56,6 +99,7 @@ class NormalizedMessage:
     provider_timestamp: Optional[datetime]
     context_external_id: Optional[str]
     supported: bool
+    unsupported_reason: Optional[str] = None
 
 
 @dataclass
@@ -132,7 +176,8 @@ def build_status_event_key(external_message_id: Optional[str], status: Optional[
     """
     if not external_message_id or not status:
         return None
-    raw = f"meta:{external_message_id}:{status}:{'' if raw_timestamp is None else raw_timestamp}"
+    ts = "" if raw_timestamp is None else strip_nul(str(raw_timestamp))
+    raw = f"meta:{external_message_id}:{status}:{ts}"
     if len(raw) <= _STATUS_EVENT_KEY_MAX:
         return raw
     return f"meta:sha256:{hashlib.sha256(raw.encode('utf-8')).hexdigest()}"
@@ -177,45 +222,80 @@ def _profile_name_by_wa_id(value) -> Dict[str, str]:
     names: Dict[str, str] = {}
     for contact in (value.contacts or []):
         if contact.wa_id and contact.profile and contact.profile.name:
-            names[str(contact.wa_id)] = contact.profile.name
+            # La clave se normaliza igual que el `from` del mensaje (sin NUL), o el
+            # cruce entre `contacts[]` y `messages[]` no encontraría el perfil.
+            names[strip_nul(str(contact.wa_id))] = contact.profile.name
     return names
 
 
 def _normalize_message(msg, profile_names: Dict[str, str]) -> NormalizedMessage:
+    """
+    Normaliza un mensaje entrante y decide si es procesable.
+
+    Los campos que van a columnas VARCHAR se acotan explícitamente:
+      - `display_name` se TRUNCA (es cosmético);
+      - un id externo o un `wa_id` fuera de largo NO se truncan (romperían la
+        idempotencia y la identidad): el elemento se marca como no soportado;
+      - un `context` fuera de largo se descarta (es metadato opcional) y el mensaje
+        se procesa igual.
+    """
     msg_type = (msg.type or "").strip().lower()
-    supported = msg_type in SUPPORTED_MESSAGE_TYPES
-    wa_id = msg.from_
+    tipo_soportado = msg_type in SUPPORTED_MESSAGE_TYPES
+
+    external_id = strip_nul(msg.id) if msg.id else None
+    wa_id = strip_nul(msg.from_) if msg.from_ else None
+    profile_name = profile_names.get(str(wa_id)) if wa_id else None
+    if profile_name:
+        profile_name = strip_nul(profile_name)[:MAX_DISPLAY_NAME_LEN]
+
+    context_external_id = strip_nul(msg.context.id) if (msg.context and msg.context.id) else None
+    if context_external_id and len(context_external_id) > MAX_EXTERNAL_ID_LEN:
+        context_external_id = None
+
+    reason = None
+    if not tipo_soportado:
+        reason = REASON_UNSUPPORTED_MESSAGE_TYPE
+    elif not external_id:
+        reason = REASON_MISSING_EXTERNAL_ID
+    elif len(external_id) > MAX_EXTERNAL_ID_LEN:
+        reason = REASON_OVERSIZED_EXTERNAL_ID
+    elif wa_id and len(wa_id) > MAX_IDENTIFIER_LEN:
+        reason = REASON_INVALID_SENDER_IDENTIFIER
+
     return NormalizedMessage(
-        external_id=msg.id,
+        external_id=external_id,
         wa_id=wa_id,
-        profile_name=profile_names.get(str(wa_id)) if wa_id else None,
+        profile_name=profile_name,
         message_type=msg_type or "unknown",
-        text_body=(msg.text.body if (supported and msg.text) else None),
+        text_body=(strip_nul(msg.text.body) if (tipo_soportado and msg.text) else None),
         provider_timestamp=parse_provider_timestamp(msg.timestamp),
-        context_external_id=(msg.context.id if msg.context else None),
-        supported=bool(supported and msg.id),
+        context_external_id=context_external_id,
+        supported=(reason is None),
+        unsupported_reason=reason,
     )
 
 
 def _normalize_status(st) -> NormalizedStatus:
     status = (st.status or "").strip().lower()
+    external_id = strip_nul(st.id) if st.id else None
     error_code = None
     error_title = None
     if st.errors:
         first = st.errors[0]
-        error_code = None if first.code is None else str(first.code)[:64]
+        # `error_code` va a VARCHAR(64) y `error_title` a un campo sanitizado.
+        error_code = None if first.code is None else strip_nul(str(first.code))[:64]
         error_title = (first.title or None)
         if error_title:
-            error_title = " ".join(str(error_title).split())[:200]
+            error_title = " ".join(strip_nul(str(error_title)).split())[:200]
     return NormalizedStatus(
-        external_message_id=st.id,
+        external_message_id=external_id,
         status=status or None,
         provider_timestamp=parse_provider_timestamp(st.timestamp),
-        recipient_id=st.recipient_id,
+        recipient_id=strip_nul(st.recipient_id) if st.recipient_id else None,
         error_code=error_code,
         error_title=error_title,
-        event_key=build_status_event_key(st.id, status, st.timestamp),
-        supported=bool(status in SUPPORTED_STATUSES and st.id),
+        event_key=build_status_event_key(external_id, status, st.timestamp),
+        supported=bool(status in SUPPORTED_STATUSES and external_id),
     )
 
 

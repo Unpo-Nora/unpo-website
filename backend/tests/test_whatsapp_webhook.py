@@ -25,6 +25,7 @@ from unittest import mock
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -196,6 +197,66 @@ class NormalizerUnitTest(unittest.TestCase):
         self.assertIsNone(wa_normalizer.normalize_wa_id_to_e164(None))
 
 
+class ColumnBoundsUnitTest(unittest.TestCase):
+    """
+    Acotado de las cadenas que van a columnas VARCHAR.
+
+    PostgreSQL hace cumplir los largos (error 22001) y SQLite no: sin estos límites un
+    payload con un campo desmedido dejaba el evento en `failed` y perdía el mensaje.
+    Verificado contra PostgreSQL 17 real en la revisión de la etapa.
+    """
+
+    def _first_message(self, payload):
+        norm = wa_normalizer.normalize_envelope(payload)
+        return norm.changes[0].messages[0]
+
+    def test_display_name_is_truncated(self):
+        item = self._first_message(fx.text_message_event(profile_name="N" * 400))
+        self.assertEqual(len(item.profile_name), wa_normalizer.MAX_DISPLAY_NAME_LEN)
+        self.assertTrue(item.supported)
+
+    def test_oversized_external_id_is_not_processed(self):
+        item = self._first_message(fx.text_message_event(message_id="wamid." + "X" * 400))
+        self.assertFalse(item.supported)
+        self.assertEqual(item.unsupported_reason, "oversized_external_id")
+
+    def test_oversized_wa_id_is_not_processed(self):
+        item = self._first_message(fx.text_message_event(wa_id="9" * 400))
+        self.assertFalse(item.supported)
+        self.assertEqual(item.unsupported_reason, "invalid_sender_identifier")
+
+    def test_oversized_context_is_dropped_but_message_survives(self):
+        item = self._first_message(fx.text_message_event(context_id="wamid." + "C" * 400))
+        self.assertTrue(item.supported)
+        self.assertIsNone(item.context_external_id)
+
+    def test_missing_external_id_has_its_own_reason(self):
+        payload = fx.text_message_event()
+        payload["entry"][0]["changes"][0]["value"]["messages"][0]["id"] = None
+        item = self._first_message(payload)
+        self.assertFalse(item.supported)
+        self.assertEqual(item.unsupported_reason, "missing_external_id")
+
+    def test_nul_is_stripped_from_text_and_identifiers(self):
+        nul = chr(0)
+        item = self._first_message(fx.text_message_event(
+            body=f"hola{nul}mundo", profile_name=f"Ana{nul}", wa_id=f"549110000000{nul}0"))
+        self.assertNotIn(nul, item.text_body)
+        self.assertNotIn(nul, item.profile_name)
+        self.assertNotIn(nul, item.wa_id)
+
+    def test_payload_sanitized_for_storage_keeps_structure(self):
+        nul = chr(0)
+        payload = fx.text_message_event(body=f"a{nul}b")
+        limpio = wa_normalizer.sanitize_payload_for_storage(payload)
+        self.assertNotIn(nul, json.dumps(limpio))
+        self.assertEqual(
+            limpio["entry"][0]["changes"][0]["value"]["messages"][0]["text"]["body"], "ab")
+        # El hash se calcula sobre el original: la idempotencia no cambia.
+        self.assertNotEqual(wa_normalizer.canonical_payload_hash(payload),
+                            wa_normalizer.canonical_payload_hash(limpio))
+
+
 class StatusPrecedenceUnitTest(unittest.TestCase):
     """Precedencia explícita de estados (`pending < sent < delivered < read`)."""
 
@@ -240,6 +301,20 @@ class RedactionUnitTest(unittest.TestCase):
         msg = safe_error(RuntimeError("linea 1\nlinea 2   con   espacios " + "x" * 500))
         self.assertNotIn("\n", msg)
         self.assertLessEqual(len(msg), 200)
+
+    def test_safe_error_strips_sql_and_bound_parameters(self):
+        """Regresión 1C: truncar no alcanza, el prefijo del error de PostgreSQL entra
+        dentro del límite y arrastra la fila conflictiva."""
+        crudo = (
+            "(psycopg2.errors.UniqueViolation) duplicate key value violates unique "
+            "constraint \"uq_x\"\nDETAIL:  Key (identifier_value)=(5491100000000) already exists.\n"
+            "[SQL: INSERT INTO whatsapp_messages (text_body) VALUES (%(text_body)s)]\n"
+            "[parameters: {'text_body': 'texto-confidencial', 'wa_id': '5491100000000'}]"
+        )
+        msg = safe_error(crudo)
+        for prohibido in ("5491100000000", "texto-confidencial", "[SQL:", "[parameters:", "DETAIL:"):
+            self.assertNotIn(prohibido, msg)
+        self.assertIn("UniqueViolation", msg)
 
 
 # =============================================================================== #
@@ -417,6 +492,23 @@ class WebhookVerificationTest(WebhookTestBase):
         joined = "\n".join(captured.output)
         self.assertNotIn(fx.TEST_VERIFY_TOKEN, joined)
         self.assertNotIn("token-incorrecto", joined)
+
+    def test_non_ascii_token_returns_403_not_500(self):
+        """Regresión 1C: `hmac.compare_digest` sobre str no-ASCII lanzaba TypeError
+        y el handler global lo convertía en 500 (oráculo + log-flood anónimo)."""
+        r = self._get(mode="subscribe", verify_token="ñoño", challenge="1")
+        self.assertEqual(r.status_code, 403)
+
+    def test_non_ascii_configured_token_still_works(self):
+        os.environ["WHATSAPP_VERIFY_TOKEN"] = "token-con-ñ"
+        try:
+            ok = self._get(mode="subscribe", verify_token="token-con-ñ", challenge="55")
+            malo = self._get(mode="subscribe", verify_token="token-con-n", challenge="55")
+            self.assertEqual(ok.status_code, 200, ok.text)
+            self.assertEqual(ok.text, "55")
+            self.assertEqual(malo.status_code, 403)
+        finally:
+            os.environ["WHATSAPP_VERIFY_TOKEN"] = fx.TEST_VERIFY_TOKEN
 
     def test_unconfigured_token_fails_closed(self):
         os.environ.pop("WHATSAPP_VERIFY_TOKEN", None)
@@ -648,6 +740,37 @@ class WebhookInboundMessageTest(WebhookTestBase):
         evento = self._events()[-1]
         self.assertEqual(evento.processing_status, "processed")
 
+    def test_oversized_fields_do_not_fail_the_event(self):
+        """Regresión de la revisión 1C: en PostgreSQL estos payloads rompían el INSERT."""
+        casos = [
+            fx.text_message_event(profile_name="N" * 400, message_id="wamid.LARGO_1"),
+            fx.text_message_event(message_id="wamid." + "X" * 400),
+            fx.text_message_event(wa_id="9" * 400, message_id="wamid.LARGO_3"),
+            fx.text_message_event(context_id="wamid." + "C" * 400, message_id="wamid.LARGO_4"),
+        ]
+        for payload in casos:
+            r = self._post(payload)
+            self.assertEqual(r.status_code, 200, r.text)
+            self.assertNotEqual(r.json()["status"], "failed")
+        db = self._session()
+        try:
+            fallidos = db.query(models.WhatsAppWebhookEvent).filter(
+                models.WhatsAppWebhookEvent.processing_status == "failed").count()
+            self.assertEqual(fallidos, 0)
+            nombres = [c.display_name for c in db.query(models.WhatsAppContact).all()]
+            self.assertTrue(all(n is None or len(n) <= 255 for n in nombres))
+        finally:
+            db.close()
+
+    def test_nul_character_does_not_break_persistence(self):
+        """El NUL rompe JSONB/text en PostgreSQL: se limpia antes de almacenar."""
+        nul = chr(0)
+        r = self._post(fx.text_message_event(body=f"hola{nul}mundo"))
+        self.assertEqual(r.status_code, 200, r.text)
+        evento = self._first(models.WhatsAppWebhookEvent)
+        self.assertNotIn(nul, json.dumps(evento.raw_payload))
+        self.assertEqual(self._first(models.WhatsAppMessage).text_body, "holamundo")
+
     def test_unsupported_message_type_is_safe(self):
         r = self._post(fx.unsupported_message_event(message_type="image"))
         self.assertEqual(r.status_code, 200, r.text)
@@ -827,8 +950,33 @@ class WebhookStatusTest(WebhookTestBase):
     def test_failed_after_delivered_keeps_delivery_proof(self):
         self._post(fx.status_event(status="delivered", timestamp="1700000002"))
         self._post(fx.failed_status_event(timestamp="1700000004"))
-        self.assertEqual(self._message().current_status, "delivered")
+        mensaje = self._message()
+        self.assertEqual(mensaje.current_status, "delivered")
         self.assertEqual(self._count(models.WhatsAppMessageStatusEvent), 2)
+        # El error no se escribe si el estado efectivo no es `failed`.
+        self.assertIsNone(mensaje.error_code)
+        self.assertIsNone(mensaje.error_message_safe)
+
+    def test_delivery_after_failed_clears_the_error(self):
+        self._post(fx.failed_status_event(timestamp="1700000004"))
+        self.assertEqual(self._message().current_status, "failed")
+        self._post(fx.status_event(status="delivered", timestamp="1700000005"))
+        mensaje = self._message()
+        self.assertEqual(mensaje.current_status, "delivered")
+        self.assertIsNone(mensaje.error_code)
+        self.assertIsNone(mensaje.error_message_safe)
+
+    def test_non_duplicate_integrity_error_is_not_counted_as_success(self):
+        """Regresión 1C: cualquier IntegrityError se contaba como duplicado y el evento
+        quedaba `processed` sin haber persistido el estado."""
+        otro_error = IntegrityError("stmt", {}, Exception("FOREIGN KEY constraint failed"))
+        with mock.patch.object(models.WhatsAppMessageStatusEvent, "__init__",
+                               side_effect=otro_error):
+            r = self._post(fx.status_event(status="read", timestamp="1700000003"))
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["status"], "failed")
+        self.assertEqual(self._count(models.WhatsAppMessageStatusEvent), 0)
+        self.assertEqual(self._events()[-1].processing_status, "failed")
 
     def test_status_for_unknown_message_is_ignored(self):
         r = self._post(fx.status_event(message_id=fx.TEST_UNKNOWN_MESSAGE_ID, status="read"))
@@ -925,6 +1073,33 @@ class WebhookTransactionTest(WebhookTestBase):
         self.assertEqual(self._first(models.WhatsAppMessage).external_message_id,
                          fx.TEST_MESSAGE_ID)
 
+    def test_identifier_conflict_is_retried_not_lost(self):
+        """
+        Regresión de la revisión 1C (confirmada en PostgreSQL 17): dos entregas
+        concurrentes con mensajes DISTINTOS de un contacto nuevo chocaban contra
+        uq_whatsapp_contact_identifiers_value y uno de los mensajes se perdía.
+        """
+        self._post(fx.text_message_event(message_id=fx.TEST_MESSAGE_ID, body="primero"))
+
+        real_lookup = wa_processor._find_identifier
+        llamadas = {"n": 0}
+
+        def _ciego_la_primera_vez(db, tipo, valor):
+            # 1ª llamada: simula la carrera (todavía no ve el identificador ajeno).
+            llamadas["n"] += 1
+            return None if llamadas["n"] == 1 else real_lookup(db, tipo, valor)
+
+        with mock.patch.object(wa_processor, "_find_identifier",
+                               side_effect=_ciego_la_primera_vez):
+            r = self._post(fx.text_message_event(message_id=fx.TEST_MESSAGE_ID_2, body="segundo"))
+
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["status"], "processed")
+        self.assertEqual(self._count(models.WhatsAppContact), 1)
+        self.assertEqual(self._count(models.WhatsAppMessage), 2)   # ningún mensaje perdido
+        self.assertEqual(self._count(models.WhatsAppConversation), 1)
+        self.assertEqual(self._events()[-1].processing_status, "processed")
+
     def test_error_is_sanitized_before_persisting(self):
         secreto = "texto-confidencial-del-cliente"
         with mock.patch.object(wa_processor, "_resolve_contact",
@@ -934,6 +1109,59 @@ class WebhookTransactionTest(WebhookTestBase):
         self.assertLessEqual(len(evento.last_error_safe), 200)
         self.assertNotIn(secreto, evento.last_error_safe)
         self.assertNotIn("\n", evento.last_error_safe)
+
+    def test_database_error_never_leaks_payload_to_logs_or_db(self):
+        """
+        Regresión 1C (CRÍTICA): un error de base de datos arrastra la sentencia y los
+        parámetros bindeados; con `logger.exception` eso escribía el texto del mensaje,
+        el wa_id y el nombre completos en el log.
+        """
+        secreto = "texto-confidencial-del-cliente"
+        error_db = IntegrityError(
+            "INSERT INTO whatsapp_messages (text_body) VALUES (%(text_body)s)",
+            {"text_body": secreto, "identifier_value": fx.TEST_WA_ID},
+            Exception("duplicate key value violates unique constraint"),
+        )
+        with mock.patch.object(wa_processor, "_resolve_conversation", side_effect=error_db):
+            with self.assertLogs(LOGGER_NAME, level="INFO") as captured:
+                r = self._post(fx.text_message_event(body=secreto, profile_name="Nombre Completo"))
+        self.assertEqual(r.status_code, 200, r.text)
+        registros = "\n".join(captured.output)
+        evento = self._first(models.WhatsAppWebhookEvent)
+        for prohibido in (secreto, fx.TEST_WA_ID, "Nombre Completo", "[SQL:", "[parameters:"):
+            self.assertNotIn(prohibido, registros, f"fuga en logs: {prohibido}")
+            self.assertNotIn(prohibido, evento.last_error_safe or "",
+                             f"fuga en last_error_safe: {prohibido}")
+
+    def test_processing_crash_outside_items_still_closes_the_event(self):
+        """Regresión 1C: un fallo fuera de los bucles de ítems devolvía 500 y dejaba el
+        evento en `pending` para siempre (el reintento de Meta se deduplica)."""
+        with mock.patch.object(wa_processor, "process_event",
+                               side_effect=RuntimeError("conexión perdida")):
+            r = self._post(fx.text_message_event())
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["status"], "failed")
+        evento = self._first(models.WhatsAppWebhookEvent)
+        self.assertEqual(evento.processing_status, "failed")
+        self.assertEqual(evento.attempt_count, 1)
+        self.assertIsNotNone(evento.processed_at)
+
+    def test_marking_failure_reports_the_persisted_state(self):
+        """Si no se puede cerrar el evento, se responde `pending` (lo que dice la DB),
+        nunca un `processed` que no está en la fuente de verdad."""
+        with mock.patch.object(wa_events, "mark_processing_result",
+                               side_effect=RuntimeError("commit caído")):
+            r = self._post(fx.text_message_event())
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["status"], "pending")
+        self.assertEqual(self._first(models.WhatsAppWebhookEvent).processing_status, "pending")
+
+    def test_successful_event_has_no_error_text(self):
+        """`last_error_safe` es una columna de error: un evento `processed` no la usa."""
+        self._post(fx.text_message_event())
+        evento = self._first(models.WhatsAppWebhookEvent)
+        self.assertEqual(evento.processing_status, "processed")
+        self.assertIsNone(evento.last_error_safe)
 
     def test_event_is_retriable_after_failure(self):
         """El evento fallido queda con su payload crudo para reproceso posterior."""

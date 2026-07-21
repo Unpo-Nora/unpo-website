@@ -74,10 +74,16 @@ X-Hub-Signature-256: sha256=<digest hexadecimal>
   duplicada.
 
 Otros códigos del `POST`: **400** JSON inválido con firma válida · **413** cuerpo mayor
-a `MAX_WEBHOOK_BODY_BYTES` (1 MiB, protección local de este endpoint; el proyecto no
-tiene middleware global de tamaño y no se agregó uno para no alterar la subida de
-imágenes ni los importadores) · **500** si el evento **no** pudo almacenarse · **200**
-si el evento quedó almacenado.
+a `MAX_WEBHOOK_BODY_BYTES` (1 MiB) · **500** si el evento **no** pudo almacenarse ·
+**200** si el evento quedó almacenado.
+
+El límite de tamaño es una protección **local** de este endpoint (el proyecto no tiene
+middleware global de tamaño y no se agregó uno para no alterar la subida de imágenes ni
+los importadores). Se aplica en dos cortes: por `Content-Length` cuando viene, y —el
+que realmente protege— **acumulando el cuerpo por chunks y abortando apenas se supera
+el límite**. Leer con `request.body()` bufferearía primero el cuerpo entero, así que un
+cliente anónimo con `transfer-encoding: chunked` (sin `Content-Length`, y antes de que
+se valide la firma) podría agotar la memoria del worker.
 
 ## 5. Idempotencia
 
@@ -123,7 +129,15 @@ más captura de `IntegrityError`. La tabla es **append-only**: el historial se c
 Si falla el paso 2 → **500** (Meta reintenta; no hubo almacenamiento). Si el evento
 quedó almacenado pero falla el procesamiento → se registra el error **sanitizado**, el
 evento queda en `failed` con su `raw_payload` para reproceso y se responde **200**
-(arquitectura §7: la fuente de verdad y el reintento viven en la tabla).
+(arquitectura §7: la fuente de verdad y el reintento viven en la tabla). Eso vale
+también para un fallo **fuera** de los bucles de elementos (por ejemplo una conexión
+caída): se captura igual, para que el evento no quede en `pending` sin cierre. Si ni
+siquiera se puede marcar el resultado, la respuesta informa `pending` —lo que dice la
+fila— y nunca un `processed` que no está en la base.
+
+Un evento con éxito parcial (algunos elementos procesados, otro con error) queda en
+`failed`: es inequívoco para el reprocesador, y los elementos ya confirmados no se
+duplican gracias a la deduplicación por `external_message_id` y por `event_key`.
 
 Un elemento defectuoso no arrastra a los demás: se hace `rollback` de ese ítem y se
 continúa con el siguiente. No se usan SAVEPOINTs (se comportan distinto en SQLite y
@@ -158,8 +172,22 @@ crean/completan las filas de `whatsapp_contact_identifiers`.
 > contacto, identificadores y conversación, pero **nunca** un registro en `leads`;
 > `lead_id` queda en `NULL`. La conversión a lead será manual, en una etapa posterior.
 
+> **`bsuid`: `NOT_IMPLEMENTED`.** La arquitectura §4.4 prevé tres tipos de
+> identificador (`wa_id`, `phone_e164`, `bsuid`) pero el payload de webhook de Cloud
+> API **no entrega `bsuid`**: aparece recién en escenarios de Coexistence / BSP. No se
+> inventa el dato ni se agrega columna alguna: el tipo ya está soportado por el modelo
+> (`identifier_type` es String) y se completará cuando exista una fuente real. **Debe
+> resolverse antes de habilitar Coexistence** (etapa 1J), porque ahí un mismo contacto
+> puede llegar identificado por `bsuid` y quedaría duplicado.
+
 **Conversaciones.** Una por `(línea, contacto)` — el modelo tiene
-`unique(line_id, contact_id)`. Un mensaje entrante sobre un hilo cerrado lo **reabre**
+`unique(line_id, contact_id)`:
+
+```text
+conversation_history_model=single_reopenable_thread_per_line_and_contact
+```
+
+Un mensaje entrante sobre un hilo cerrado lo **reabre**
 (no puede existir un segundo hilo para el mismo par). La misma persona escribiendo a
 otra línea produce otra conversación. Se actualizan `last_message_at`,
 `last_inbound_at` y `customer_service_window_expires_at` (24 h). **No** se asigna
@@ -207,6 +235,13 @@ contenido del mensaje, tokens, secretos ni la firma. Para correlacionar se usan 
 internos (`line_id`, `conversation_id`, `contact_id`, `message_id`), hashes truncados
 (`sha256:60e91a0f6eff…`) e identificadores enmascarados (`***0000`).
 
+> **Regla dura del módulo: no se usa `logger.exception` en el camino del webhook.** El
+> traceback de un error de SQLAlchemy incluye `[SQL: …]` y `[parameters: …]`, es decir
+> la sentencia con los valores bindeados: texto del mensaje, `wa_id`, nombre de perfil
+> y, en el INSERT del evento, el payload crudo entero. Todo error de base de datos se
+> logea con `safe_error(exc)`, que además recorta el `DETAIL:` de PostgreSQL (que trae
+> la fila conflictiva) antes de persistirlo en `last_error_safe`.
+
 ## 11. Archivos
 
 ```text
@@ -250,7 +285,54 @@ No hace falta `DATABASE_URL`: la suite crea el esquema desde `Base.metadata` sob
 SQLite en memoria con `PRAGMA foreign_keys=ON`. **Alembic sigue siendo el único gestor
 del esquema PostgreSQL** (head `efa066dfdf30`); esta etapa **no** agregó migraciones.
 
-## 13. Limitaciones de esta etapa
+## 13. Condiciones bloqueantes para producción
+
+Estas condiciones surgen de la revisión técnica de la etapa (código real contra
+PostgreSQL 17 efímero) y son **bloqueantes**: no son recomendaciones.
+
+```text
+META_CONNECTION_BLOCKED_UNTIL_REPROCESSOR=yes
+RAW_PAYLOAD_PURGE_REQUIRED_BEFORE_PRODUCTION_TRAFFIC=yes
+```
+
+### 13.1 Reproceso de eventos `failed`
+
+**No conectar un número real hasta implementar el mecanismo de reproceso de eventos
+`failed`.**
+
+Motivo verificado: si el procesamiento de un evento falla, el evento queda almacenado
+con `processing_status='failed'`, su `raw_payload` y `attempt_count`, pero **el
+reintento del mismo webhook por parte de Meta NO lo reprocesa**: la deduplicación por
+`event_key` lo reconoce como duplicado y responde 200.
+
+```text
+duplicate_failed_event_reprocessed=no
+```
+
+Es correcto para la idempotencia y aceptable mientras no haya tráfico real, pero
+significa que hoy **la única vía de recuperación es el procesador persistente de la
+etapa 1E**. Sin él, un mensaje entrante que falle se pierde de la bandeja.
+
+### 13.2 Purga del `raw_payload`
+
+`raw_payload_expires_at` se fija a 30 días, pero **no existe todavía el barrido que
+borra los payloads vencidos**. El payload crudo contiene datos personales (teléfono,
+nombre de perfil y texto del mensaje), así que la purga debe existir **antes** de
+recibir tráfico productivo.
+
+### 13.3 Desviación registrada respecto de la arquitectura §7
+
+La arquitectura pide "persistencia rápida del evento y respuesta HTTP inmediata" con
+**procesamiento desacoplado de la respuesta HTTP**. Esta etapa persiste el evento y
+**procesa de forma síncrona dentro del request**, porque el desacople real es
+justamente el procesador persistente de 1E (y la arquitectura §7 prohíbe apoyarse solo
+en `BackgroundTasks`). Consecuencia operativa: Meta corta el webhook a los pocos
+segundos, así que un evento con muchos elementos podría agotar ese margen.
+
+**Esta desviación requiere aprobación explícita** (o bien actualizar primero el
+documento de arquitectura, que es el normativo) **antes de conectar un número real**.
+
+## 14. Limitaciones de esta etapa
 
 - No hay conexión con Meta, ni envío de mensajes, ni plantillas, ni media.
 - No hay procesador persistente de reintentos: los eventos en `failed` quedan
@@ -261,3 +343,22 @@ del esquema PostgreSQL** (head `efa066dfdf30`); esta etapa **no** agregó migrac
 - No hay purga automática del `raw_payload` vencido: solo se marca
   `raw_payload_expires_at` (30 días).
 - No se cargaron líneas productivas ni se configuró nada en el panel de Meta.
+- El estado `processing` de la arquitectura §5 no se usa: no hay *claim* del evento
+  antes de procesarlo. El reprocesador de 1E lo va a necesitar para que dos réplicas no
+  tomen el mismo evento.
+- `bsuid` no se persiste todavía (ver §8).
+
+## 15. Compatibilidad PostgreSQL / SQLite
+
+La suite corre sobre SQLite en memoria, que **no** valida los largos de `VARCHAR`, ni
+rechaza el carácter NUL, ni aborta la transacción tras un error. Por eso la revisión de
+esta etapa se ejecutó además contra un **PostgreSQL 17 efímero** creado con
+`alembic upgrade head`, con validación por SQL y concurrencia real por threads. De ahí
+salieron correcciones que ningún test con SQLite podía detectar:
+
+| Diferencia | Qué pasaba | Cómo se resolvió |
+|---|---|---|
+| Largos de `VARCHAR` (22001) | Un `profile_name`, `wa_id`, `wamid` o `context.id` de más de 255 caracteres abortaba el INSERT y perdía el mensaje | El normalizador trunca lo cosmético y descarta como no soportado lo que no se puede truncar sin romper identidad/idempotencia |
+| `jsonb` rechaza ` ` | Un payload con NUL devolvía 500 sin almacenar el evento: Meta lo reintentaba indefinidamente | Se guarda una copia sin NUL; el hash se sigue calculando sobre el payload original |
+| Unicidad bajo concurrencia | Dos entregas simultáneas de un contacto nuevo chocaban en `uq_whatsapp_contact_identifiers_value` y un mensaje se perdía | `_process_message` reintenta una vez tras `IntegrityError` y reusa lo que la otra transacción confirmó |
+| Errores con sentencia y parámetros | El traceback de SQLAlchemy incluye el SQL y los valores bindeados (texto del mensaje, teléfono, nombre) | No se usa `logger.exception` en este módulo y `safe_error` recorta `[SQL:`, `[parameters:` y `DETAIL:` |

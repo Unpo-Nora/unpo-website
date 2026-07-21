@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from ... import models
 from .config import PROVIDER, RAW_PAYLOAD_RETENTION_DAYS
+from .normalizer import sanitize_payload_for_storage
 from .redaction import safe_error, short_key
 
 logger = logging.getLogger("uvicorn.error")
@@ -68,7 +69,9 @@ def persist_event(db: Session, *, event_key: str, payload_hash: str,
         payload_hash=payload_hash,
         event_type=event_type,
         processing_status=STATUS_PENDING,
-        raw_payload=raw_payload,
+        # JSONB de PostgreSQL rechaza el carácter NUL: se almacena una copia limpia.
+        # El hash/event_key ya se calcularon sobre el payload original.
+        raw_payload=sanitize_payload_for_storage(raw_payload),
         raw_payload_expires_at=_utcnow() + timedelta(days=RAW_PAYLOAD_RETENTION_DAYS),
     )
     db.add(event)

@@ -64,11 +64,13 @@ async def verify_whatsapp_webhook(
             detail=f"{wa_config.VERIFY_TOKEN_ENV} no está configurado en el entorno.",
         )
 
+    # `compare_digest` sobre str exige ASCII: se comparan bytes para que un token con
+    # acentos (o un query param arbitrario no-ASCII) devuelva 403 y no un 500.
     valid = (
         hub_mode == SUBSCRIBE_MODE
         and bool(hub_verify_token)
         and bool(hub_challenge)
-        and hmac.compare_digest(hub_verify_token, verify_token)
+        and hmac.compare_digest(hub_verify_token.encode("utf-8"), verify_token.encode("utf-8"))
     )
     if not valid:
         logger.warning("[whatsapp-webhook] verificación rechazada mode=%s", hub_mode)
@@ -96,17 +98,23 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
     reintenta) · 200 si el evento quedó almacenado, incluso si el procesamiento
     posterior falló (el evento queda en `failed` para reproceso, sin pérdida).
     """
-    # Corte temprano por Content-Length: evita bufferizar un cuerpo enorme en memoria.
+    # Corte temprano por Content-Length (barato y suficiente para clientes honestos).
     declared_length = request.headers.get("content-length", "")
     if declared_length.isdigit() and int(declared_length) > wa_config.MAX_WEBHOOK_BODY_BYTES:
         logger.warning("[whatsapp-webhook] cuerpo rechazado por content-length")
         raise HTTPException(status_code=413, detail="Payload demasiado grande")
 
-    raw_body = await request.body()
-    # Segundo corte: la cabecera puede faltar o mentir (transfer-encoding: chunked).
-    if len(raw_body) > wa_config.MAX_WEBHOOK_BODY_BYTES:
-        logger.warning("[whatsapp-webhook] cuerpo rechazado por tamaño bytes=%d", len(raw_body))
-        raise HTTPException(status_code=413, detail="Payload demasiado grande")
+    # Corte REAL: se acumula por chunks y se aborta apenas se pasa del límite. Usar
+    # `request.body()` bufferearía primero el cuerpo entero en memoria, así que un
+    # cliente anónimo con `transfer-encoding: chunked` (sin content-length, y antes de
+    # validar la firma) podría agotar la RAM del worker.
+    buffer = bytearray()
+    async for chunk in request.stream():
+        buffer.extend(chunk)
+        if len(buffer) > wa_config.MAX_WEBHOOK_BODY_BYTES:
+            logger.warning("[whatsapp-webhook] cuerpo rechazado por tamaño en streaming")
+            raise HTTPException(status_code=413, detail="Payload demasiado grande")
+    raw_body = bytes(buffer)
 
     app_secret = wa_config.get_app_secret()
     if not app_secret:
@@ -142,7 +150,9 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
         )
     except Exception as exc:  # noqa: BLE001 — sin evento almacenado no hay garantía
         db.rollback()
-        logger.exception("[whatsapp-webhook] no se pudo persistir el evento")
+        # Sin `logger.exception`: el traceback de un error de base de datos incluye la
+        # sentencia y los parámetros, o sea el payload completo de Meta.
+        logger.error("[whatsapp-webhook] no se pudo persistir el evento: %s", safe_error(exc))
         raise HTTPException(status_code=500, detail="No se pudo almacenar el evento") from exc
 
     if persisted.duplicate:
@@ -156,18 +166,37 @@ async def receive_whatsapp_webhook(request: Request, db: Session = Depends(get_d
         normalized.total_messages, normalized.total_statuses,
     )
 
-    report = wa_processor.process_event(db, normalized)
-    result_status = report.resolve_status()
+    # `process_event` absorbe los fallos POR ELEMENTO, pero lo que ocurre fuera de esos
+    # bucles (una consulta contra una conexión caída) escaparía y devolvería 500 con el
+    # evento ya confirmado: quedaría en `pending` para siempre, porque el reintento de
+    # Meta se deduplica. Se captura acá para cerrarle el ciclo al evento.
+    errores = 0
+    try:
+        report = wa_processor.process_event(db, normalized)
+        result_status = report.resolve_status()
+        result_error = report.summary_error()
+        errores = len(report.errors)
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        result_status = "failed"
+        result_error = safe_error(exc)
+        errores = 1
+        logger.error("[whatsapp-webhook] procesamiento abortado event_key=%s: %s",
+                     short_key(normalized.event_key, 20), safe_error(exc))
+
     try:
         wa_events.mark_processing_result(
-            db, persisted.event, status=result_status, error=report.summary_error()
+            db, persisted.event, status=result_status, error=result_error
         )
     except Exception as exc:  # noqa: BLE001 — el evento ya está almacenado
         db.rollback()
         logger.error("[whatsapp-webhook] no se pudo marcar el resultado: %s", safe_error(exc))
+        # La fila quedó como estaba (`pending`): se responde lo que dice la fuente de
+        # verdad, no lo que se calculó en memoria, para no reportar un falso `processed`.
+        return {"status": "pending", "duplicate": False}
 
-    if report.errors:
+    if errores:
         logger.error("[whatsapp-webhook] procesamiento con errores event_key=%s errores=%d",
-                     short_key(normalized.event_key, 20), len(report.errors))
+                     short_key(normalized.event_key, 20), errores)
 
     return {"status": result_status, "duplicate": False}

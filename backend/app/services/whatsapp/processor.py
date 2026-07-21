@@ -34,7 +34,13 @@ from sqlalchemy.orm import Session
 
 from ... import models
 from .config import PROVIDER
-from .normalizer import NormalizedEvent, NormalizedMessage, NormalizedStatus, normalize_wa_id_to_e164
+from .normalizer import (
+    REASON_UNSUPPORTED_MESSAGE_TYPE,
+    NormalizedEvent,
+    NormalizedMessage,
+    NormalizedStatus,
+    normalize_wa_id_to_e164,
+)
 from .redaction import mask_identifier, safe_error, short_key
 
 logger = logging.getLogger("uvicorn.error")
@@ -63,8 +69,8 @@ REASON_UNKNOWN_LINE = "unknown_line"
 REASON_INACTIVE_LINE = "inactive_line"
 REASON_UNSUPPORTED_OBJECT = "unsupported_object"
 REASON_UNSUPPORTED_FIELD = "unsupported_field"
-REASON_UNSUPPORTED_MESSAGE_TYPE = "unsupported_message_type"
 REASON_UNSUPPORTED_STATUS = "unsupported_status"
+# `REASON_UNSUPPORTED_MESSAGE_TYPE` y los motivos por elemento vienen del normalizador.
 REASON_UNKNOWN_MESSAGE = "unknown_external_message"
 REASON_MISSING_SENDER = "missing_sender"
 
@@ -94,9 +100,14 @@ class ProcessingReport:
         return "ignored"
 
     def summary_error(self) -> Optional[str]:
+        """
+        Texto para `last_error_safe`. En un evento `processed` se deja en NULL: la
+        columna es de error, y llenarla con motivos de descarte de un evento exitoso
+        confunde al monitoreo y al futuro reprocesador.
+        """
         if self.errors:
             return safe_error("; ".join(self.errors))
-        if self.skipped_reasons:
+        if self.skipped_reasons and self.resolve_status() != "processed":
             return safe_error(",".join(sorted(set(self.skipped_reasons))))
         return None
 
@@ -172,6 +183,17 @@ def _find_identifier(db: Session, identifier_type: str, value: str):
     )
 
 
+def _has_primary_identifier(db: Session, contact_id: int) -> bool:
+    return (
+        db.query(models.WhatsAppContactIdentifier)
+        .filter(
+            models.WhatsAppContactIdentifier.contact_id == contact_id,
+            models.WhatsAppContactIdentifier.is_primary.is_(True),
+        )
+        .first()
+    ) is not None
+
+
 def _resolve_contact(db: Session, wa_id: str, profile_name: Optional[str],
                      seen_at: Optional[datetime]) -> models.WhatsAppContact:
     """
@@ -195,6 +217,16 @@ def _resolve_contact(db: Session, wa_id: str, profile_name: Optional[str],
         phone_identifier = _find_identifier(db, IDENTIFIER_PHONE, phone_e164)
         if contact is None and phone_identifier is not None:
             contact = phone_identifier.contact
+        elif (contact is not None and phone_identifier is not None
+              and phone_identifier.contact_id != contact.id):
+            # Identificadores repartidos entre dos contactos: se respeta el `wa_id`
+            # (más estable) y NO se fusiona nada automáticamente. Queda registrado por
+            # id interno para que una etapa posterior resuelva la unificación.
+            logger.warning(
+                "[whatsapp-webhook] identificadores en contactos distintos "
+                "wa_id_contact_id=%s phone_contact_id=%s",
+                contact.id, phone_identifier.contact_id,
+            )
 
     if contact is None:
         contact = models.WhatsAppContact(
@@ -213,9 +245,12 @@ def _resolve_contact(db: Session, wa_id: str, profile_name: Optional[str],
         contact.last_seen_at = _max_dt(contact.last_seen_at, seen_at)
 
     if wa_identifier is None:
+        # El `wa_id` es el identificador preferido, pero no se marca primario si el
+        # contacto ya tiene uno: dos primarios simultáneos serían ambiguos.
         db.add(models.WhatsAppContactIdentifier(
             contact_id=contact.id, provider=PROVIDER,
-            identifier_type=IDENTIFIER_WA_ID, identifier_value=wa_id, is_primary=True,
+            identifier_type=IDENTIFIER_WA_ID, identifier_value=wa_id,
+            is_primary=not _has_primary_identifier(db, contact.id),
         ))
     if phone_e164 and phone_identifier is None:
         db.add(models.WhatsAppContactIdentifier(
@@ -290,12 +325,33 @@ def _find_message_by_external_id(db: Session, external_id: str) -> Optional[mode
 
 def _process_message(db: Session, line: models.WhatsAppLine, item: NormalizedMessage,
                      report: ProcessingReport) -> None:
-    """Alta idempotente de un mensaje entrante de texto (una transacción propia)."""
+    """
+    Alta idempotente de un mensaje entrante, con UN reintento ante conflicto de unicidad.
+
+    El reintento no es cosmético: si dos entregas concurrentes traen mensajes distintos
+    de un contacto NUEVO, ambas pasan el SELECT de `_resolve_contact` y la segunda choca
+    contra `uq_whatsapp_contact_identifiers_value` al hacer flush. Sin reintento ese
+    mensaje se perdería (evento en `failed` y, hasta que exista el reprocesador, sin
+    recuperación). En el reintento las filas de la otra transacción ya son visibles y el
+    mensaje se inserta reusando el contacto.
+    """
+    try:
+        _process_message_once(db, line, item, report)
+    except IntegrityError:
+        db.rollback()
+        logger.info("[whatsapp-webhook] conflicto de unicidad, reintento único line_id=%s",
+                    line.id)
+        _process_message_once(db, line, item, report)
+
+
+def _process_message_once(db: Session, line: models.WhatsAppLine, item: NormalizedMessage,
+                          report: ProcessingReport) -> None:
+    """Un intento de alta del mensaje entrante (una transacción propia)."""
     if not item.supported:
         report.unsupported_items += 1
-        report.skipped_reasons.append(REASON_UNSUPPORTED_MESSAGE_TYPE)
-        logger.info("[whatsapp-webhook] tipo no soportado type=%s line_id=%s",
-                    item.message_type, line.id)
+        report.skipped_reasons.append(item.unsupported_reason or REASON_UNSUPPORTED_MESSAGE_TYPE)
+        logger.info("[whatsapp-webhook] elemento no soportado motivo=%s type=%s line_id=%s",
+                    item.unsupported_reason, item.message_type, line.id)
         return
     if not item.wa_id:
         report.skipped_reasons.append(REASON_MISSING_SENDER)
@@ -325,16 +381,10 @@ def _process_message(db: Session, line: models.WhatsAppLine, item: NormalizedMes
         provider_timestamp=item.provider_timestamp,
     )
     db.add(message)
-    try:
-        db.commit()
-    except IntegrityError:
-        # Carrera contra otra entrega del mismo mensaje: el unique parcial
-        # (provider, external_message_id) es la protección final.
-        db.rollback()
-        if _find_message_by_external_id(db, item.external_id) is not None:
-            report.messages_duplicated += 1
-            return
-        raise
+    # El IntegrityError (unique parcial de (provider, external_message_id) o unique de
+    # identificadores) lo maneja el reintento de `_process_message`: allí la fila ya es
+    # visible y este mismo camino la detecta como duplicada.
+    db.commit()
 
     report.messages_created += 1
     # Correlación por IDs INTERNOS (§13): ni el wamid completo, ni el wa_id, ni el texto.
@@ -385,19 +435,34 @@ def _process_status(db: Session, line: models.WhatsAppLine, item: NormalizedStat
         },
     ))
 
-    new_status = next_current_status(message.current_status, item.status)
-    if new_status != message.current_status:
-        message.current_status = new_status
-    if item.status == STATUS_FAILED:
+    anterior = message.current_status
+    nuevo = next_current_status(anterior, item.status)
+    message.current_status = nuevo
+    # Los campos de error acompañan al estado EFECTIVO: un `failed` fuera de orden que
+    # no logra superar a `delivered`/`read` no ensucia el mensaje, y un `delivered`
+    # posterior a un `failed` limpia el error que ya no aplica.
+    if nuevo == STATUS_FAILED:
         message.error_code = item.error_code
-        message.error_message_safe = safe_error(item.error_title)
+        message.error_message_safe = safe_error(item.error_title) or None
+    elif anterior == STATUS_FAILED and nuevo in TERMINAL_DELIVERY_STATES:
+        message.error_code = None
+        message.error_message_safe = None
     db.add(message)
 
     try:
         db.commit()
     except IntegrityError:
-        # Carrera contra el mismo evento de estado: unique(event_key).
         db.rollback()
+        # Solo es duplicado si la fila realmente está: cualquier otro IntegrityError
+        # (FK, not-null) no puede contarse como éxito, o el evento quedaría marcado
+        # `processed` sin haber persistido el estado.
+        ya_registrado = (
+            db.query(models.WhatsAppMessageStatusEvent)
+            .filter(models.WhatsAppMessageStatusEvent.event_key == item.event_key)
+            .first()
+        )
+        if ya_registrado is None:
+            raise
         report.statuses_duplicated += 1
         return
 
@@ -446,13 +511,17 @@ def process_event(db: Session, normalized: NormalizedEvent) -> ProcessingReport:
             logger.warning("[whatsapp-webhook] línea inactiva line_id=%s", line.id)
             continue
 
+        # `logger.exception` NO se usa acá a propósito: el traceback de un error de
+        # SQLAlchemy incluye la sentencia y los parámetros bindeados (texto del mensaje,
+        # wa_id, nombre). Se logea solo el mensaje ya saneado por `safe_error`.
         for item in change.messages:
             try:
                 _process_message(db, line, item, report)
             except Exception as exc:  # noqa: BLE001 — un ítem no puede tumbar el webhook
                 db.rollback()
                 report.errors.append(safe_error(exc))
-                logger.exception("[whatsapp-webhook] fallo procesando mensaje line_id=%s", line.id)
+                logger.error("[whatsapp-webhook] fallo procesando mensaje line_id=%s: %s",
+                             line.id, safe_error(exc))
 
         for item in change.statuses:
             try:
@@ -460,6 +529,7 @@ def process_event(db: Session, normalized: NormalizedEvent) -> ProcessingReport:
             except Exception as exc:  # noqa: BLE001
                 db.rollback()
                 report.errors.append(safe_error(exc))
-                logger.exception("[whatsapp-webhook] fallo procesando estado line_id=%s", line.id)
+                logger.error("[whatsapp-webhook] fallo procesando estado line_id=%s: %s",
+                             line.id, safe_error(exc))
 
     return report
