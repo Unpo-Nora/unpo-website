@@ -37,8 +37,75 @@ PROVIDER = "meta"
 MAX_WEBHOOK_BODY_BYTES = 1 * 1024 * 1024
 
 # Retención del payload crudo (`raw_payload_expires_at`). El barrido de expirados
-# es responsabilidad de una etapa posterior; acá solo se marca el vencimiento.
+# lo hace el comando de purga (Etapa 1D); acá solo se marca el vencimiento.
 RAW_PAYLOAD_RETENTION_DAYS = 30
+
+# ---------------------------------------------------------------------------
+# Etapa 1D — reprocesamiento de eventos y purga de payloads.
+# ---------------------------------------------------------------------------
+# Variables de entorno del reprocesador. Los valores por defecto son SEGUROS para
+# DESARROLLO; en producción se ajustan por entorno al programar el cron (ver la doc).
+LEASE_SECONDS_ENV = "WHATSAPP_REPROCESS_LEASE_SECONDS"
+BATCH_SIZE_ENV = "WHATSAPP_REPROCESS_BATCH_SIZE"
+MAX_ATTEMPTS_ENV = "WHATSAPP_REPROCESS_MAX_ATTEMPTS"
+
+# Lease del reclamo. Un evento en `processing` se considera ATASCADO si su
+# `processing_started_at` es anterior a `now - LEASE_SECONDS`. También se usa como
+# "gracia" del `pending`: un `pending` solo es elegible si es más viejo que este
+# umbral (un webhook recién recibido se marca en milisegundos; no debe robarse).
+DEFAULT_LEASE_SECONDS = 300          # 5 minutos
+DEFAULT_BATCH_SIZE = 100
+DEFAULT_MAX_ATTEMPTS = 8             # 1 intento del webhook + hasta 7 reintentos
+
+# Cotas duras para los parámetros de línea de comandos (validación de rango).
+MIN_BATCH_SIZE = 1
+MAX_BATCH_SIZE = 10_000
+MIN_LEASE_SECONDS = 1
+MAX_LEASE_SECONDS = 86_400           # 24 h
+
+# Backoff determinístico por número de intento (segundos). Índice = attempt_count del
+# intento que acaba de fallar; a partir del último tramo se aplica el tope.
+BACKOFF_SCHEDULE_SECONDS = (60, 300, 900, 3600, 21600)   # 1m, 5m, 15m, 1h, 6h
+BACKOFF_MAX_SECONDS = BACKOFF_SCHEDULE_SECONDS[-1]
+
+
+def _get_int(env_name: str, default: int, minimum: int, maximum: int) -> int:
+    """Lee un entero de entorno acotado a [minimum, maximum]; si es inválido, default."""
+    raw = os.getenv(env_name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def get_lease_seconds() -> int:
+    return _get_int(LEASE_SECONDS_ENV, DEFAULT_LEASE_SECONDS, MIN_LEASE_SECONDS, MAX_LEASE_SECONDS)
+
+
+def get_batch_size() -> int:
+    return _get_int(BATCH_SIZE_ENV, DEFAULT_BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE)
+
+
+def get_max_attempts() -> int:
+    # Al menos 1: si fuese 0 no se reintentaría nada y todo quedaría exhausted de entrada.
+    return _get_int(MAX_ATTEMPTS_ENV, DEFAULT_MAX_ATTEMPTS, 1, 1000)
+
+
+def backoff_seconds(attempt_count: int) -> int:
+    """
+    Segundos de espera antes del próximo reintento, en función del intento que falló.
+
+    Determinística, centralizada y con tope. `attempt_count` es el valor tras el claim
+    (1-based): el 1er intento fallido espera `BACKOFF_SCHEDULE_SECONDS[0]`, etc. Todo
+    intento igual o mayor al último tramo usa `BACKOFF_MAX_SECONDS`.
+    """
+    if attempt_count < 1:
+        attempt_count = 1
+    idx = min(attempt_count - 1, len(BACKOFF_SCHEDULE_SECONDS) - 1)
+    return BACKOFF_SCHEDULE_SECONDS[idx]
 
 
 def get_verify_token() -> str:

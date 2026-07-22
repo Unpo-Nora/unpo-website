@@ -322,10 +322,17 @@ META_CONNECTION_BLOCKED_UNTIL_REPROCESSOR=yes
 RAW_PAYLOAD_PURGE_REQUIRED_BEFORE_PRODUCTION_TRAFFIC=yes
 ```
 
+> **Actualización (Etapa 1D):** el reprocesador de eventos `failed`/`pending`/
+> `processing` y el comando de purga **ya están implementados** — ver
+> [`unpo-whatsapp-event-recovery.md`](./unpo-whatsapp-event-recovery.md). Los dos
+> marcadores de arriba siguen en `yes` porque el código de 1D **todavía no está
+> desplegado ni programado en Render**: Meta sigue bloqueado hasta que el cron real
+> esté corriendo.
+
 ### 13.1 Reproceso de eventos `failed`
 
-**No conectar un número real hasta implementar el mecanismo de reproceso de eventos
-`failed`.**
+**No conectar un número real hasta que el mecanismo de reproceso esté desplegado y
+programado.**
 
 Motivo verificado: si el procesamiento de un evento falla, el evento queda almacenado
 con `processing_status='failed'`, su `raw_payload` y `attempt_count`, pero **el
@@ -336,16 +343,16 @@ reintento del mismo webhook por parte de Meta NO lo reprocesa**: la deduplicaci�
 duplicate_failed_event_reprocessed=no
 ```
 
-Es correcto para la idempotencia y aceptable mientras no haya tráfico real, pero
-significa que hoy **la única vía de recuperación es el procesador persistente de la
-etapa 1E**. Sin él, un mensaje entrante que falle se pierde de la bandeja.
+Es correcto para la idempotencia. La recuperación la hace el **comando de reproceso de
+1D** (`python -m app.jobs.whatsapp_maintenance reprocess`), que reclama los `failed` con
+backoff y los reprocesa. Falta únicamente **programarlo** en producción.
 
 ### 13.2 Purga del `raw_payload`
 
-`raw_payload_expires_at` se fija a 30 días, pero **no existe todavía el barrido que
-borra los payloads vencidos**. El payload crudo contiene datos personales (teléfono,
-nombre de perfil y texto del mensaje), así que la purga debe existir **antes** de
-recibir tráfico productivo.
+`raw_payload_expires_at` se fija a 30 días. El barrido que anula los payloads vencidos
+**ya existe** (`python -m app.jobs.whatsapp_maintenance purge`, Etapa 1D). Falta
+**programarlo** (una vez por día) antes de recibir tráfico productivo, porque el payload
+crudo contiene datos personales.
 
 ### 13.3 Desviación registrada respecto de la arquitectura §7
 
