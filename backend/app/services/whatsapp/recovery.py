@@ -34,7 +34,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Callable, List, Optional
 
-from sqlalchemy import and_, func, null, or_, select, update
+from sqlalchemy import and_, case, func, null, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -85,6 +85,7 @@ class ReprocessResult:
     skipped: int = 0
     payload_missing: int = 0
     exhausted: int = 0
+    lease_lost: int = 0
     operational_error: Optional[str] = None
 
     def render(self) -> str:
@@ -98,6 +99,7 @@ class ReprocessResult:
             f"skipped={self.skipped}",
             f"payload_missing={self.payload_missing}",
             f"exhausted={self.exhausted}",
+            f"lease_lost={self.lease_lost}",
         ])
 
 
@@ -187,7 +189,12 @@ def _claim_batch(db: Session, *, now: datetime, lease_seconds: int, batch_size: 
             processing_status=STATUS_PROCESSING,
             processing_started_at=now,
             locked_by=worker_id,
-            attempt_count=E.attempt_count + 1,
+            # Incremento ACOTADO: nunca supera `max_attempts`. Un `processing` atascado
+            # que ya llegó al máximo se reclama solo para CERRARLO, sin inflar el contador.
+            attempt_count=case(
+                (E.attempt_count < max_attempts, E.attempt_count + 1),
+                else_=E.attempt_count,
+            ),
         )
     )
     db.commit()
@@ -195,69 +202,89 @@ def _claim_batch(db: Session, *, now: datetime, lease_seconds: int, batch_size: 
 
 
 # --------------------------------------------------------------------------- #
-# Cierre del evento (marcado del resultado)
+# Cierre del evento con FENCING obligatorio
 # --------------------------------------------------------------------------- #
-def _mark_success(event, *, now: datetime, status: str, error: Optional[str]) -> None:
-    event.processing_status = status
-    event.processed_at = now
-    event.processing_started_at = None
-    event.locked_by = None
-    event.next_retry_at = None
-    event.last_error_safe = error   # None en `processed`; `skipped:...` en `ignored`
+# El cierre NO alcanza con verificar la propiedad al empezar: `process_event` commitea
+# internamente, así que el lease puede vencer DURANTE el procesamiento y otro worker
+# tomar el evento. Por eso la escritura final es un UPDATE condicional con fencing sobre
+# (id, processing_status='processing', locked_by, processing_started_at). Si otro worker
+# re-reclamó el evento, esos campos ya no coinciden: 0 filas → el worker tardío perdió el
+# lease y NO puede sobrescribir el resultado del propietario vigente.
+def _finalize(db: Session, event_id: int, *, worker_id: str, claim_started_at: datetime,
+              values: dict) -> bool:
+    E = models.WhatsAppWebhookEvent
+    res = db.execute(
+        update(E)
+        .where(
+            E.id == event_id,
+            E.processing_status == STATUS_PROCESSING,
+            E.locked_by == worker_id,
+            E.processing_started_at == claim_started_at,
+        )
+        .values(**values)
+    )
+    db.commit()
+    return res.rowcount == 1
 
 
-def _mark_failure(event, *, now: datetime, error: Optional[str], max_attempts: int,
-                  next_retry_at: Optional[datetime]) -> bool:
-    """Marca `failed`. Devuelve True si quedó exhausted (sin próximo reintento)."""
-    event.processing_status = STATUS_FAILED
-    event.processing_started_at = None
-    event.locked_by = None
-    event.last_error_safe = error
-    exhausted = (next_retry_at is None) or (event.attempt_count >= max_attempts)
-    # Cuando se agotan los intentos: terminal, sin próximo reintento (no se elimina, no
-    # se inventa un estado nuevo; queda `failed` y se identifica por attempt_count).
-    event.next_retry_at = None if exhausted else next_retry_at
-    return exhausted
+def _success_values(now: datetime, status: str, error: Optional[str]) -> dict:
+    return dict(processing_status=status, processed_at=now, processing_started_at=None,
+                locked_by=None, next_retry_at=None, last_error_safe=error)
 
 
-def _process_one(db: Session, event_id: int, *, now: datetime, max_attempts: int,
-                 result: ReprocessResult) -> None:
-    """Procesa un único evento reclamado, en la transacción de `db`."""
+def _failure_values(now: datetime, error: Optional[str],
+                    next_retry_at: Optional[datetime]) -> dict:
+    return dict(processing_status=STATUS_FAILED, processed_at=now,
+                processing_started_at=None, locked_by=None,
+                next_retry_at=next_retry_at, last_error_safe=error)
+
+
+def _process_one(db: Session, event_id: int, *, worker_id: str, claim_started_at: datetime,
+                 now: datetime, max_attempts: int, result: ReprocessResult) -> None:
+    """
+    Procesa un único evento reclamado y lo cierra con fencing.
+
+    `claim_started_at` es el `processing_started_at` que escribió ESTE reclamo: sirve de
+    fencing token junto con `worker_id`. Si al cerrar el fencing no matchea (otro worker
+    tomó el lease vencido), el cierre no aplica y se cuenta `lease_lost`.
+    """
     E = models.WhatsAppWebhookEvent
     event = db.get(E, event_id)
     if event is None:
-        # La fila desapareció entre el reclamo y el proceso (no debería pasar).
         result.skipped += 1
         return
+    attempt = event.attempt_count
+    payload = event.raw_payload
 
-    # 1) Sin payload → terminal, no se procesa, no genera bucle (queda `failed` sin
-    #    payload, por lo que el reclamo de `failed` deja de tomarlo). Se conserva
-    #    attempt_count (no se reinicia).
-    if event.raw_payload is None:
-        _mark_failure(event, now=now, error=REASON_PAYLOAD_MISSING,
-                      max_attempts=max_attempts, next_retry_at=None)
-        db.commit()
-        result.payload_missing += 1
-        result.exhausted += 1
-        logger.info("[whatsapp-recovery] evento sin payload event_id=%s attempt=%s",
-                    event.id, event.attempt_count)
+    def close(values, ok_counter):
+        if _finalize(db, event_id, worker_id=worker_id, claim_started_at=claim_started_at,
+                     values=values):
+            ok_counter()
+        else:
+            result.lease_lost += 1
+            logger.info("[whatsapp-recovery] lease perdido event_id=%s", event_id)
+
+    # 1) Sin payload → terminal (no se procesa, no genera bucle: queda failed sin payload).
+    if payload is None:
+        def _pm():
+            result.payload_missing += 1
+            result.exhausted += 1
+        close(_failure_values(now, REASON_PAYLOAD_MISSING, None), _pm)
         return
 
-    # 2) Lease atascado que ya superó el máximo (solo alcanzable por la rama `processing`
-    #    del reclamo, que no filtra intentos): se cierra como exhausted sin reprocesar.
-    if event.attempt_count > max_attempts:
-        _mark_failure(event, now=now, error=REASON_MAX_ATTEMPTS,
-                      max_attempts=max_attempts, next_retry_at=None)
-        db.commit()
-        result.exhausted += 1
-        logger.info("[whatsapp-recovery] evento agotado event_id=%s attempt=%s",
-                    event.id, event.attempt_count)
+    # 2) Alcanzó el máximo → se cierra como exhausted SIN reprocesar (arquitectura de
+    #    reintentos: la reclamación que lleva attempt_count a max no vuelve a procesar).
+    if attempt >= max_attempts:
+        close(_failure_values(now, REASON_MAX_ATTEMPTS, None),
+              lambda: setattr(result, "exhausted", result.exhausted + 1))
         return
 
-    # 3) Reproceso normal, reutilizando el procesador de 1C (idempotente).
+    # 3) Reproceso normal, reutilizando el procesador de 1C (idempotente). Aunque el
+    #    lease se haya perdido, `process_event` no duplica nada; el fencing del cierre
+    #    impide sobrescribir al propietario vigente.
     error: Optional[str]
     try:
-        normalized = normalize_envelope(event.raw_payload)
+        normalized = normalize_envelope(payload)
         report = process_event(db, normalized)
         status = report.resolve_status()
         error = report.summary_error()
@@ -266,35 +293,19 @@ def _process_one(db: Session, event_id: int, *, now: datetime, max_attempts: int
         status = STATUS_FAILED
         error = safe_error(exc)
 
-    # `process_event` commitea/rollbackea internamente: se re-obtiene el evento para
-    # aplicarle el resultado sobre estado fresco.
-    event = db.get(E, event_id)
-    if event is None:
-        result.skipped += 1
-        return
-
     if status in (STATUS_PROCESSED, STATUS_IGNORED):
-        _mark_success(event, now=now, status=status, error=error)
-        db.commit()
-        if status == STATUS_PROCESSED:
-            result.processed += 1
-        else:
-            result.ignored += 1
-        logger.info("[whatsapp-recovery] evento cerrado event_id=%s status=%s attempt=%s",
-                    event.id, status, event.attempt_count)
+        def _ok():
+            if status == STATUS_PROCESSED:
+                result.processed += 1
+            else:
+                result.ignored += 1
+        close(_success_values(now, status, error), _ok)
         return
 
-    # Falló: reintentar con backoff, o marcar exhausted si llegó al máximo.
-    next_retry = now + timedelta(seconds=config.backoff_seconds(event.attempt_count))
-    exhausted = _mark_failure(event, now=now, error=error, max_attempts=max_attempts,
-                              next_retry_at=next_retry)
-    db.commit()
-    if exhausted:
-        result.exhausted += 1
-    else:
-        result.failed += 1
-    logger.info("[whatsapp-recovery] evento falló event_id=%s attempt=%s exhausted=%s",
-                event.id, event.attempt_count, exhausted)
+    # Falló el reproceso (attempt < max acá): se reintenta con backoff.
+    next_retry = now + timedelta(seconds=config.backoff_seconds(attempt))
+    close(_failure_values(now, error, next_retry),
+          lambda: setattr(result, "failed", result.failed + 1))
 
 
 # --------------------------------------------------------------------------- #
@@ -310,13 +321,15 @@ def reprocess(session_factory: SessionFactory, *, lease_seconds: int, batch_size
     `operational_error` para que el comando devuelva código != 0.
     """
     result = ReprocessResult()
-    now = now_fn()
+    # `claim_now` es el `processing_started_at` que quedará en las filas reclamadas: es
+    # parte del fencing token, así que se conserva para el cierre.
+    claim_now = now_fn()
 
     # Reclamo (transacción corta y propia).
     try:
         with session_factory() as db:
             claimed_ids = _claim_batch(
-                db, now=now, lease_seconds=lease_seconds, batch_size=batch_size,
+                db, now=claim_now, lease_seconds=lease_seconds, batch_size=batch_size,
                 max_attempts=max_attempts, worker_id=worker_id,
             )
     except SQLAlchemyError as exc:
@@ -331,7 +344,8 @@ def reprocess(session_factory: SessionFactory, *, lease_seconds: int, batch_size
     for event_id in claimed_ids:
         try:
             with session_factory() as db:
-                _process_one(db, event_id, now=now_fn(), max_attempts=max_attempts, result=result)
+                _process_one(db, event_id, worker_id=worker_id, claim_started_at=claim_now,
+                             now=now_fn(), max_attempts=max_attempts, result=result)
         except SQLAlchemyError as exc:
             # Fallo al persistir el resultado de ESTE evento: se cuenta como skipped y se
             # continúa. El lease vencerá y el evento se recuperará en otra corrida.
@@ -367,10 +381,14 @@ def purge(session_factory: SessionFactory, *, batch_size: int,
         with session_factory() as db:
             result.eligible = db.query(func.count(E.id)).filter(eligible_where).scalar() or 0
 
+            # `FOR UPDATE SKIP LOCKED`: dos purgas concurrentes particionan las filas y
+            # ninguna cuenta como purgada una fila que la otra ya tomó (igual que el
+            # claim). En SQLite el for-update se ignora; los tests corren sin concurrencia.
             ids = db.execute(
                 select(E.id).where(eligible_where)
                 .order_by(E.raw_payload_expires_at)
                 .limit(batch_size)
+                .with_for_update(skip_locked=True)
             ).scalars().all()
 
             if ids:

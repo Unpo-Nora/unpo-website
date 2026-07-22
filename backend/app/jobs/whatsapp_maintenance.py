@@ -20,6 +20,7 @@ wa_id/wamid, texto ni SQL).
 """
 
 import argparse
+import hashlib
 import sys
 from typing import List, Optional
 
@@ -79,14 +80,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def _sanitize_worker_id(raw: Optional[str]) -> str:
     """
-    Un `--worker-id` provisto se acota y se limpia: solo `[A-Za-z0-9._-]`, máx. 64. Así
-    no entra hostname/email/usuario completo aunque el operador lo pase por error. Si no
-    se provee, se genera uno aleatorio corto.
+    Convierte un `--worker-id` provisto en una HUELLA irreversible `wrk-<hash>`.
+
+    Limpiar caracteres no alcanza: `usuario@empresa.com` -> `usuarioempresacom` seguiría
+    revelando usuario y dominio. Se hashea (sha256, prefijo) y NUNCA se conserva ni se
+    imprime el valor original, así que un email, hostname, usuario del sistema, dominio o
+    IP que el operador pase por error jamás llega a la base, a los logs ni a la salida.
+    Sin `--worker-id`, se genera un id aleatorio corto.
     """
-    if not raw:
+    if not raw or not raw.strip():
         return recovery.generate_worker_id()
-    limpio = "".join(c for c in raw if c.isalnum() or c in "._-")[:64]
-    return limpio or recovery.generate_worker_id()
+    digest = hashlib.sha256(raw.strip().encode("utf-8")).hexdigest()[:12]
+    return f"wrk-{digest}"
 
 
 def _cmd_reprocess(args) -> int:

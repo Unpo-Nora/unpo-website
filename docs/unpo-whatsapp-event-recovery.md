@@ -51,19 +51,37 @@ recuperarlo requiere distinguir "procesándose ahora" de "colgado", lo que exige
 timestamp de lease `processing_started_at`. Sin ese campo no había forma segura, y
 `received_at`/`created_at` no sirven como lease.
 
-## 3. Estrategia de claim (arquitectura)
+## 3. Estrategia de claim y fencing (arquitectura)
 
 1. **Reclamo** (transacción corta): `SELECT ... FOR UPDATE SKIP LOCKED` de los eventos
    elegibles (limitado por batch), y en la misma transacción `UPDATE` a
    `processing_status='processing'`, `processing_started_at=now`, `locked_by=worker`,
-   `attempt_count += 1`; commit. Dos workers concurrentes nunca ven las mismas filas
-   (el segundo las saltea con `SKIP LOCKED`).
+   e incremento **acotado** de `attempt_count` (nunca supera `max_attempts`); commit.
+   Dos workers concurrentes nunca ven las mismas filas (el segundo las saltea con
+   `SKIP LOCKED`).
 2. **Procesamiento**: cada evento reclamado se procesa en **su propia transacción**,
    reutilizando `process_event` (misma lógica de contactos/identificadores/
    conversaciones/mensajes/estados; sin lógica paralela).
-3. **Cierre**: se marca el resultado y se libera el lease.
+3. **Cierre con FENCING**: la escritura final es un `UPDATE` **condicional**:
 
-En SQLite `SKIP LOCKED` se ignora; la concurrencia **real** se valida en PostgreSQL 17.
+   ```sql
+   UPDATE whatsapp_webhook_events SET ...
+   WHERE id = :event_id
+     AND processing_status = 'processing'
+     AND locked_by = :worker_id
+     AND processing_started_at = :claim_started_at
+   ```
+
+   No alcanza con verificar la propiedad al empezar: `process_event` commitea
+   internamente, así que el lease puede **vencer durante el procesamiento** y otro
+   worker recuperar el evento. Si el token `(locked_by, processing_started_at)` ya no
+   coincide (otro worker re-reclamó), el `UPDATE` afecta **0 filas** → el worker tardío
+   **perdió el lease**: no sobrescribe el resultado del propietario vigente y se cuenta
+   como `lease_lost`. El trabajo materializado por el worker tardío (contacto, mensaje,
+   estado) es inofensivo por la idempotencia del procesador.
+
+En SQLite `SKIP LOCKED` se ignora; la concurrencia y el fencing **reales** se validan en
+PostgreSQL 17 (worker lento que pierde el lease, dos procesos, purga concurrente).
 
 ## 4. Elegibilidad y recuperación de leases
 
@@ -86,8 +104,20 @@ desarrollo**, se ajustan por entorno al programar el cron):
 **No elegible**: `processed`, `ignored`, `processing` con lease vigente, `failed` sin
 payload (terminal), `next_retry_at` futuro, `attempt_count >= max` (exhausted).
 
-Un `processing` atascado se re-reclama reemplazando `locked_by` y `processing_started_at`
-e incrementando `attempt_count`. **Nunca** se usa `received_at` como lease.
+Un `processing` atascado se re-reclama reemplazando `locked_by` y `processing_started_at`.
+El incremento de `attempt_count` es **acotado**: un evento que ya llegó a `max_attempts`
+se reclama solo para **cerrarlo** (exhausted) sin volver a procesar y **sin** inflar el
+contador (`attempt_count` nunca supera `max_attempts`; un valor legado mayor no se hace
+crecer). **Nunca** se usa `received_at` como lease.
+
+> **Semántica de `max_attempts`:** acota `attempt_count`. La reclamación que lleva el
+> contador a `max_attempts` cierra el evento como exhausted **sin** procesarlo (§6 del
+> review de concurrencia: "si ya alcanzó el máximo, no ejecutar `process_event`"). El
+> lease por defecto (`300 s`) debe superar ampliamente el tiempo máximo razonable de
+> procesamiento de un evento; como no hay llamadas externas, cada evento es de
+> milisegundos. **No** hay heartbeat (scheduler residente): la seguridad no se apoya en
+> "el proceso será rápido" sino en el **fencing obligatorio al cerrar**, que hace
+> irrelevante que un worker se demore más que el lease.
 
 ## 5. Backoff y poison pills
 
@@ -147,8 +177,10 @@ python -m app.jobs.whatsapp_maintenance purge --limit 500
 Opciones: `reprocess [--limit N] [--lease-seconds S] [--worker-id ID]`,
 `purge [--limit N]`. Los rangos se validan (`--limit` 1..10000, `--lease-seconds`
 1..86400); fuera de rango → **exit 2** (error de uso). El `--worker-id` por defecto es
-un id aleatorio corto (`wrk-<hex>`) sin hostname, email ni usuario del sistema; si se
-provee, se sanea (solo `[A-Za-z0-9._-]`, máx. 64).
+un id aleatorio corto (`wrk-<hex>`). Si el operador provee uno, se convierte en una
+**huella irreversible** `wrk-<sha256 corto>`: el valor original **no se conserva, no se
+imprime ni se registra**, así que un email, hostname, usuario del sistema, dominio o IP
+que se pase por error jamás llega a la base, a los logs ni a la salida.
 
 Códigos de salida: **0** si el lote operó bien (aunque eventos individuales hayan
 fallado); **1** ante fallo operacional del lote o de la base; **2** por argumentos
@@ -165,7 +197,13 @@ failed=<n>
 skipped=<n>
 payload_missing=<n>
 exhausted=<n>
+lease_lost=<n>
 ```
+
+`lease_lost` cuenta los cierres que el fencing rechazó (el worker perdió el lease
+durante el procesamiento). **No** es un fallo operacional: el evento quedó a cargo del
+propietario vigente. `skipped` es el caso defensivo de una fila que desapareció entre el
+reclamo y el proceso.
 
 ## 10. No tareas de fondo en FastAPI
 
@@ -209,11 +247,13 @@ Migración (PostgreSQL 17 efímero): `upgrade`/`current`/`heads`/`check`/`downgr
 WhatsApp + 18 comerciales intactas; sin drift.
 
 Servicio (PostgreSQL 17 real): reproceso, recuperación de lease atascado, backoff
-persistido, max attempts→exhausted, payload_missing sin bucle, purga (con protección de
-`processing`), **concurrencia real** (conexiones separadas + dos procesos CLI reales:
-cada evento reclamado una sola vez, sin mensajes duplicados, sin transacciones
-abortadas) y recuperación de sesión tras `IntegrityError`. Suite: 52 tests de recovery;
-260 en el backend completo.
+persistido, max attempts→exhausted (sin exceder el máximo), payload_missing sin bucle,
+purga (con protección de `processing`), **concurrencia real** (conexiones separadas +
+dos procesos CLI reales: cada evento reclamado una sola vez, sin mensajes duplicados),
+**fencing del lease** (worker lento que pierde el lease no puede finalizar ni sobre
+éxito ni sobre fallo → `lease_lost`), **purga concurrente** (cada fila purgada por un
+solo proceso, sin doble conteo) y recuperación de sesión tras `IntegrityError`. Suite:
+60 tests de recovery; 268 en el backend completo.
 
 ## Cómo correr los tests
 

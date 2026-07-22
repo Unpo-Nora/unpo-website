@@ -491,6 +491,135 @@ class ClaimExclusivityTest(RecoveryDBTest):
 
 
 # =============================================================================== #
+# Fencing del lease y ownership
+# =============================================================================== #
+class LeaseFencingTest(RecoveryDBTest):
+    def test_finalize_matches_only_current_owner(self):
+        eid = self._seed_event(status="processing", processing_started_at=NOW,
+                               locked_by="wrk-A")
+        db = self._session()
+        try:
+            # Token correcto → cierra.
+            ok = recovery._finalize(db, eid, worker_id="wrk-A", claim_started_at=NOW,
+                                    values=recovery._success_values(NOW, "processed", None))
+            self.assertTrue(ok)
+        finally:
+            db.close()
+        self.assertEqual(self._get_event(eid).processing_status, "processed")
+
+    def test_finalize_rejects_wrong_worker(self):
+        eid = self._seed_event(status="processing", processing_started_at=NOW, locked_by="wrk-A")
+        db = self._session()
+        try:
+            ok = recovery._finalize(db, eid, worker_id="wrk-B", claim_started_at=NOW,
+                                    values=recovery._success_values(NOW, "processed", None))
+        finally:
+            db.close()
+        self.assertFalse(ok)
+        self.assertEqual(self._get_event(eid).processing_status, "processing")
+
+    def test_finalize_rejects_wrong_started_at(self):
+        eid = self._seed_event(status="processing", processing_started_at=NOW, locked_by="wrk-A")
+        db = self._session()
+        try:
+            ok = recovery._finalize(db, eid, worker_id="wrk-A",
+                                    claim_started_at=NOW + timedelta(seconds=1),
+                                    values=recovery._success_values(NOW, "processed", None))
+        finally:
+            db.close()
+        self.assertFalse(ok)
+        self.assertEqual(self._get_event(eid).processing_status, "processing")
+
+    def test_stale_worker_cannot_finalize_after_new_owner(self):
+        """Worker A pierde el lease; B lo recupera; A termina tarde y NO puede cerrar."""
+        self._seed_line()
+        eid = self._seed_event(status="failed")
+        # A reclama.
+        db = self._session()
+        try:
+            recovery._claim_batch(db, now=NOW, lease_seconds=300, batch_size=10,
+                                  max_attempts=8, worker_id="wrk-A")
+        finally:
+            db.close()
+        # B recupera el lease vencido (nuevo owner, nuevo started_at, nuevo attempt).
+        T2 = NOW + timedelta(seconds=400)
+        db = self._session()
+        try:
+            ev = db.get(models.WhatsAppWebhookEvent, eid)
+            ev.processing_started_at = T2
+            ev.locked_by = "wrk-B"
+            ev.attempt_count = 3
+            db.commit()
+        finally:
+            db.close()
+        # A (tardío) intenta cerrar con su token viejo.
+        result = recovery.ReprocessResult()
+        db = self._session()
+        try:
+            recovery._process_one(db, eid, worker_id="wrk-A", claim_started_at=NOW,
+                                  now=NOW + timedelta(seconds=500), max_attempts=8, result=result)
+        finally:
+            db.close()
+        self.assertEqual(result.lease_lost, 1)
+        self.assertEqual(result.processed, 0)
+        ev = self._get_event(eid)
+        # A no tocó nada: el evento sigue siendo de B.
+        self.assertEqual(ev.processing_status, "processing")
+        self.assertEqual(ev.locked_by, "wrk-B")
+        self.assertEqual(ev.attempt_count, 3)
+        self.assertIsNone(ev.processed_at)
+
+    def test_lease_lost_on_payload_missing_path(self):
+        # Aun en un cierre terminal, sin ownership no se puede escribir.
+        eid = self._seed_event(status="processing", payload=None, processing_started_at=NOW,
+                               locked_by="wrk-A")
+        result = recovery.ReprocessResult()
+        db = self._session()
+        try:
+            recovery._process_one(db, eid, worker_id="wrk-OTRO", claim_started_at=NOW,
+                                  now=NOW, max_attempts=8, result=result)
+        finally:
+            db.close()
+        self.assertEqual(result.lease_lost, 1)
+        self.assertEqual(result.payload_missing, 0)
+        self.assertEqual(self._get_event(eid).processing_status, "processing")
+
+
+# =============================================================================== #
+# attempt_count nunca supera el máximo
+# =============================================================================== #
+class AttemptCapTest(RecoveryDBTest):
+    def test_claim_at_max_minus_one_reaches_max_then_closes(self):
+        self._seed_line()
+        eid = self._seed_event(status="failed", attempt_count=7)
+        r = self._reprocess(max_attempts=8)
+        ev = self._get_event(eid)
+        self.assertEqual(ev.attempt_count, 8)          # llegó a max
+        self.assertEqual(ev.processing_status, "failed")
+        self.assertIsNone(ev.next_retry_at)
+        self.assertEqual(r.exhausted, 1)
+        self.assertEqual(self._count(models.WhatsAppMessage), 0)   # no se procesó en max
+
+    def test_stale_processing_at_max_does_not_exceed(self):
+        eid = self._seed_event(status="processing", attempt_count=8,
+                               processing_started_at=NOW - timedelta(seconds=1000))
+        r = self._reprocess(lease=300, max_attempts=8)
+        ev = self._get_event(eid)
+        self.assertEqual(ev.attempt_count, 8)          # NO incrementó a 9
+        self.assertEqual(ev.processing_status, "failed")
+        self.assertEqual(r.exhausted, 1)
+
+    def test_legacy_over_max_is_not_grown(self):
+        eid = self._seed_event(status="processing", attempt_count=9,
+                               processing_started_at=NOW - timedelta(seconds=1000))
+        r = self._reprocess(lease=300, max_attempts=8)
+        ev = self._get_event(eid)
+        self.assertEqual(ev.attempt_count, 9)          # dato legado: no crece
+        self.assertEqual(ev.processing_status, "failed")
+        self.assertEqual(r.exhausted, 1)
+
+
+# =============================================================================== #
 # Purga
 # =============================================================================== #
 class PurgeTest(RecoveryDBTest):
@@ -581,10 +710,11 @@ class RedactionTest(RecoveryDBTest):
             self.assertNotIn(prohibido, logs)
 
     def test_result_render_is_only_counters(self):
-        r = recovery.ReprocessResult(claimed=3, processed=2, failed=1)
+        r = recovery.ReprocessResult(claimed=3, processed=2, failed=1, lease_lost=1)
         texto = r.render()
         self.assertIn("WHATSAPP_REPROCESS_RESULT", texto)
         self.assertIn("claimed=3", texto)
+        self.assertIn("lease_lost=1", texto)
         # Solo claves=enteros, nada más.
         for linea in texto.splitlines()[1:]:
             self.assertRegex(linea, r"^[a-z_]+=\d+$")
@@ -700,13 +830,23 @@ class CliTest(unittest.TestCase):
         code, _ = self._run(["frobnicate"])
         self.assertEqual(code, cli.EXIT_USAGE)
 
-    def test_worker_id_is_sanitized(self):
-        self.assertEqual(cli._sanitize_worker_id("host name/user@dom"), "hostnameuserdom")
+    def test_worker_id_is_hashed_not_kept(self):
+        # Cualquier valor provisto se convierte en huella irreversible wrk-<hash>.
+        casos = {
+            "usuario@empresa.com": ["usuario", "empresa", "@", ".com"],
+            "servidor-produccion-01": ["servidor", "produccion", "01"],
+            "192.168.1.10": ["192", "168", ".1."],
+            r"C:\Users\julian": ["Users", "julian", "C:"],
+        }
+        for valor, fragmentos in casos.items():
+            wid = cli._sanitize_worker_id(valor)
+            self.assertRegex(wid, r"^wrk-[0-9a-f]{12}$")
+            for frag in fragmentos:
+                self.assertNotIn(frag, wid, f"'{frag}' no debe aparecer en {wid}")
         self.assertTrue(cli._sanitize_worker_id(None).startswith("wrk-"))
-        self.assertLessEqual(len(cli._sanitize_worker_id("x" * 200)), 64)
-        # No deja pasar caracteres peligrosos.
-        self.assertNotIn("@", cli._sanitize_worker_id("a@b"))
-        self.assertNotIn("/", cli._sanitize_worker_id("a/b"))
+        self.assertTrue(cli._sanitize_worker_id("   ").startswith("wrk-"))
+        # Determinístico: mismo input → misma huella.
+        self.assertEqual(cli._sanitize_worker_id("a@b"), cli._sanitize_worker_id("a@b"))
 
 
 if __name__ == "__main__":
