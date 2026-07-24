@@ -563,11 +563,24 @@ class WhatsAppWebhookEvent(Base):
     last_error_safe = Column(Text, nullable=True)
     raw_payload = Column(postgresql.JSONB().with_variant(JSON(), "sqlite"), nullable=True)
     raw_payload_expires_at = Column(DateTime(timezone=True), nullable=True)
+    # --- Etapa 1D: lease de reprocesamiento (migración b1e9d4c7f0a2) ---
+    # processing_started_at: inicio del lease; detecta `processing` atascados tras crash.
+    # next_retry_at: elegibilidad + backoff; evita reintentar poison pills cada corrida.
+    # locked_by: trazabilidad del worker (NO sustituye el lock de PostgreSQL).
+    processing_started_at = Column(DateTime(timezone=True), nullable=True)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    locked_by = Column(String(64), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("provider", "event_key", name="uq_whatsapp_webhook_events_provider_event_key"),
         Index("ix_whatsapp_webhook_events_status_received", "processing_status", "received_at"),
         Index("ix_whatsapp_webhook_events_raw_payload_expires_at", "raw_payload_expires_at"),
+        # Índices PARCIALES (PostgreSQL): en SQLite se crean completos, sin la cláusula
+        # WHERE, que es funcionalmente equivalente para los tests.
+        Index("ix_whatsapp_webhook_events_processing_lease", "processing_started_at",
+              postgresql_where=text("processing_status = 'processing'")),
+        Index("ix_whatsapp_webhook_events_retry_eligible", "next_retry_at", "received_at",
+              postgresql_where=text("processing_status IN ('failed', 'pending')")),
     )
 
 

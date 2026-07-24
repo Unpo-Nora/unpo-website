@@ -29,6 +29,9 @@ MAIN_PY = os.path.join(BACKEND_DIR, "app", "main.py")
 
 REVISION = "efa066dfdf30"
 DOWN_REVISION = "71e9e987f7d2"
+# Etapa 1D encadenó la migración de lease de reprocesamiento por encima de la de 1B.
+# El head ahora es esta revisión; efa066dfdf30 sigue en la cadena con su down intacto.
+RECOVERY_REVISION = "b1e9d4c7f0a2"
 FK_NAME = "fk_whatsapp_conversation_reads_last_read_message_id"
 
 WHATSAPP_TABLES = {
@@ -100,9 +103,19 @@ class WhatsAppMigrationTest(unittest.TestCase):
                          "down_revision debe ser la baseline 71e9e987f7d2")
 
     def test_single_head(self):
+        # Un único head. Desde 1D el head es la migración de lease de reprocesamiento,
+        # encadenada sobre 1B (efa066dfdf30 -> b1e9d4c7f0a2).
         script = _script_dir()
         heads = script.get_heads()
-        self.assertEqual(heads, [REVISION], f"Debe haber un único head = {REVISION}")
+        self.assertEqual(heads, [RECOVERY_REVISION],
+                         f"Debe haber un único head = {RECOVERY_REVISION}")
+
+    def test_recovery_revision_chains_onto_whatsapp_baseline(self):
+        script = _script_dir()
+        rev = script.get_revision(RECOVERY_REVISION)
+        self.assertIsNotNone(rev, "La revisión de recovery b1e9d4c7f0a2 debe existir")
+        self.assertEqual(rev.down_revision, REVISION,
+                         "recovery debe encadenar sobre efa066dfdf30")
 
     def test_creates_exactly_ten_whatsapp_tables(self):
         created = set(re.findall(r"op\.create_table\(\s*'([^']+)'", _migration_src()))
@@ -297,6 +310,23 @@ class WhatsAppModelsTest(unittest.TestCase):
         idx_names = {ix.name for ix in self.metadata.tables["whatsapp_messages"].indexes}
         self.assertIn("uq_whatsapp_messages_provider_external_id", idx_names)
         self.assertIn("uq_whatsapp_messages_client_request_id", idx_names)
+
+    def test_recovery_lease_columns_present(self):
+        # Etapa 1D: columnas de lease/reintento en whatsapp_webhook_events.
+        cols = self.metadata.tables["whatsapp_webhook_events"].c
+        for name in ("processing_started_at", "next_retry_at", "locked_by"):
+            self.assertIn(name, cols, f"Falta la columna 1D {name}")
+        self.assertTrue(cols["processing_started_at"].nullable)
+        self.assertTrue(cols["next_retry_at"].nullable)
+        self.assertTrue(cols["locked_by"].nullable)
+        self.assertIsInstance(cols["processing_started_at"].type, sa.DateTime)
+        self.assertIsInstance(cols["next_retry_at"].type, sa.DateTime)
+        self.assertIsInstance(cols["locked_by"].type, sa.String)
+
+    def test_recovery_partial_indexes_present(self):
+        idx = {ix.name for ix in self.metadata.tables["whatsapp_webhook_events"].indexes}
+        self.assertIn("ix_whatsapp_webhook_events_processing_lease", idx)
+        self.assertIn("ix_whatsapp_webhook_events_retry_eligible", idx)
 
 
 class StartupInvariantTest(unittest.TestCase):
