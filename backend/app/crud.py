@@ -168,6 +168,31 @@ def get_leads(db: Session, skip: int = 0, limit: int = 5000, status: str = None,
             query = query.filter(or_(models.Lead.source.notin_(NORA_SOURCES), models.Lead.source.is_(None)))
     return query.order_by(models.Lead.id.desc()).offset(skip).limit(limit).all()
 
+def can_read_lead(user, lead) -> bool:
+    """
+    Política CANÓNICA de lectura de un lead (misma que expone `GET /leads`):
+
+      - admin -> puede leer cualquier lead;
+      - vendedor -> puede leer un lead si es PROPIO (`lead.seller == su email`) o si el
+        lead está en estado `NEW` (los NEW son visibles a todos los vendedores en la
+        bandeja de leads). Un lead de otro vendedor (no-NEW) NO es legible.
+
+    Se centraliza acá para no divergir de la política de leads/sales. Devuelve un
+    booleano; NUNCA revela por sí misma la existencia del lead (el llamador decide
+    exponer `lead_id` o dejarlo en null sin lanzar 403 ni consultar de otra forma).
+    """
+    if lead is None:
+        return False
+    if getattr(user, "role", None) == "admin":
+        return True
+    seller = getattr(lead, "seller", None)
+    if seller and seller == getattr(user, "email", None):
+        return True
+    status = getattr(lead, "status", None)
+    status_value = getattr(status, "value", status)
+    return str(status_value) == models.LeadStatus.NEW.value
+
+
 def update_lead(db: Session, lead_id: int, lead_data: dict):
     db_lead = db.query(models.Lead).filter(models.Lead.id == lead_id).first()
     if not db_lead:
