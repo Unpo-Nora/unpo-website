@@ -66,12 +66,14 @@ app.include_router(auth.router)
 app.include_router(analytics.router)
 app.include_router(sales.router)
 app.include_router(settings.router)
-from .routers import users, hr, finance, whatsapp
+from .routers import users, hr, finance, whatsapp, whatsapp_inbox
 app.include_router(users.router)
 app.include_router(hr.router)
 app.include_router(finance.router)
 # Webhook de WhatsApp Cloud API (público: la autenticación es la firma de Meta).
 app.include_router(whatsapp.router)
+# Inbox multiagente de WhatsApp (autenticado: JWT + autorización por usuario y línea).
+app.include_router(whatsapp_inbox.router)
 
 # Mount static images and videos
 images_path = "data/images"
