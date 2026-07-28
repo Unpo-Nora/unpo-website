@@ -25,8 +25,6 @@ MESSAGES_MAX_LIMIT = 100
 SEARCH_MAX_LENGTH = 100
 PREVIEW_MAX_LENGTH = 120
 
-_FROM_ATTRS = ConfigDict(from_attributes=True)
-
 
 class LineOut(BaseModel):
     """Línea accesible para el usuario. NO expone phone_number_id ni waba_id."""

@@ -204,7 +204,10 @@ def list_conversations(
             contact=_contact_out(contacts.get(c.contact_id), c.contact_id,
                                  masked.get(c.contact_id)),
             assigned_user=_assigned_user_out(users.get(c.assigned_user_id)),
-            last_message_at=c.last_message_at,
+            # Coherencia: los campos del "último mensaje" (incluido last_message_at)
+            # derivan del MISMO mensaje elegido por last_messages_for, no de
+            # conversation.last_message_at (que podría contradecirlo).
+            last_message_at=(last.created_at if last else c.last_message_at),
             last_message_direction=last.direction if last else None,
             last_message_type=last.message_type if last else None,
             last_message_preview=_preview(last.text_body) if last else None,

@@ -9,7 +9,9 @@ acceso y las consultas por lotes. Objetivos:
   - Cero N+1 en el listado del inbox: los datos derivados (última línea, contacto,
     no leídos, último mensaje, agente asignado) se cargan en lotes por página.
   - Compatibilidad cross-dialect: PostgreSQL (prod/harness) y SQLite (tests). Se evita
-    `DISTINCT ON`; el "último mensaje" se resuelve por `max(id)`.
+    `DISTINCT ON`; el "último mensaje" se resuelve con
+    `row_number() over (partition by conversation_id order by created_at desc, id desc)`
+    (un id mayor con `created_at` anterior NO es el último).
 
 Reglas de autorización
 ----------------------
@@ -164,21 +166,6 @@ def get_authorized_conversation(
     return conv if can_access_conversation(db, user, conv) else None
 
 
-def user_can_send_on_line(db: Session, user: models.User, line_id: int) -> bool:
-    """¿El usuario puede ENVIAR en la línea? (admin siempre; vendedor por can_send)."""
-    if is_admin(user):
-        return True
-    row = (
-        db.query(models.WhatsAppLineUserAccess.can_send)
-        .filter(
-            models.WhatsAppLineUserAccess.user_id == user.id,
-            models.WhatsAppLineUserAccess.line_id == line_id,
-        )
-        .first()
-    )
-    return bool(row[0]) if row is not None else False
-
-
 # --------------------------------------------------------------------------- #
 # No leídos POR usuario (whatsapp_conversation_reads)
 # --------------------------------------------------------------------------- #
@@ -235,9 +222,9 @@ def last_messages_for(
     """
     {conversation_id: ÚLTIMO mensaje} donde "último" = ORDER BY created_at DESC, id DESC.
 
-    NO usa max(id): un mensaje con id mayor pero created_at anterior no es el último.
-    Se resuelve en UN lote (sin N+1) con `row_number()` particionado, compatible con
-    PostgreSQL y SQLite (window functions).
+    Un id mayor con `created_at` anterior NO es el último. Se resuelve en UN lote (sin
+    N+1) con `row_number()` particionado, compatible con PostgreSQL y SQLite (window
+    functions).
     """
     if not conversation_ids:
         return {}

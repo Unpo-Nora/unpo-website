@@ -633,15 +633,17 @@ class LastMessageOrderingTest(InboxTestBase):
         c = models.WhatsAppContact(display_name="LMO")
         db.add(c)
         db.commit()
+        # conversation.last_message_at CONTRADICTORIO a propósito (12:59): el ítem debe
+        # derivar todos los campos del "último mensaje" del mensaje seleccionado (B, 12:10).
         conv = models.WhatsAppConversation(
             line_id=self.line1.id, contact_id=c.id, assigned_user_id=self.v1.id,
-            status="open", last_message_at=T0 + timedelta(minutes=10))
+            status="open", last_message_at=T0 + timedelta(minutes=59))
         db.add(conv)
         db.commit()
-        self._msg(conv, "inbound", "temprano", 5)
-        m_late = self._msg(conv, "outbound", "ultimo real", 10)
+        self._msg(conv, "inbound", "temprano", 5)                 # A: 12:05
+        m_late = self._msg(conv, "outbound", "ultimo real", 10)   # B: 12:10 (el último real)
         db.commit()
-        # id MAYOR pero created_at ANTERIOR (minuto 1): no debe ser el "último".
+        # C: id MAYOR pero created_at ANTERIOR (12:01): no debe ser el "último".
         m_higher_id = self._msg(conv, "inbound", "id mayor viejo", 1)
         db.commit()
         db.refresh(m_late)
@@ -653,6 +655,10 @@ class LastMessageOrderingTest(InboxTestBase):
         item = [x for x in r.json()["items"] if x["conversation_id"] == conv.id][0]
         self.assertEqual(item["last_message_preview"], "ultimo real")
         self.assertEqual(item["last_message_direction"], "outbound")
+        self.assertEqual(item["last_message_type"], "text")
+        # last_message_at debe reflejar B (12:10), NO conversation.last_message_at (12:59).
+        parsed = datetime.fromisoformat(item["last_message_at"].replace("Z", "+00:00"))
+        self.assertEqual((parsed.hour, parsed.minute), (12, 10))
 
 
 # =============================================================================== #
