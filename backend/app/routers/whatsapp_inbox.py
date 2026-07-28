@@ -26,15 +26,17 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import models
+from .. import crud, models
 from .. import schemas_whatsapp_inbox as sch
 from ..database import get_db
 from ..dependencies.permissions import VALID_ROLES, require_roles
 from ..services.whatsapp import inbox as svc
+from ..services.whatsapp.redaction import safe_error
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -96,18 +98,19 @@ def _assignment_out(row: models.WhatsAppConversationAssignment) -> sch.Assignmen
 # --------------------------------------------------------------------------- #
 @router.get("/lines", response_model=List[sch.LineOut])
 def list_lines(db: Session = Depends(get_db), current_user: models.User = Depends(_staff)):
-    """Líneas accesibles para el usuario (admin: todas; vendedor: por line_user_access)."""
-    lines = svc.accessible_lines(db, current_user)
-    access = svc.line_access_map(db, current_user)
-    out: List[sch.LineOut] = []
-    for line in lines:
-        perms = access.get(line.id, {"can_view": False, "can_send": False})
-        out.append(sch.LineOut(
+    """
+    Líneas del alcance EFECTIVO del usuario (admin: todas; vendedor: can_view UNION
+    líneas de conversaciones asignadas). Una línea incluida solo por asignación aparece
+    con can_view=true y can_send=false (salvo can_send explícito).
+    """
+    return [
+        sch.LineOut(
             id=line.id, label=line.label, display_number=line.display_number,
             provider=line.provider, is_active=line.is_active,
-            can_view=perms["can_view"], can_send=perms["can_send"],
-        ))
-    return out
+            can_view=can_view, can_send=can_send,
+        )
+        for (line, can_view, can_send) in svc.effective_lines(db, current_user)
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -234,11 +237,19 @@ def get_conversation(
     assigned = svc.users_by_ids(db, [conv.assigned_user_id]).get(conv.assigned_user_id)
     unread = svc.unread_count_single(db, current_user.id, conv.id)
 
+    # `lead_id` solo si el usuario está autorizado a LEER ese lead (política de leads).
+    # Si no, se devuelve null sin 403 ni revelar por otra vía que el lead existe.
+    lead_id_out = None
+    if conv.lead_id is not None:
+        lead = db.query(models.Lead).filter(models.Lead.id == conv.lead_id).first()
+        if lead is not None and crud.can_read_lead(current_user, lead):
+            lead_id_out = conv.lead_id
+
     return sch.ConversationDetail(
         conversation_id=conv.id,
         line=_line_ref(line, conv.line_id),
         contact=_contact_out(contact, conv.contact_id, masked),
-        lead_id=conv.lead_id,
+        lead_id=lead_id_out,
         assigned_user=_assigned_user_out(assigned),
         status=conv.status,
         unread_count=unread,
@@ -259,20 +270,41 @@ def get_messages(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(_staff),
     limit: int = Query(sch.MESSAGES_DEFAULT_LIMIT, ge=1, le=sch.MESSAGES_MAX_LIMIT),
-    offset: int = Query(0, ge=0),
+    cursor: Optional[str] = Query(None),
+    offset: Optional[int] = Query(None, ge=0, deprecated=True),
 ):
+    """
+    Historial paginado por **keyset/cursor** (mecanismo documentado). Orden canónico
+    `created_at ASC, id ASC`. `cursor` codifica (last_created_at, last_id); la página
+    siguiente trae `created_at > c` OR (`created_at = c` AND `id > c_id`). `offset` se
+    mantiene solo como compatibilidad deprecada y se ignora si viene `cursor`.
+    """
     conv = svc.get_authorized_conversation(db, current_user, conversation_id)
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
 
     M = models.WhatsAppMessage
-    # Orden estable (created_at, id) -> paginación histórica sin duplicados ni saltos.
-    q = (
-        db.query(M)
-        .filter(M.conversation_id == conv.id)
-        .order_by(M.created_at.asc(), M.id.asc())
-    )
-    rows = q.limit(limit + 1).offset(offset).all()
+    q = db.query(M).filter(M.conversation_id == conv.id)
+
+    use_offset = None
+    if cursor is not None:
+        try:
+            c_created, c_id = svc.decode_cursor(cursor)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Cursor inválido")
+        # El cursor es solo una posición; la consulta sigue acotada a esta conversación,
+        # así que un cursor de otra conversación no otorga acceso ni amplía el scope.
+        q = q.filter(or_(M.created_at > c_created,
+                         and_(M.created_at == c_created, M.id > c_id)))
+
+    # order_by SIEMPRE antes de offset/limit.
+    q = q.order_by(M.created_at.asc(), M.id.asc())
+    if cursor is None:
+        use_offset = offset or 0
+        if use_offset:
+            q = q.offset(use_offset)
+
+    rows = q.limit(limit + 1).all()
     has_more = len(rows) > limit
     rows = rows[:limit]
 
@@ -285,8 +317,12 @@ def get_messages(
         )
         for m in rows
     ]
+    next_cursor = (
+        svc.encode_cursor(rows[-1].created_at, rows[-1].id) if rows and has_more else None
+    )
     return sch.MessagesResponse(
-        items=items, limit=limit, offset=offset, count=len(items), has_more=has_more,
+        items=items, limit=limit, count=len(items), has_more=has_more,
+        next_cursor=next_cursor, offset=use_offset,
     )
 
 
@@ -318,11 +354,10 @@ def unread_counts(db: Session = Depends(get_db),
         if lid is not None:
             per_line[lid] = per_line.get(lid, 0) + n
 
-    lines = svc.accessible_lines(db, current_user)
     items = [
         sch.LineUnread(line_id=line.id, label=line.label,
                        unread_count=per_line.get(line.id, 0))
-        for line in lines
+        for (line, _cv, _cs) in svc.effective_lines(db, current_user)
     ]
     return sch.UnreadCountsResponse(total_unread=total, lines=items)
 
@@ -330,6 +365,17 @@ def unread_counts(db: Session = Depends(get_db),
 # --------------------------------------------------------------------------- #
 # POST /whatsapp/conversations/{id}/read
 # --------------------------------------------------------------------------- #
+def _advance_read(read, target_id):
+    """Avanza el puntero de lectura solo hacia adelante. Devuelve True si cambió."""
+    if target_id is not None and (
+        read.last_read_message_id is None or target_id > read.last_read_message_id
+    ):
+        read.last_read_message_id = target_id
+        read.last_read_at = _utcnow()
+        return True
+    return False
+
+
 @router.post("/conversations/{conversation_id}/read", response_model=sch.ReadResponse)
 def mark_read(
     conversation_id: int,
@@ -337,45 +383,71 @@ def mark_read(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(_staff),
 ):
-    conv = svc.get_authorized_conversation(db, current_user, conversation_id)
-    if conv is None:
-        raise HTTPException(status_code=404, detail="Conversación no encontrada")
-
+    """
+    Marca leído de forma ATÓMICA y MONOTÓNICA. La conversación se bloquea con
+    `FOR UPDATE` como mutex por conversation_id: serializa marcados concurrentes y cubre
+    la creación inicial de la fila de lectura, de modo que `last_read_message_id` solo
+    avanza, hay a lo sumo una fila por (conversation_id, user_id) y una carrera de
+    creación nunca produce 500. Rollback completo ante cualquier error.
+    """
+    C = models.WhatsAppConversation
     M = models.WhatsAppMessage
     R = models.WhatsAppConversationRead
-    payload = body or sch.ReadRequest()
 
+    conv = db.query(C).filter(C.id == conversation_id).with_for_update().first()
+    if conv is None:
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    # Revalidar autorización BAJO el lock.
+    if not svc.can_access_conversation(db, current_user, conv):
+        db.rollback()
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+
+    payload = body or sch.ReadRequest()
     if payload.last_read_message_id is not None:
-        # El mensaje DEBE pertenecer a esta conversación (aislamiento).
         belongs = (
             db.query(M.id)
             .filter(M.id == payload.last_read_message_id, M.conversation_id == conv.id)
             .first()
         )
         if belongs is None:
+            db.rollback()
             raise HTTPException(status_code=404,
                                 detail="Mensaje no encontrado en la conversación")
         target_id = payload.last_read_message_id
     else:
-        # Sin cuerpo: marca hasta el último mensaje de la conversación.
         target_id = db.query(func.max(M.id)).filter(M.conversation_id == conv.id).scalar()
 
-    read = (
-        db.query(R)
-        .filter(R.conversation_id == conv.id, R.user_id == current_user.id)
-        .first()
-    )
-    if read is None:
-        read = R(conversation_id=conv.id, user_id=current_user.id,
-                 last_read_message_id=target_id, last_read_at=_utcnow())
-        db.add(read)
-    elif target_id is not None and (
-        read.last_read_message_id is None or target_id > read.last_read_message_id
-    ):
-        # Nunca retrocede: solo avanza el puntero de lectura (idempotente).
-        read.last_read_message_id = target_id
-        read.last_read_at = _utcnow()
-    db.commit()
+    try:
+        read = (
+            db.query(R)
+            .filter(R.conversation_id == conv.id, R.user_id == current_user.id)
+            .first()
+        )
+        if read is None:
+            read = R(conversation_id=conv.id, user_id=current_user.id,
+                     last_read_message_id=target_id, last_read_at=_utcnow())
+            db.add(read)
+        else:
+            _advance_read(read, target_id)
+        db.commit()
+    except IntegrityError:
+        # Defensa extra al mutex: si otra transacción creó la fila, se avanza sobre ella.
+        db.rollback()
+        read = (
+            db.query(R)
+            .filter(R.conversation_id == conv.id, R.user_id == current_user.id)
+            .first()
+        )
+        if read is None:
+            raise
+        _advance_read(read, target_id)
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        db.rollback()
+        logger.error("[whatsapp-inbox] fallo marcando leído conversation_id=%s: %s",
+                     conversation_id, safe_error(exc))
+        raise HTTPException(status_code=500, detail="No se pudo marcar como leído")
 
     unread = svc.unread_count_single(db, current_user.id, conv.id)
     return sch.ReadResponse(
@@ -396,39 +468,52 @@ def assign_conversation(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(_admin_only),
 ):
-    """Asigna/reasigna una conversación. Solo admin. Transacción atómica + auditoría."""
+    """
+    Asigna/reasigna una conversación. Solo admin. ATÓMICO bajo `FOR UPDATE`: se bloquea
+    la conversación antes de leer `old_user_id`, se evalúa "mismo usuario" y se revalida
+    el acceso del destino a la línea DENTRO de la transacción, y la actualización más el
+    historial se confirman juntos. Concurrentes se serializan → el historial forma una
+    cadena lineal (cada `from_user_id` = el estado confirmado inmediatamente anterior).
+    Rollback completo ante cualquier error.
+    """
     C = models.WhatsAppConversation
-    conv = db.query(C).filter(C.id == conversation_id).first()
+    conv = db.query(C).filter(C.id == conversation_id).with_for_update().first()
     if conv is None:
+        db.rollback()
         raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    line_id = conv.line_id
 
     target = db.query(models.User).filter(
         models.User.id == body.assigned_user_id).first()
     if target is None or target.role not in VALID_ROLES:
+        db.rollback()
         raise HTTPException(status_code=400, detail="Usuario destino inválido")
 
-    # El usuario destino debe tener acceso a la línea (admin lo tiene siempre).
+    # El usuario destino debe tener acceso a la línea (admin lo tiene siempre); se
+    # revalida BAJO el lock.
     if target.role != svc.ROLE_ADMIN:
         has_access = (
             db.query(models.WhatsAppLineUserAccess.id)
             .filter(
                 models.WhatsAppLineUserAccess.user_id == target.id,
-                models.WhatsAppLineUserAccess.line_id == conv.line_id,
+                models.WhatsAppLineUserAccess.line_id == line_id,
                 models.WhatsAppLineUserAccess.can_view.is_(True),
             )
             .first()
         )
         if has_access is None:
+            db.rollback()
             raise HTTPException(
                 status_code=400,
                 detail="El usuario destino no tiene acceso a la línea",
             )
 
-    old_user_id = conv.assigned_user_id
+    old_user_id = conv.assigned_user_id  # leído BAJO el lock
     if old_user_id == target.id:
-        # Sin cambio: no se agrega entrada de historial (idempotente).
+        # Sin cambio: se libera el lock y NO se agrega historial (idempotente).
+        db.rollback()
         return sch.AssignmentResponse(
-            conversation_id=conv.id, assigned_user_id=old_user_id,
+            conversation_id=conversation_id, assigned_user_id=old_user_id,
             changed=False, assignment=None,
         )
 
@@ -436,7 +521,7 @@ def assign_conversation(
         conv.assigned_user_id = target.id
         conv.assignment_source = svc.ASSIGNMENT_SOURCE_MANUAL
         history = models.WhatsAppConversationAssignment(
-            conversation_id=conv.id,
+            conversation_id=conversation_id,
             from_user_id=old_user_id,
             to_user_id=target.id,
             assigned_by_user_id=current_user.id,
@@ -447,15 +532,17 @@ def assign_conversation(
         db.add(history)
         db.commit()
         db.refresh(history)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
         db.rollback()
-        logger.exception("[whatsapp-inbox] fallo asignando conversation_id=%s", conv.id)
+        # safe_error: sin SQL, sin parámetros (reason/email/teléfono), sin traceback.
+        logger.error("[whatsapp-inbox] fallo asignando conversation_id=%s: %s",
+                     conversation_id, safe_error(exc))
         raise HTTPException(status_code=500, detail="No se pudo asignar la conversación")
 
     logger.info("[whatsapp-inbox] conversación asignada conversation_id=%s to_user_id=%s",
-                conv.id, target.id)
+                conversation_id, target.id)
     return sch.AssignmentResponse(
-        conversation_id=conv.id, assigned_user_id=target.id,
+        conversation_id=conversation_id, assigned_user_id=target.id,
         changed=True, assignment=_assignment_out(history),
     )
 

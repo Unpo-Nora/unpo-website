@@ -111,9 +111,12 @@ class MessageOut(BaseModel):
 class MessagesResponse(BaseModel):
     items: List[MessageOut]
     limit: int
-    offset: int
     count: int
     has_more: bool
+    # Cursor pagination (keyset) — mecanismo documentado del historial.
+    next_cursor: Optional[str] = None
+    # `offset` se mantiene SOLO como compatibilidad explícitamente deprecada.
+    offset: Optional[int] = None
 
 
 class ReadRequest(BaseModel):

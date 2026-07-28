@@ -35,9 +35,14 @@ Prefijo: todas las rutas cuelgan de `/whatsapp` (sin `/api/v1`, consistente con 
 ## Endpoints
 
 ### `GET /whatsapp/lines`
-Líneas accesibles para el usuario. Admin: todas. Vendedor: solo las de su
-`whatsapp_line_user_access`. Cada ítem: `id, label, display_number, provider, is_active,
-can_view, can_send`. **No** expone `phone_number_id` ni `waba_id`.
+Líneas del **alcance efectivo** del usuario. Admin: todas. Vendedor:
+`effective_line_ids = líneas con can_view=true  UNION  líneas de conversaciones
+asignadas al usuario`. Una línea incluida **solo por asignación** aparece con
+`can_view=true` y `can_send=false` (salvo un `can_send=true` explícito en
+`whatsapp_line_user_access`). El acceso por asignación **no** se convierte en acceso
+global a la línea (ver «Alcance efectivo de líneas»). Cada ítem: `id, label,
+display_number, provider, is_active, can_view, can_send`. **No** expone `phone_number_id`
+ni `waba_id`.
 
 ### `GET /whatsapp/conversations`
 Listado paginado. **Filtros** (query params):
@@ -61,16 +66,34 @@ Orden: por `coalesce(last_message_at, created_at)` desc, `id` desc. Respuesta:
 mensaje, `last_message_preview` (≤120 chars) y `unread_count` del usuario actual.
 
 ### `GET /whatsapp/conversations/{id}`
-Detalle autorizado: `line`, `contact` (enmascarado), `lead_id` (si existe), `assigned_user`,
+Detalle autorizado: `line`, `contact` (enmascarado), `lead_id`, `assigned_user`,
 `status`, `unread_count`, y timestamps (`last_message_at`, `last_inbound_at`, `created_at`,
 `updated_at`). No accesible → **404**.
 
+`lead_id` se devuelve **solo si el usuario está autorizado a LEER ese lead** según la
+política canónica de leads (`crud.can_read_lead`): admin siempre; vendedor si el lead es
+propio (`lead.seller == su email`) o está en estado `NEW`. Un vendedor con acceso a la
+conversación pero **no al lead** (lead de otro vendedor) recibe `lead_id=null`; nunca se
+responde 403 ni se revela por otra vía que el lead existe.
+
 ### `GET /whatsapp/conversations/{id}/messages`
-Historial paginado. Orden **estable** por `(created_at, id)` ascendente → carga histórica
-sin duplicados ni saltos. Params `limit` (1..100, def. 50) y `offset` (≥0). Respuesta
-`{ items[], limit, offset, count, has_more }`. Cada mensaje: `id, conversation_id,
-direction, message_type, text_body, current_status, provider_timestamp, sender_user_id,
-created_at`. **No** expone `external_message_id` (wamid) ni `raw_payload`.
+Historial paginado por **keyset/cursor** (mecanismo canónico). Orden `created_at ASC,
+id ASC`. Params:
+
+- `limit` (1..100, def. 50);
+- `cursor` (opaco): codifica `(last_created_at, last_id)`; la página siguiente trae
+  `created_at > cursor OR (created_at = cursor AND id > cursor_id)`. Un `cursor` inválido →
+  **422**. El cursor es solo una **posición**: la consulta siempre queda acotada a la
+  conversación autorizada, así que un cursor de otra conversación no otorga acceso ni
+  amplía el scope;
+- `offset` (≥0): **deprecado**, solo compatibilidad; se ignora si viene `cursor`.
+
+Respuesta `{ items[], limit, count, has_more, next_cursor, offset }`. `next_cursor` viene
+cuando `has_more` (posición para la próxima página). Solo la ruta con **cursor** garantiza
+carga histórica sin duplicados ni saltos ante inserciones concurrentes; `offset` no lo
+garantiza. Cada mensaje: `id, conversation_id, direction, message_type, text_body,
+current_status, provider_timestamp, sender_user_id, created_at`. **No** expone
+`external_message_id` (wamid) ni `raw_payload`.
 
 ### `GET /whatsapp/unread-counts`
 Totales de no leídos del usuario: `{ total_unread, lines: [{ line_id, label, unread_count }] }`,
@@ -83,6 +106,13 @@ Marca leído. Body opcional `{ "last_read_message_id": <int> }`:
 - **Upsert** por `(conversation_id, user_id)`; **nunca retrocede** el puntero (solo avanza).
 - **Idempotente**; aislado por usuario. Respuesta: `{ conversation_id, last_read_message_id,
   unread_count }`.
+
+**Garantías de concurrencia**: la conversación se bloquea con `SELECT ... FOR UPDATE` como
+mutex por `conversation_id`, se revalida la autorización bajo el lock, y esto serializa los
+marcados concurrentes cubriendo también la **creación inicial** de la fila de lectura. Bajo
+carrera: ambos requests responden 200, existe **una sola** fila por `(conversation_id,
+user_id)`, `last_read_message_id` solo avanza (nunca regresa) y una carrera de creación
+nunca produce 500. Validado en PostgreSQL 17 con hilos concurrentes.
 
 ### `PATCH /whatsapp/conversations/{id}/assignment` — solo admin
 Body `{ "assigned_user_id": <int>, "reason": <str?> }` (`extra=forbid`, sin mass-assignment).
@@ -97,6 +127,14 @@ Reglas:
 - **Desasignar no está habilitado** en esta etapa (la arquitectura no lo autoriza): el body
   exige un `assigned_user_id` válido.
 
+**Garantías de concurrencia**: la conversación se carga con `SELECT ... FOR UPDATE` antes de
+leer `old_user_id`; la evaluación de «mismo usuario» y la revalidación del acceso del
+destino a la línea ocurren **bajo el lock**, y la actualización más el historial se confirman
+juntos (rollback completo ante error). Dos reasignaciones concurrentes se **serializan**: el
+historial forma una **cadena lineal** donde cada `from_user_id` coincide con el estado
+confirmado inmediatamente anterior (sin dos entradas basadas en el mismo estado obsoleto), y
+la conversación final coincide con el último `to_user_id`. Validado en PostgreSQL 17.
+
 Respuesta: `{ conversation_id, assigned_user_id, changed, assignment }`.
 
 ### `GET /whatsapp/conversations/{id}/assignments`
@@ -109,6 +147,27 @@ to_user_id, assigned_by_user_id, assignment_source, reason, created_at`.
 `whatsapp_conversation_reads`). Si no hay fila de lectura, todos los inbound cuentan. Los
 **outbound nunca** cuentan. El marcado de un usuario no afecta a otro. En el listado se
 calcula en **una sola consulta** (LEFT JOIN), sin N+1.
+
+## Alcance efectivo de líneas
+
+`effective_line_ids = líneas con can_view=true  UNION  líneas de conversaciones asignadas
+al usuario`. Se usa de forma consistente en `GET /whatsapp/lines` y en el desglose por línea
+de `GET /whatsapp/unread-counts`. Una línea incluida **solo por asignación** aparece con
+`can_view=true` y `can_send=false` (salvo `can_send=true` explícito).
+
+Importante: el acceso por asignación **no** se convierte en acceso global a la línea. La
+**visibilidad de conversaciones** (listado y detalle) sigue gobernada por
+`assigned_to_me OR line_id IN {líneas con can_view}`: un vendedor asignado a una sola
+conversación de una línea (sin `line_user_access`) ve **esa** conversación y la línea
+aparece en su inbox, pero **no** ve las demás conversaciones no asignadas de esa línea.
+
+## Usuario activo (limitación actual)
+
+El modelo `User` (`id, email, hashed_password, full_name, role`) **no** tiene un campo
+`is_active`/`disabled`. Por eso la validación del usuario destino en la asignación se limita
+a **existencia + rol válido** (`admin`/`vendedor`); no hay validación de «usuario activo».
+No se crea migración comercial para agregar el campo en esta etapa
+(`active_user_validation = NOT_SUPPORTED_BY_CURRENT_USER_MODEL`).
 
 ## Códigos HTTP
 

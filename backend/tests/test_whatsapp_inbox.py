@@ -12,12 +12,15 @@ Mismas convenciones que el resto de la suite del backend:
 """
 
 import asyncio
+import base64
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, event
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -553,6 +556,265 @@ class FilterTest(InboxTestBase):
                               params={"line_id": self.line2.id})
         ids = {c["conversation_id"] for c in resp.json()["items"]}
         self.assertEqual(ids, {self.conv3.id})
+
+
+# =============================================================================== #
+# §2 — lead_id condicionado por la política de lectura de leads
+# =============================================================================== #
+class LeadIdAuthorizationTest(InboxTestBase):
+    def setUp(self):
+        super().setUp()
+        self._n = 100
+        db = self.db
+        self.lead_v1 = models.Lead(full_name="Lead de V1", seller=self.v1.email,
+                                   status=models.LeadStatus.CONTACTED)
+        self.lead_v2 = models.Lead(full_name="Lead de V2", seller=self.v2.email,
+                                   status=models.LeadStatus.CONTACTED)
+        self.lead_new = models.Lead(full_name="Lead NEW", status=models.LeadStatus.NEW)
+        db.add_all([self.lead_v1, self.lead_v2, self.lead_new])
+        db.commit()
+
+    def _conv_with_lead(self, line, assigned, lead):
+        c = models.WhatsAppContact(display_name=f"LC{self._n}")
+        self._n += 1
+        self.db.add(c)
+        self.db.commit()
+        conv = models.WhatsAppConversation(
+            line_id=line.id, contact_id=c.id,
+            assigned_user_id=(assigned.id if assigned else None), status="open",
+            lead_id=(lead.id if lead else None), last_message_at=T0)
+        self.db.add(conv)
+        self.db.commit()
+        return conv
+
+    def test_admin_sees_lead_id(self):
+        conv = self._conv_with_lead(self.line1, self.v1, self.lead_v2)
+        self.as_user(self.admin)
+        r = self.client.get(f"/whatsapp/conversations/{conv.id}")
+        self.assertEqual(r.json()["lead_id"], self.lead_v2.id)
+
+    def test_owner_seller_sees_lead_id(self):
+        conv = self._conv_with_lead(self.line1, None, self.lead_v1)
+        self.as_user(self.v1)
+        r = self.client.get(f"/whatsapp/conversations/{conv.id}")
+        self.assertEqual(r.json()["lead_id"], self.lead_v1.id)
+
+    def test_line_access_but_foreign_lead_null(self):
+        conv = self._conv_with_lead(self.line1, None, self.lead_v2)
+        self.as_user(self.v1)
+        r = self.client.get(f"/whatsapp/conversations/{conv.id}")
+        self.assertIsNone(r.json()["lead_id"])
+
+    def test_assigned_but_foreign_lead_null(self):
+        conv = self._conv_with_lead(self.line1, self.v1, self.lead_v2)
+        self.as_user(self.v1)
+        r = self.client.get(f"/whatsapp/conversations/{conv.id}")
+        self.assertIsNone(r.json()["lead_id"])
+
+    def test_no_lead_null(self):
+        conv = self._conv_with_lead(self.line1, self.v1, None)
+        self.as_user(self.v1)
+        r = self.client.get(f"/whatsapp/conversations/{conv.id}")
+        self.assertIsNone(r.json()["lead_id"])
+
+    def test_new_lead_visible_to_seller(self):
+        conv = self._conv_with_lead(self.line1, None, self.lead_new)
+        self.as_user(self.v1)
+        r = self.client.get(f"/whatsapp/conversations/{conv.id}")
+        self.assertEqual(r.json()["lead_id"], self.lead_new.id)
+
+
+# =============================================================================== #
+# §7 — último mensaje por (created_at, id), no por max(id)
+# =============================================================================== #
+class LastMessageOrderingTest(InboxTestBase):
+    def test_last_message_by_created_at_not_max_id(self):
+        db = self.db
+        c = models.WhatsAppContact(display_name="LMO")
+        db.add(c)
+        db.commit()
+        conv = models.WhatsAppConversation(
+            line_id=self.line1.id, contact_id=c.id, assigned_user_id=self.v1.id,
+            status="open", last_message_at=T0 + timedelta(minutes=10))
+        db.add(conv)
+        db.commit()
+        self._msg(conv, "inbound", "temprano", 5)
+        m_late = self._msg(conv, "outbound", "ultimo real", 10)
+        db.commit()
+        # id MAYOR pero created_at ANTERIOR (minuto 1): no debe ser el "último".
+        m_higher_id = self._msg(conv, "inbound", "id mayor viejo", 1)
+        db.commit()
+        db.refresh(m_late)
+        db.refresh(m_higher_id)
+        self.assertGreater(m_higher_id.id, m_late.id)
+
+        self.as_user(self.admin)
+        r = self.client.get("/whatsapp/conversations")
+        item = [x for x in r.json()["items"] if x["conversation_id"] == conv.id][0]
+        self.assertEqual(item["last_message_preview"], "ultimo real")
+        self.assertEqual(item["last_message_direction"], "outbound")
+
+
+# =============================================================================== #
+# §8 — alcance efectivo de líneas por asignación
+# =============================================================================== #
+class AssignedOnlyLineScopeTest(InboxTestBase):
+    def setUp(self):
+        super().setUp()
+        db = self.db
+        self.v3 = models.User(email="v3@test.local", hashed_password="x",
+                              full_name="Vend Tres", role="vendedor")
+        db.add(self.v3)
+        db.commit()
+        # v3 SIN line_user_access, pero asignado a una conversación de line1.
+        c = models.WhatsAppContact(display_name="C-v3")
+        db.add(c)
+        db.commit()
+        self.conv_v3 = models.WhatsAppConversation(
+            line_id=self.line1.id, contact_id=c.id, assigned_user_id=self.v3.id,
+            status="open", last_message_at=T0 + timedelta(minutes=5))
+        db.add(self.conv_v3)
+        db.commit()
+        self._msg(self.conv_v3, "inbound", "hola v3", 1)
+        db.commit()
+
+    def test_v3_sees_only_assigned_conversation(self):
+        self.as_user(self.v3)
+        r = self.client.get("/whatsapp/conversations")
+        ids = {c["conversation_id"] for c in r.json()["items"]}
+        self.assertEqual(ids, {self.conv_v3.id})
+
+    def test_v3_line_in_lines_can_view_true_can_send_false(self):
+        self.as_user(self.v3)
+        r = self.client.get("/whatsapp/lines")
+        lines = {l["id"]: l for l in r.json()}
+        self.assertIn(self.line1.id, lines)
+        self.assertTrue(lines[self.line1.id]["can_view"])
+        self.assertFalse(lines[self.line1.id]["can_send"])
+
+    def test_v3_unread_totals_match(self):
+        self.as_user(self.v3)
+        conv_unread = self.client.get(
+            f"/whatsapp/conversations/{self.conv_v3.id}").json()["unread_count"]
+        uc = self.client.get("/whatsapp/unread-counts").json()
+        self.assertEqual(uc["total_unread"], conv_unread)
+        line1 = [l for l in uc["lines"] if l["line_id"] == self.line1.id][0]
+        self.assertEqual(line1["unread_count"], conv_unread)
+
+    def test_v3_does_not_see_other_unassigned_on_that_line(self):
+        # conv2 (line1, sin asignar) NO debe verse solo por tener conv_v3 asignada.
+        self.as_user(self.v3)
+        self.assertEqual(
+            self.client.get(f"/whatsapp/conversations/{self.conv2.id}").status_code, 404)
+
+
+# =============================================================================== #
+# §6 — cursor pagination del historial
+# =============================================================================== #
+class CursorPaginationTest(InboxTestBase):
+    def _conv_with_messages(self, minutes):
+        db = self.db
+        c = models.WhatsAppContact(display_name=f"CUR-{self._nonce()}")
+        db.add(c)
+        db.commit()
+        conv = models.WhatsAppConversation(
+            line_id=self.line1.id, contact_id=c.id, assigned_user_id=self.v1.id,
+            status="open", last_message_at=T0)
+        db.add(conv)
+        db.commit()
+        msgs = []
+        for i, minute in enumerate(minutes):
+            m = models.WhatsAppMessage(
+                conversation_id=conv.id, provider="meta", direction="inbound",
+                message_type="text", text_body=f"m{i}", current_status="delivered",
+                origin="cloud_api", created_at=T0 + timedelta(minutes=minute))
+            db.add(m)
+            msgs.append(m)
+        db.commit()
+        for m in msgs:
+            db.refresh(m)
+        return conv, msgs
+
+    _counter = 0
+
+    def _nonce(self):
+        CursorPaginationTest._counter += 1
+        return CursorPaginationTest._counter
+
+    def test_same_created_at_ordered_by_id(self):
+        conv, msgs = self._conv_with_messages([5, 5])
+        self.as_user(self.admin)
+        r1 = self.client.get(f"/whatsapp/conversations/{conv.id}/messages?limit=1")
+        self.assertEqual([m["id"] for m in r1.json()["items"]], [msgs[0].id])
+        self.assertTrue(r1.json()["has_more"])
+        cur = r1.json()["next_cursor"]
+        r2 = self.client.get(
+            f"/whatsapp/conversations/{conv.id}/messages?limit=1&cursor={cur}")
+        self.assertEqual([m["id"] for m in r2.json()["items"]], [msgs[1].id])
+
+    def test_page1_insert_page2_no_dup_no_skip(self):
+        conv, msgs = self._conv_with_messages([1, 2, 3])
+        self.as_user(self.admin)
+        r1 = self.client.get(f"/whatsapp/conversations/{conv.id}/messages?limit=2")
+        self.assertEqual([m["id"] for m in r1.json()["items"]], [msgs[0].id, msgs[1].id])
+        cur = r1.json()["next_cursor"]
+        newm = models.WhatsAppMessage(
+            conversation_id=conv.id, provider="meta", direction="inbound",
+            message_type="text", text_body="nuevo", current_status="delivered",
+            origin="cloud_api", created_at=T0 + timedelta(minutes=4))
+        self.db.add(newm)
+        self.db.commit()
+        self.db.refresh(newm)
+        r2 = self.client.get(
+            f"/whatsapp/conversations/{conv.id}/messages?limit=10&cursor={cur}")
+        ids2 = [m["id"] for m in r2.json()["items"]]
+        self.assertEqual(ids2, [msgs[2].id, newm.id])
+        self.assertNotIn(msgs[0].id, ids2)
+        self.assertNotIn(msgs[1].id, ids2)
+
+    def test_invalid_cursor_422(self):
+        conv, _ = self._conv_with_messages([1])
+        self.as_user(self.admin)
+        bad = base64.urlsafe_b64encode(b"sin-separador").decode("ascii")
+        r = self.client.get(f"/whatsapp/conversations/{conv.id}/messages?cursor={bad}")
+        self.assertEqual(r.status_code, 422)
+
+    def test_cursor_from_other_conversation_stays_scoped(self):
+        conv_a, _ = self._conv_with_messages([1, 2])
+        conv_b, msgs_b = self._conv_with_messages([1, 2, 3])
+        self.as_user(self.admin)
+        cur_a = self.client.get(
+            f"/whatsapp/conversations/{conv_a.id}/messages?limit=1").json()["next_cursor"]
+        rb = self.client.get(
+            f"/whatsapp/conversations/{conv_b.id}/messages?cursor={cur_a}")
+        conv_ids = {m["conversation_id"] for m in rb.json()["items"]}
+        self.assertEqual(conv_ids, {conv_b.id})
+        b_ids = {m.id for m in msgs_b}
+        for m in rb.json()["items"]:
+            self.assertIn(m["id"], b_ids)
+
+
+# =============================================================================== #
+# §5 — redacción de errores en logs
+# =============================================================================== #
+class LogRedactionTest(InboxTestBase):
+    def test_assignment_error_redacts_sensitive(self):
+        self.as_user(self.admin)
+        err = IntegrityError(
+            "INSERT INTO whatsapp_conversation_assignments (reason) VALUES (?)",
+            {"reason": "SECRET-MARKER-1G"},
+            Exception("constraint"))
+        with mock.patch.object(self.db, "commit", side_effect=err):
+            with self.assertLogs("uvicorn.error", level="ERROR") as cm:
+                r = self.client.patch(
+                    f"/whatsapp/conversations/{self.conv2.id}/assignment",
+                    json={"assigned_user_id": self.v1.id, "reason": "SECRET-MARKER-1G"})
+        self.assertEqual(r.status_code, 500)
+        logtext = "\n".join(cm.output)
+        self.assertNotIn("SECRET-MARKER-1G", logtext)
+        self.assertNotIn("[SQL:", logtext)
+        self.assertNotIn("[parameters:", logtext)
+        self.assertNotIn("Traceback", logtext)
 
 
 if __name__ == "__main__":
