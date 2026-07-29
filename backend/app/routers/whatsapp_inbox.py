@@ -114,6 +114,32 @@ def list_lines(db: Session = Depends(get_db), current_user: models.User = Depend
 
 
 # --------------------------------------------------------------------------- #
+# GET /whatsapp/assignable-users  (solo admin)
+# --------------------------------------------------------------------------- #
+@router.get("/assignable-users", response_model=List[sch.AssignableUserOut])
+def assignable_users(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(_admin_only),
+):
+    """
+    Usuarios asignables a una conversación (para el selector del admin). Solo admin.
+
+    Devuelve únicamente `id`, `full_name` y `role`, y SOLO usuarios con rol asignable
+    (`admin`/`vendedor`) — NUNCA email ni otros datos. Endpoint dedicado para no exponer
+    la respuesta completa de `GET /users/` en esta pantalla.
+    """
+    users = (
+        db.query(models.User)
+        .filter(models.User.role.in_(sorted(VALID_ROLES)))
+        .order_by(models.User.id)
+        .all()
+    )
+    return [
+        sch.AssignableUserOut(id=u.id, full_name=u.full_name, role=u.role) for u in users
+    ]
+
+
+# --------------------------------------------------------------------------- #
 # GET /whatsapp/conversations
 # --------------------------------------------------------------------------- #
 @router.get("/conversations", response_model=sch.ConversationListResponse)

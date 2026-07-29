@@ -44,6 +44,12 @@ global a la línea (ver «Alcance efectivo de líneas»). Cada ítem: `id, label
 display_number, provider, is_active, can_view, can_send`. **No** expone `phone_number_id`
 ni `waba_id`.
 
+### `GET /whatsapp/assignable-users` — solo admin
+Usuarios asignables a una conversación (para el selector del admin). Devuelve **solo**
+`id`, `full_name` y `role`, y únicamente usuarios con rol asignable (`admin`/`vendedor`).
+**No** expone `email`, `hashed_password` ni otros datos. Endpoint dedicado (1H): el inbox
+ya no reutiliza `GET /users/` para esta pantalla. No admin → **403**.
+
 ### `GET /whatsapp/conversations`
 Listado paginado. **Filtros** (query params):
 
