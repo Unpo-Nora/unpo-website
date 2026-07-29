@@ -77,23 +77,39 @@ conversación pero **no al lead** (lead de otro vendedor) recibe `lead_id=null`;
 responde 403 ni se revela por otra vía que el lead existe.
 
 ### `GET /whatsapp/conversations/{id}/messages`
-Historial paginado por **keyset/cursor** (mecanismo canónico). Orden `created_at ASC,
-id ASC`. Params:
+Historial paginado por **keyset/cursor** (mecanismo canónico). Los `items` **siempre** se
+devuelven en orden `created_at ASC, id ASC` (para renderizar el chat de antiguo a nuevo).
+Params:
 
 - `limit` (1..100, def. 50);
-- `cursor` (opaco): codifica `(last_created_at, last_id)`; la página siguiente trae
-  `created_at > cursor OR (created_at = cursor AND id > cursor_id)`. Un `cursor` inválido →
-  **422**. El cursor es solo una **posición**: la consulta siempre queda acotada a la
-  conversación autorizada, así que un cursor de otra conversación no otorga acceso ni
-  amplía el scope;
-- `offset` (≥0): **deprecado**, solo compatibilidad; se ignora si viene `cursor`.
+- `direction` (`forward` | `backward`, def. `forward`) — **paginación bidireccional (1H)**:
+  - `forward` (retrocompatible con 1G): sin `cursor` → primeros mensajes; con `cursor` →
+    mensajes **posteriores** (`created_at > c OR (== AND id > c_id)`);
+  - `backward`: sin `cursor` → **últimos N** mensajes; con `cursor` → mensajes **anteriores**
+    (`created_at < c OR (== AND id < c_id)`). Internamente consulta DESC para limitar y
+    revierte a ASC en la respuesta;
+- `cursor` (opaco): codifica `(last_created_at, last_id)`. Un `cursor` inválido → **422**. El
+  cursor es solo una **posición**: la consulta siempre queda acotada a la conversación
+  autorizada, así que un cursor de otra conversación no otorga acceso ni amplía el scope;
+- `offset` (≥0): **deprecado**, solo compatibilidad forward; se ignora si viene `cursor` o
+  `direction=backward`.
 
-Respuesta `{ items[], limit, count, has_more, next_cursor, offset }`. `next_cursor` viene
-cuando `has_more` (posición para la próxima página). Solo la ruta con **cursor** garantiza
-carga histórica sin duplicados ni saltos ante inserciones concurrentes; `offset` no lo
-garantiza. Cada mensaje: `id, conversation_id, direction, message_type, text_body,
-current_status, provider_timestamp, sender_user_id, created_at`. **No** expone
-`external_message_id` (wamid) ni `raw_payload`.
+Respuesta `{ items[], limit, count, has_more, next_cursor, offset, older_cursor,
+newer_cursor, direction }`:
+
+- `older_cursor` deriva del **primer** item entregado → cargar mensajes anteriores con
+  `direction=backward&cursor=older_cursor`;
+- `newer_cursor` deriva del **último** item entregado → traer mensajes nuevos con
+  `direction=forward&cursor=newer_cursor` (polling);
+- `has_more` es direccional: en `forward` indica que hay mensajes más nuevos; en `backward`,
+  más antiguos;
+- `next_cursor` conserva su **semántica forward** de 1G (compatibilidad); es `null` en
+  `backward`;
+- `direction` es el sentido de la consulta que produjo la página.
+
+Combinando páginas por `id` no hay duplicados ni saltos. Cada mensaje: `id, conversation_id,
+direction, message_type, text_body, current_status, provider_timestamp, sender_user_id,
+created_at`. **No** expone `external_message_id` (wamid) ni `raw_payload`. Sin migración.
 
 ### `GET /whatsapp/unread-counts`
 Totales de no leídos del usuario: `{ total_unread, lines: [{ line_id, label, unread_count }] }`,
