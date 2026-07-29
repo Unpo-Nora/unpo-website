@@ -15,7 +15,8 @@ import {
     MonitorSmartphone,
     X,
     Briefcase,
-    DollarSign
+    DollarSign,
+    MessageCircle
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -47,6 +48,12 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
             title: 'Clientes',
             path: '/admin/clients',
             icon: <Star size={20} />,
+            roles: ['admin', 'vendedor']
+        },
+        {
+            title: 'WhatsApp',
+            path: '/admin/whatsapp',
+            icon: <MessageCircle size={20} />,
             roles: ['admin', 'vendedor']
         },
         {
