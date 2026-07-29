@@ -58,6 +58,13 @@ class AssignedUserOut(BaseModel):
     role: Optional[str] = None
 
 
+class AssignableUserOut(BaseModel):
+    """Usuario asignable (para el selector admin). Solo id/full_name/role; NUNCA email."""
+    id: int
+    full_name: Optional[str] = None
+    role: str
+
+
 class ConversationListItem(BaseModel):
     conversation_id: int
     line: LineRef
@@ -115,6 +122,13 @@ class MessagesResponse(BaseModel):
     next_cursor: Optional[str] = None
     # `offset` se mantiene SOLO como compatibilidad explícitamente deprecada.
     offset: Optional[int] = None
+    # Paginación BIDIRECCIONAL (1H): los items siempre vienen en orden ASC (created_at, id).
+    # `older_cursor` deriva del PRIMER item entregado (cargar mensajes anteriores con
+    # direction=backward); `newer_cursor` deriva del ÚLTIMO item (traer mensajes nuevos
+    # con direction=forward). `direction` es el sentido de la consulta que produjo la página.
+    older_cursor: Optional[str] = None
+    newer_cursor: Optional[str] = None
+    direction: str = "forward"
 
 
 class ReadRequest(BaseModel):

@@ -24,7 +24,7 @@ asignación es exclusiva de admin (403 para el resto).
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func, or_
@@ -110,6 +110,32 @@ def list_lines(db: Session = Depends(get_db), current_user: models.User = Depend
             can_view=can_view, can_send=can_send,
         )
         for (line, can_view, can_send) in svc.effective_lines(db, current_user)
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# GET /whatsapp/assignable-users  (solo admin)
+# --------------------------------------------------------------------------- #
+@router.get("/assignable-users", response_model=List[sch.AssignableUserOut])
+def assignable_users(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(_admin_only),
+):
+    """
+    Usuarios asignables a una conversación (para el selector del admin). Solo admin.
+
+    Devuelve únicamente `id`, `full_name` y `role`, y SOLO usuarios con rol asignable
+    (`admin`/`vendedor`) — NUNCA email ni otros datos. Endpoint dedicado para no exponer
+    la respuesta completa de `GET /users/` en esta pantalla.
+    """
+    users = (
+        db.query(models.User)
+        .filter(models.User.role.in_(sorted(VALID_ROLES)))
+        .order_by(models.User.id)
+        .all()
+    )
+    return [
+        sch.AssignableUserOut(id=u.id, full_name=u.full_name, role=u.role) for u in users
     ]
 
 
@@ -274,13 +300,23 @@ def get_messages(
     current_user: models.User = Depends(_staff),
     limit: int = Query(sch.MESSAGES_DEFAULT_LIMIT, ge=1, le=sch.MESSAGES_MAX_LIMIT),
     cursor: Optional[str] = Query(None),
+    direction: Literal["forward", "backward"] = Query("forward"),
     offset: Optional[int] = Query(None, ge=0, deprecated=True),
 ):
     """
-    Historial paginado por **keyset/cursor** (mecanismo documentado). Orden canónico
-    `created_at ASC, id ASC`. `cursor` codifica (last_created_at, last_id); la página
-    siguiente trae `created_at > c` OR (`created_at = c` AND `id > c_id`). `offset` se
-    mantiene solo como compatibilidad deprecada y se ignora si viene `cursor`.
+    Historial paginado por **keyset/cursor**. Los `items` SIEMPRE se devuelven en orden
+    `created_at ASC, id ASC` (para renderizar el chat de antiguo a nuevo).
+
+    - `direction=forward` (default, retrocompatible): sin cursor → primeros mensajes; con
+      cursor → mensajes POSTERIORES al cursor (`created_at > c OR (== AND id > c_id)`).
+      `offset` es compatibilidad deprecada, forward-only, ignorada si viene `cursor`.
+    - `direction=backward`: sin cursor → últimos N mensajes; con cursor → mensajes
+      ANTERIORES al cursor (`created_at < c OR (== AND id < c_id)`). Internamente se
+      consulta DESC para limitar y se **revierte a ASC** en la respuesta.
+
+    Campos de cursor: `older_cursor` (del primer item → cargar anteriores con backward),
+    `newer_cursor` (del último item → traer nuevos con forward). `next_cursor` se conserva
+    con su semántica forward (compatibilidad). El cursor no amplía autorización ni scope.
     """
     conv = svc.get_authorized_conversation(db, current_user, conversation_id)
     if conv is None:
@@ -289,27 +325,33 @@ def get_messages(
     M = models.WhatsAppMessage
     q = db.query(M).filter(M.conversation_id == conv.id)
 
-    use_offset = None
+    c_created = c_id = None
     if cursor is not None:
         try:
             c_created, c_id = svc.decode_cursor(cursor)
         except ValueError:
             raise HTTPException(status_code=422, detail="Cursor inválido")
-        # El cursor es solo una posición; la consulta sigue acotada a esta conversación,
-        # así que un cursor de otra conversación no otorga acceso ni amplía el scope.
-        q = q.filter(or_(M.created_at > c_created,
-                         and_(M.created_at == c_created, M.id > c_id)))
 
-    # order_by SIEMPRE antes de offset/limit.
-    q = q.order_by(M.created_at.asc(), M.id.asc())
-    if cursor is None:
-        use_offset = offset or 0
-        if use_offset:
-            q = q.offset(use_offset)
-
-    rows = q.limit(limit + 1).all()
-    has_more = len(rows) > limit
-    rows = rows[:limit]
+    use_offset = None
+    if direction == "forward":
+        if cursor is not None:
+            q = q.filter(or_(M.created_at > c_created,
+                             and_(M.created_at == c_created, M.id > c_id)))
+        q = q.order_by(M.created_at.asc(), M.id.asc())
+        if cursor is None:
+            use_offset = offset or 0
+            if use_offset:
+                q = q.offset(use_offset)
+        rows = q.limit(limit + 1).all()
+        has_more = len(rows) > limit           # hay mensajes MÁS NUEVOS después
+        rows = rows[:limit]
+    else:  # backward: DESC para limitar, luego revertir a ASC
+        if cursor is not None:
+            q = q.filter(or_(M.created_at < c_created,
+                             and_(M.created_at == c_created, M.id < c_id)))
+        rows_desc = q.order_by(M.created_at.desc(), M.id.desc()).limit(limit + 1).all()
+        has_more = len(rows_desc) > limit       # hay mensajes MÁS ANTIGUOS antes
+        rows = list(reversed(rows_desc[:limit]))
 
     items = [
         sch.MessageOut(
@@ -320,12 +362,15 @@ def get_messages(
         )
         for m in rows
     ]
-    next_cursor = (
-        svc.encode_cursor(rows[-1].created_at, rows[-1].id) if rows and has_more else None
-    )
+    older_cursor = svc.encode_cursor(rows[0].created_at, rows[0].id) if rows else None
+    newer_cursor = svc.encode_cursor(rows[-1].created_at, rows[-1].id) if rows else None
+    # next_cursor: semántica forward heredada (continuar hacia mensajes más nuevos).
+    next_cursor = newer_cursor if (direction == "forward" and has_more) else None
+
     return sch.MessagesResponse(
         items=items, limit=limit, count=len(items), has_more=has_more,
         next_cursor=next_cursor, offset=use_offset,
+        older_cursor=older_cursor, newer_cursor=newer_cursor, direction=direction,
     )
 
 

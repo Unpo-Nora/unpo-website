@@ -823,5 +823,176 @@ class LogRedactionTest(InboxTestBase):
         self.assertNotIn("Traceback", logtext)
 
 
+# =============================================================================== #
+# §3 (1H) — paginación bidireccional de mensajes (direction=forward|backward)
+# =============================================================================== #
+class BidirectionalPaginationTest(InboxTestBase):
+    _n = 0
+
+    def _mk(self, minutes):
+        BidirectionalPaginationTest._n += 1
+        c = models.WhatsAppContact(display_name=f"BP{BidirectionalPaginationTest._n}")
+        self.db.add(c)
+        self.db.commit()
+        conv = models.WhatsAppConversation(
+            line_id=self.line1.id, contact_id=c.id, assigned_user_id=self.v1.id,
+            status="open", last_message_at=T0)
+        self.db.add(conv)
+        self.db.commit()
+        msgs = []
+        for i, mnt in enumerate(minutes):
+            m = models.WhatsAppMessage(
+                conversation_id=conv.id, provider="meta", direction="inbound",
+                message_type="text", text_body=f"m{i}", current_status="delivered",
+                origin="cloud_api", created_at=T0 + timedelta(minutes=mnt))
+            self.db.add(m)
+            msgs.append(m)
+        self.db.commit()
+        for m in msgs:
+            self.db.refresh(m)
+        return conv, msgs
+
+    def _get(self, conv_id, **params):
+        qs = "&".join(f"{k}={v}" for k, v in params.items())
+        return self.client.get(f"/whatsapp/conversations/{conv_id}/messages?{qs}")
+
+    def test_backward_no_cursor_returns_last_n(self):
+        conv, m = self._mk(list(range(1, 11)))  # m0..m9
+        self.as_user(self.admin)
+        b = self._get(conv.id, direction="backward", limit=3).json()
+        self.assertEqual([x["id"] for x in b["items"]], [m[7].id, m[8].id, m[9].id])  # ASC
+        self.assertEqual(b["direction"], "backward")
+        self.assertTrue(b["has_more"])            # existen más antiguos
+        self.assertIsNotNone(b["older_cursor"])
+        self.assertIsNotNone(b["newer_cursor"])
+
+    def test_backward_with_cursor_loads_older(self):
+        conv, m = self._mk(list(range(1, 11)))
+        self.as_user(self.admin)
+        p1 = self._get(conv.id, direction="backward", limit=3).json()
+        p2 = self._get(conv.id, direction="backward", limit=3, cursor=p1["older_cursor"]).json()
+        self.assertEqual([x["id"] for x in p2["items"]], [m[4].id, m[5].id, m[6].id])
+        ids1 = {x["id"] for x in p1["items"]}
+        ids2 = {x["id"] for x in p2["items"]}
+        self.assertEqual(ids1 & ids2, set())      # sin solapamiento
+
+    def test_forward_newer_cursor_gets_new(self):
+        conv, m = self._mk([1, 2, 3, 4, 5])
+        self.as_user(self.admin)
+        last = self._get(conv.id, direction="backward", limit=5).json()
+        newer = last["newer_cursor"]
+        newm = models.WhatsAppMessage(
+            conversation_id=conv.id, provider="meta", direction="inbound",
+            message_type="text", text_body="nuevo", current_status="delivered",
+            origin="cloud_api", created_at=T0 + timedelta(minutes=6))
+        self.db.add(newm)
+        self.db.commit()
+        self.db.refresh(newm)
+        f = self._get(conv.id, direction="forward", cursor=newer).json()
+        self.assertEqual([x["id"] for x in f["items"]], [newm.id])
+
+    def test_created_at_tie_broken_by_id_backward(self):
+        conv, m = self._mk([5, 5])  # mismo created_at, ids distintos
+        self.as_user(self.admin)
+        p1 = self._get(conv.id, direction="backward", limit=1).json()
+        self.assertEqual([x["id"] for x in p1["items"]], [m[1].id])  # id mayor primero
+        p2 = self._get(conv.id, direction="backward", limit=1, cursor=p1["older_cursor"]).json()
+        self.assertEqual([x["id"] for x in p2["items"]], [m[0].id])
+
+    def test_no_duplicates_paging_backward(self):
+        conv, m = self._mk(list(range(1, 8)))  # 7 mensajes
+        self.as_user(self.admin)
+        seen = []
+        cursor = None
+        for _ in range(10):
+            params = {"direction": "backward", "limit": 2}
+            if cursor:
+                params["cursor"] = cursor
+            pg = self._get(conv.id, **params).json()
+            seen = [x["id"] for x in pg["items"]] + seen  # prepend (páginas más antiguas)
+            if not pg["has_more"]:
+                break
+            cursor = pg["older_cursor"]
+        self.assertEqual(seen, [x.id for x in m])          # cobertura completa, en orden
+        self.assertEqual(len(seen), len(set(seen)))        # sin duplicados
+
+    def test_invalid_cursor_422_backward(self):
+        conv, _ = self._mk([1])
+        self.as_user(self.admin)
+        bad = base64.urlsafe_b64encode(b"sin-separador").decode("ascii")
+        self.assertEqual(
+            self._get(conv.id, direction="backward", cursor=bad).status_code, 422)
+
+    def test_unauthorized_conversation_404_backward(self):
+        conv, _ = self._mk([1, 2])
+        self.as_user(self.v2)  # v2 no tiene acceso a line1
+        self.assertEqual(self._get(conv.id, direction="backward").status_code, 404)
+
+    def test_response_without_direction_still_forward(self):
+        conv, m = self._mk([1, 2, 3, 4, 5])
+        self.as_user(self.admin)
+        r = self._get(conv.id, limit=2).json()             # sin direction
+        self.assertEqual(r["direction"], "forward")
+        self.assertEqual([x["id"] for x in r["items"]], [m[0].id, m[1].id])  # primeros, ASC
+        self.assertTrue(r["has_more"])
+
+    def test_invalid_direction_422(self):
+        conv, _ = self._mk([1])
+        self.as_user(self.admin)
+        self.assertEqual(self._get(conv.id, direction="sideways").status_code, 422)
+
+
+# =============================================================================== #
+# §5 (1H.1) — GET /whatsapp/assignable-users + validación de rol destino
+# =============================================================================== #
+class AssignableUsersTest(InboxTestBase):
+    def setUp(self):
+        super().setUp()
+        self.other = models.User(
+            email="otro@test.local", hashed_password="x", full_name="Otro Rol",
+            role="supervisor")
+        self.db.add(self.other)
+        self.db.commit()
+
+    def test_admin_gets_assignable_users(self):
+        self.as_user(self.admin)
+        r = self.client.get("/whatsapp/assignable-users")
+        self.assertEqual(r.status_code, 200)
+        roles = {u["role"] for u in r.json()}
+        self.assertTrue(roles <= {"admin", "vendedor"})
+        ids = {u["id"] for u in r.json()}
+        self.assertIn(self.admin.id, ids)
+        self.assertIn(self.v1.id, ids)
+        self.assertIn(self.v2.id, ids)
+        # Un rol no asignable NO aparece.
+        self.assertNotIn(self.other.id, ids)
+
+    def test_seller_forbidden(self):
+        self.as_user(self.v1)
+        self.assertEqual(self.client.get("/whatsapp/assignable-users").status_code, 403)
+
+    def test_no_email_in_response(self):
+        self.as_user(self.admin)
+        blob = self.client.get("/whatsapp/assignable-users").text
+        self.assertNotIn("@test.local", blob)
+        self.assertNotIn("email", blob)
+        self.assertNotIn("hashed_password", blob)
+
+    def test_assign_invalid_role_rejected(self):
+        self.as_user(self.admin)
+        r = self.client.patch(
+            f"/whatsapp/conversations/{self.conv2.id}/assignment",
+            json={"assigned_user_id": self.other.id})
+        self.assertEqual(r.status_code, 400)
+
+    def test_assign_valid_still_works(self):
+        self.as_user(self.admin)
+        r = self.client.patch(
+            f"/whatsapp/conversations/{self.conv2.id}/assignment",
+            json={"assigned_user_id": self.v1.id})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["changed"])
+
+
 if __name__ == "__main__":
     unittest.main()
