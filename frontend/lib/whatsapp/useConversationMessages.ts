@@ -70,7 +70,11 @@ export function useConversationMessages(opts: Options): ConversationMessages {
   const lastLoadedMsgIdRef = useRef(0);
   const lastMarkedReadRef = useRef(0);
   const currentUnreadRef = useRef(0);
+  const detailLoadedRef = useRef(false); // unread REAL solo tras GET conversation exitoso
   const markInFlightRef = useRef(false);
+  const markPendingRef = useRef(false);
+  const markGenRef = useRef(0); // invalida marks de conversaciones anteriores
+  const maybeMarkReadRef = useRef<() => void>(() => {});
   const loadingMessagesRef = useRef(false);
   const olderCursorRef = useRef<string | null>(null);
   const loadingOlderRef = useRef(false);
@@ -104,18 +108,27 @@ export function useConversationMessages(opts: Options): ConversationMessages {
     const id = selectedIdRef.current;
     if (!id) return;
     if (typeof document !== "undefined" && document.hidden) return;
+    // El unread solo es autoritativo DESPUÉS del detalle: nunca marcar con el hint visual.
+    if (!detailLoadedRef.current) return;
     if (loadingMessagesRef.current) return;
     if (lastLoadedMsgIdRef.current <= 0) return;
     if (currentUnreadRef.current <= 0) return;
     if (lastLoadedMsgIdRef.current <= lastMarkedReadRef.current) return;
-    if (markInFlightRef.current) return;
+    if (markInFlightRef.current) {
+      // Un mark-read en curso: registrar que queda trabajo pendiente para drenar luego.
+      markPendingRef.current = true;
+      return;
+    }
+    const gen = markGenRef.current;
     const targetId = lastLoadedMsgIdRef.current;
     markInFlightRef.current = true;
+    markPendingRef.current = false;
     const prevMarked = lastMarkedReadRef.current;
     lastMarkedReadRef.current = targetId; // optimista para no superponer
     whatsappApi
       .markRead(id, targetId)
       .then((res) => {
+        if (markGenRef.current !== gen) return; // cambió de conversación: no aplicar
         currentUnreadRef.current = res.unread_count;
         setDetail((d) =>
           d && d.conversation_id === id ? { ...d, unread_count: res.unread_count } : d
@@ -123,13 +136,29 @@ export function useConversationMessages(opts: Options): ConversationMessages {
         onRead(id, res.unread_count);
       })
       .catch((e) => {
+        if (markGenRef.current !== gen) return;
         lastMarkedReadRef.current = prevMarked; // permitir reintento
         if (e instanceof ApiError && e.status === 401) onUnauthorized();
       })
       .finally(() => {
+        if (markGenRef.current !== gen) return; // request de otra conversación: ignorar
         markInFlightRef.current = false;
+        // Drenar el pendiente registrado durante el request, si todavía corresponde.
+        const shouldDrain =
+          markPendingRef.current &&
+          selectedIdRef.current === id &&
+          !(typeof document !== "undefined" && document.hidden) &&
+          detailLoadedRef.current &&
+          currentUnreadRef.current > 0 &&
+          lastLoadedMsgIdRef.current > lastMarkedReadRef.current;
+        markPendingRef.current = false;
+        if (shouldDrain) maybeMarkReadRef.current();
       });
   }, [onRead, onUnauthorized]);
+
+  useEffect(() => {
+    maybeMarkReadRef.current = maybeMarkRead;
+  }, [maybeMarkRead]);
 
   const loadDetail = useCallback(
     async (id: number) => {
@@ -142,8 +171,9 @@ export function useConversationMessages(opts: Options): ConversationMessages {
         if (selectedIdRef.current !== id) return;
         setDetail(d);
         currentUnreadRef.current = d.unread_count; // unread REAL (autoridad)
+        detailLoadedRef.current = true; // recién ahora el unread habilita marcar
         onConnOk();
-        maybeMarkRead();
+        maybeMarkRead(); // re-evaluar con el unread autoritativo
       } catch (e) {
         if (e instanceof ApiError && e.status === 404) onGone(id);
         else handleSilent(e);
@@ -296,6 +326,11 @@ export function useConversationMessages(opts: Options): ConversationMessages {
     lastLoadedMsgIdRef.current = 0;
     lastMarkedReadRef.current = 0;
     currentUnreadRef.current = 0;
+    // Estado de marcado: invalidar cualquier continuación de la conversación anterior.
+    detailLoadedRef.current = false;
+    markPendingRef.current = false;
+    markInFlightRef.current = false;
+    markGenRef.current += 1;
   }, []);
 
   const select = useCallback(

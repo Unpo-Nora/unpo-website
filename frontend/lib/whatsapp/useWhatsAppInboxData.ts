@@ -112,6 +112,11 @@ export function useWhatsAppInboxData(
   const convAbortRef = useRef<AbortController | null>(null);
   const unreadInFlightRef = useRef(false);
   const convPollInFlightRef = useRef(false);
+  // Coordinación única del listado de conversaciones: una sola consulta a la vez entre
+  // reload/loadMore, generación para descartar respuestas de filtros viejos.
+  const convGenRef = useRef(0);
+  const convReqInFlightRef = useRef(false);
+  const loadingMoreRef = useRef(false);
 
   useEffect(() => {
     filtersRef.current = filters;
@@ -206,6 +211,9 @@ export function useWhatsAppInboxData(
   }, [handleSilent, noteConnOk]);
 
   const reloadConversations = useCallback(async () => {
+    convGenRef.current += 1;
+    const gen = convGenRef.current;
+    convReqInFlightRef.current = true;
     convAbortRef.current?.abort();
     const ac = new AbortController();
     convAbortRef.current = ac;
@@ -215,6 +223,7 @@ export function useWhatsAppInboxData(
         toApiFilters(filtersRef.current, CONV_PAGE, 0),
         ac.signal
       );
+      if (convGenRef.current !== gen) return; // superado por un reload más nuevo
       convSigRef.current = convSignature(resp.items);
       setConversations(resp.items);
       setHasMore(resp.has_more);
@@ -222,13 +231,18 @@ export function useWhatsAppInboxData(
     } catch (e) {
       handleSilent(e);
     } finally {
-      if (convAbortRef.current === ac) setLoadingConversations(false);
+      if (convGenRef.current === gen) {
+        convReqInFlightRef.current = false;
+        setLoadingConversations(false);
+      }
     }
   }, [handleSilent, noteConnOk]);
 
   const pollConversations = useCallback(async () => {
-    if (convPollInFlightRef.current) return;
+    // No solaparse con reload/loadMore ni con otro poll: si hay consulta activa, se omite.
+    if (convReqInFlightRef.current || convPollInFlightRef.current) return;
     convPollInFlightRef.current = true;
+    const gen = convGenRef.current;
     try {
       const limit = Math.min(
         CONV_POLL_MAX,
@@ -237,8 +251,9 @@ export function useWhatsAppInboxData(
       const resp = await whatsappApi.getConversations(
         toApiFilters(filtersRef.current, limit, 0)
       );
+      if (convGenRef.current !== gen) return; // los filtros cambiaron durante el request
       // Merge: la primera ventana fresca arriba (actualizada/reordenada/nueva) + el resto
-      // de lo ya cargado sin duplicar por conversation_id.
+      // de lo ya cargado sin duplicar por conversation_id. NO toca has_more.
       const freshIds = new Set(resp.items.map((c) => c.conversation_id));
       const tail = convItemsRef.current.filter((c) => !freshIds.has(c.conversation_id));
       const merged = [...resp.items, ...tail];
@@ -256,12 +271,20 @@ export function useWhatsAppInboxData(
   }, [handleSilent, noteConnOk]);
 
   const loadMore = useCallback(async () => {
+    // Guard sincrónico ANTES del await: doble click / consulta activa no duplican requests.
+    if (loadingMoreRef.current || convReqInFlightRef.current || convPollInFlightRef.current) {
+      return;
+    }
+    loadingMoreRef.current = true;
+    convReqInFlightRef.current = true;
+    const gen = convGenRef.current;
+    const offset = convItemsRef.current.length;
     setLoadingMore(true);
     try {
-      const offset = convItemsRef.current.length;
       const resp = await whatsappApi.getConversations(
         toApiFilters(filtersRef.current, CONV_PAGE, offset)
       );
+      if (convGenRef.current !== gen) return; // cambió el filtro: no aplicar
       const existing = new Set(convItemsRef.current.map((c) => c.conversation_id));
       const added = resp.items.filter((c) => !existing.has(c.conversation_id));
       const merged = [...convItemsRef.current, ...added];
@@ -272,6 +295,8 @@ export function useWhatsAppInboxData(
     } catch (e) {
       handleSilent(e);
     } finally {
+      loadingMoreRef.current = false;
+      if (convGenRef.current === gen) convReqInFlightRef.current = false;
       setLoadingMore(false);
     }
   }, [handleSilent, noteConnOk]);
