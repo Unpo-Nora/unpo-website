@@ -942,5 +942,57 @@ class BidirectionalPaginationTest(InboxTestBase):
         self.assertEqual(self._get(conv.id, direction="sideways").status_code, 422)
 
 
+# =============================================================================== #
+# §5 (1H.1) — GET /whatsapp/assignable-users + validación de rol destino
+# =============================================================================== #
+class AssignableUsersTest(InboxTestBase):
+    def setUp(self):
+        super().setUp()
+        self.other = models.User(
+            email="otro@test.local", hashed_password="x", full_name="Otro Rol",
+            role="supervisor")
+        self.db.add(self.other)
+        self.db.commit()
+
+    def test_admin_gets_assignable_users(self):
+        self.as_user(self.admin)
+        r = self.client.get("/whatsapp/assignable-users")
+        self.assertEqual(r.status_code, 200)
+        roles = {u["role"] for u in r.json()}
+        self.assertTrue(roles <= {"admin", "vendedor"})
+        ids = {u["id"] for u in r.json()}
+        self.assertIn(self.admin.id, ids)
+        self.assertIn(self.v1.id, ids)
+        self.assertIn(self.v2.id, ids)
+        # Un rol no asignable NO aparece.
+        self.assertNotIn(self.other.id, ids)
+
+    def test_seller_forbidden(self):
+        self.as_user(self.v1)
+        self.assertEqual(self.client.get("/whatsapp/assignable-users").status_code, 403)
+
+    def test_no_email_in_response(self):
+        self.as_user(self.admin)
+        blob = self.client.get("/whatsapp/assignable-users").text
+        self.assertNotIn("@test.local", blob)
+        self.assertNotIn("email", blob)
+        self.assertNotIn("hashed_password", blob)
+
+    def test_assign_invalid_role_rejected(self):
+        self.as_user(self.admin)
+        r = self.client.patch(
+            f"/whatsapp/conversations/{self.conv2.id}/assignment",
+            json={"assigned_user_id": self.other.id})
+        self.assertEqual(r.status_code, 400)
+
+    def test_assign_valid_still_works(self):
+        self.as_user(self.admin)
+        r = self.client.patch(
+            f"/whatsapp/conversations/{self.conv2.id}/assignment",
+            json={"assigned_user_id": self.v1.id})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["changed"])
+
+
 if __name__ == "__main__":
     unittest.main()

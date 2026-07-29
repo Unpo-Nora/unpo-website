@@ -31,9 +31,12 @@ Todos en [`frontend/components/dashboard/whatsapp/`](../frontend/components/dash
 | `AssignmentHistory` | Historial colapsable con nombres resueltos; no bloquea si falla. |
 | `UnreadBadge`, `WhatsAppEmptyState` | UI compartida. |
 
-Cliente/tipos: [`frontend/lib/whatsapp/`](../frontend/lib/whatsapp/) — `types.ts` (contrato),
-`api.ts` (`whatsappApi`, fetch + Bearer + `AbortController` + errores tipados), `format.ts`
-(fecha/hora, etiqueta de contacto, estado). No se usa `any`.
+Cliente/tipos/hooks: [`frontend/lib/whatsapp/`](../frontend/lib/whatsapp/) — `types.ts`
+(contrato), `api.ts` (`whatsappApi`, fetch + Bearer + `AbortController` + errores tipados),
+`format.ts` (fecha/hora, etiqueta de contacto, estado). La lógica está extraída en hooks
+(el orquestador quedó delgado): `useWhatsAppInboxData` (líneas, no leídos, conversaciones con
+paginación/polling/recuperación), `useConversationMessages` (detalle, timeline, cursores,
+polling y marcado de lectura) y `useAssignment`. No se usa `any`.
 
 ## Polling
 
@@ -45,12 +48,25 @@ Se usa **polling** con `setInterval` + `AbortController` (sin SSE/WebSocket):
 | `GET /whatsapp/conversations` | 7 s |
 | Mensajes nuevos de la conversación abierta | 4 s |
 
-Reglas: sin requests superpuestos (se aborta el previo); se **pausa** cuando
+Reglas: sin requests superpuestos (guards + se aborta el previo por recurso — unread,
+líneas, asignables, conversaciones, detalle, historial, mensajes); se **pausa** cuando
 `document.hidden = true` y se **refresca** al volver visible (`visibilitychange`); los timers y
 `AbortController` se limpian al desmontar; un fallo temporal **no borra** los datos ya
 cargados; tras fallos consecutivos se muestra **"Reconectando…"**; un `401` usa el `logout`
 del `AuthContext`; un error de red **no** cierra la sesión. La lista se reemplaza solo si su
-firma cambió (evita flicker). Botón manual **"Actualizar"** y marca de última actualización.
+firma cambió (evita flicker). Botón manual **"Actualizar"** que además **reintenta** cargas
+iniciales que hayan fallado (líneas, usuarios asignables) y marca de última actualización.
+
+**Paginación de conversaciones**: incremental real por `offset` (carga inicial `limit=30,
+offset=0`; "Cargar más" usa `offset=<cantidad cargada>`), con dedupe por `conversation_id` y
+`has_more` del backend controlando el botón (se oculta cuando `has_more=false`). Soporta **más
+de 100** conversaciones. El polling refresca la primera ventana (`offset=0`, `limit` = cantidad
+cargada, cap 100) y hace **merge/dedup** sin descartar las páginas ya cargadas; cambiar filtros
+reinicia lista y offset.
+
+**Distinción de errores**: si la carga de líneas **falla** (red/servidor) se muestra un estado
+de error con "Reintentar" (no "Sin líneas accesibles"); "Sin líneas accesibles" solo aparece
+cuando la respuesta fue exitosa y vacía.
 
 ## Paginación de mensajes (bidireccional)
 
@@ -62,6 +78,10 @@ firma cambió (evita flicker). Botón manual **"Actualizar"** y marca de última
   `message.id`** y se ordena por `(created_at, id)`. Si el usuario está cerca del final, se
   mantiene abajo; si está leyendo arriba, no se fuerza scroll y se muestra "N mensajes
   nuevos".
+- **Conversación inicialmente vacía**: si no hay `newer_cursor` (0 mensajes), el polling
+  consulta `direction=forward` **sin cursor** para detectar el **primer mensaje**; una vez que
+  llega, se fija `newer_cursor` y los polls siguientes solo traen posteriores (no re-descarga
+  histórico). El primer mensaje aparece sin cerrar/reabrir la conversación.
 
 Nunca se recorren todas las páginas desde el inicio.
 
@@ -74,6 +94,11 @@ marcó ya. El estado local (badges, total, línea, conversación) se actualiza *
 HTTP 200. No se marca durante prefetch ni con la pestaña oculta, ni se marcan otras
 conversaciones.
 
+Al **volver visible** la pestaña, si la conversación abierta tiene `unread_count > 0` se marca
+hasta el último mensaje cargado **aunque no haya llegado ningún mensaje nuevo**, usando el
+`unread_count` **real** de la conversación (no un valor capturado al abrirla). Se evita repetir
+el mismo id y se previenen requests de mark-read superpuestos (guard en curso).
+
 ## Asignación
 
 - **Admin**: carga usuarios asignables (ver abajo), muestra selector + botón explícito
@@ -85,11 +110,13 @@ conversaciones.
   llama al PATCH.
 - **Desasignar no está habilitado** (el backend no lo permite en esta etapa).
 
-### Usuarios asignables — `GET /users/` (solo admin)
+### Usuarios asignables — `GET /whatsapp/assignable-users` (solo admin)
 
-Se **reutiliza** `GET /users/` (endpoint admin-only existente) en lugar de crear uno nuevo. El
-frontend usa exclusivamente `id`, `full_name` y `role`; **no muestra ni guarda el email** ni
-otros datos. Los vendedores no llaman `/users/`. El historial de asignaciones resuelve
+Se usa el endpoint **dedicado** `GET /whatsapp/assignable-users` (admin-only), que devuelve
+solo `id`, `full_name` y `role` de usuarios con rol asignable (`admin`/`vendedor`) — **sin
+email** ni otros datos. El inbox ya **no** usa `GET /users/`. Los vendedores no lo llaman. El
+`PATCH .../assignment` valida además que el usuario destino exista y tenga rol `admin`/
+`vendedor` (otro rol → **400**). El historial de asignaciones resuelve
 `from_user_id`/`to_user_id`/`assigned_by_user_id` a nombres con esa lista; si un id no se puede
 resolver, muestra `Usuario #<id>`.
 
@@ -139,6 +166,17 @@ npm run build         # incluye lint + type-check de Next
 `package.json` no define `typecheck` ni `test` (no se inventan). No hay framework de tests
 frontend configurado en esta etapa; el código nuevo pasa `tsc --noEmit`, `next build` y ESLint
 `next/core-web-vitals` (scoped) sin warnings.
+
+## Limitaciones conocidas
+
+- **Estados de mensajes ya cargados**: el polling forward solo trae mensajes **nuevos** (los
+  posteriores a `newer_cursor`); **no** re-consulta ni actualiza el `current_status` de
+  mensajes ya renderizados. Como 1H no envía mensajes salientes, el impacto es mínimo, pero la
+  actualización en vivo de estados (`sent → delivered → read`) de mensajes existentes queda
+  para una etapa posterior (1I). No se afirma que los estados outbound se actualicen en tiempo
+  real.
+- El refresh de conversaciones por polling cubre la primera ventana (hasta 100); páginas más
+  allá de 100 se refrescan al hacer "Cargar más" o "Actualizar".
 
 ## Fuera de alcance (1H)
 

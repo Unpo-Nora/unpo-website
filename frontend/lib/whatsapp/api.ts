@@ -139,13 +139,9 @@ export const whatsappApi = {
     });
   },
 
-  // Usuarios asignables: se reutiliza GET /users/ (admin-only). Se mapea a solo
-  // id/full_name/role; el email y demás campos no se usan en la UI.
-  async getAssignableUsers(signal?: AbortSignal): Promise<AssignableUser[]> {
-    const users = await request<Array<{ id: number; full_name: string | null; role: string }>>(
-      "/users/",
-      { signal }
-    );
-    return users.map((u) => ({ id: u.id, full_name: u.full_name, role: u.role }));
+  // Usuarios asignables: endpoint dedicado admin-only que devuelve SOLO id/full_name/role
+  // (sin email ni otros datos). El inbox ya no usa GET /users/.
+  getAssignableUsers(signal?: AbortSignal): Promise<AssignableUser[]> {
+    return request<AssignableUser[]>("/whatsapp/assignable-users", { signal });
   },
 };

@@ -58,6 +58,13 @@ class AssignedUserOut(BaseModel):
     role: Optional[str] = None
 
 
+class AssignableUserOut(BaseModel):
+    """Usuario asignable (para el selector admin). Solo id/full_name/role; NUNCA email."""
+    id: int
+    full_name: Optional[str] = None
+    role: str
+
+
 class ConversationListItem(BaseModel):
     conversation_id: int
     line: LineRef
