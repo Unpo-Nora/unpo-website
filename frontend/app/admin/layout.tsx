@@ -38,6 +38,16 @@ export default function AdminLayout({
         setSidebarOpen(false);
     }, [pathname]);
 
+    // Lock background scroll while the mobile drawer is open; restore on close/unmount
+    useEffect(() => {
+        if (!sidebarOpen) return;
+        const previous = document.body.style.overflow;
+        document.body.style.overflow = "hidden";
+        return () => {
+            document.body.style.overflow = previous;
+        };
+    }, [sidebarOpen]);
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -75,7 +85,7 @@ export default function AdminLayout({
                     </button>
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-4 sm:p-8 lg:p-12 relative">
+                <main className={`flex-1 ${sidebarOpen ? "overflow-hidden lg:overflow-y-auto" : "overflow-y-auto"} p-4 sm:p-8 lg:p-12 relative`}>
                     <div className="w-full max-w-[1800px] mx-auto">
                         {children}
                     </div>
