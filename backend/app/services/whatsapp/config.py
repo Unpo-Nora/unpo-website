@@ -116,3 +116,20 @@ def get_verify_token() -> str:
 def get_app_secret() -> str:
     """App Secret usado para validar la firma del POST. Vacío si no está configurado."""
     return (os.getenv(APP_SECRET_ENV) or "").strip()
+
+
+# ---------------------------------------------------------------------------
+# Etapa 1I.1 — envío saliente (feature flag).
+# ---------------------------------------------------------------------------
+# Interruptor del envío saliente de mensajes. Default: APAGADO. Con el flag apagado el
+# endpoint de envío responde 503 y NO crea ninguna fila. En 1I.1 NO hay cliente real de
+# Meta ni access token: el flag existe para poder integrar el núcleo sin exponer envío.
+OUTBOUND_ENABLED_ENV = "WHATSAPP_OUTBOUND_ENABLED"
+
+# Valores considerados "encendido" (lectura en tiempo de llamada, como el resto del módulo).
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+
+
+def outbound_enabled() -> bool:
+    """¿Está habilitado el envío saliente? Lee `WHATSAPP_OUTBOUND_ENABLED` (default false)."""
+    return (os.getenv(OUTBOUND_ENABLED_ENV) or "").strip().lower() in _TRUTHY
