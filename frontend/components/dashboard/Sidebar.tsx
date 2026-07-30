@@ -25,11 +25,8 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
-    console.log("Sidebar Mounted at:", new Date().toLocaleTimeString());
     const { user, loading, logout } = useAuth();
     const pathname = usePathname();
-
-    console.log("Sidebar Rendering - Current User:", user?.email, "Role:", user?.role);
 
     const menuItems = [
         {
@@ -95,7 +92,7 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
     return (
         <aside className={`
             fixed lg:static inset-y-0 left-0 z-50
-            w-64 bg-slate-900 text-slate-300 flex flex-col h-full border-r border-slate-800
+            w-64 bg-slate-900 text-slate-300 flex flex-col h-[100dvh] lg:h-full overflow-hidden border-r border-slate-800
             transform transition-transform duration-300 ease-in-out
             ${isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
             shrink-0
@@ -119,7 +116,7 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
             </div>
 
             {/* Navigation */}
-            <nav className="flex-1 px-4 space-y-1">
+            <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 space-y-1">
                 {filteredItems.map((item) => {
                     const isActive = pathname === item.path;
                     return (
@@ -139,7 +136,7 @@ export default function Sidebar({ isOpen = false, setIsOpen }: SidebarProps) {
             </nav>
 
             {/* User & Footer */}
-            <div className="p-4 border-t border-slate-800">
+            <div className="shrink-0 bg-slate-900 border-t border-slate-800 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-800/50 mb-4">
                     <UserCircle size={32} className="text-slate-400" />
                     <div className="overflow-hidden">
