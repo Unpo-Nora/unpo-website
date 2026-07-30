@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Union
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -34,6 +35,7 @@ from .redaction import safe_error, short_key
 from .sender import (
     OUTCOME_ACCEPTED,
     OUTCOME_AMBIGUOUS,
+    VALID_OUTCOMES,
     SendResult,
     SendTextCommand,
 )
@@ -73,6 +75,14 @@ CODE_RECIPIENT_UNAVAILABLE = "WHATSAPP_RECIPIENT_UNAVAILABLE"
 CODE_IN_PROGRESS = "WHATSAPP_SEND_IN_PROGRESS"
 CODE_MISMATCH = "WHATSAPP_IDEMPOTENCY_MISMATCH"
 CODE_INTERNAL = "WHATSAPP_OUTBOUND_INTERNAL"
+# Códigos internos de resultado del sender (1I.1b). NUNCA exponen detalle crudo de Meta.
+CODE_SENDER_EXCEPTION = "WHATSAPP_SENDER_EXCEPTION"
+CODE_ACCEPTED_NO_EXTERNAL_ID = "WHATSAPP_ACCEPTED_WITHOUT_EXTERNAL_ID"
+CODE_INVALID_RESULT = "WHATSAPP_INVALID_SENDER_RESULT"
+
+_MSG_AMBIGUOUS = "outbound result is ambiguous"
+_MSG_ACCEPTED_NO_ID = "provider accepted response without message identifier"
+_MSG_INVALID_RESULT = "invalid sender result"
 
 
 class OutboundError(Exception):
@@ -117,40 +127,45 @@ def is_blank(canonical: str) -> bool:
 # --------------------------------------------------------------------------- #
 # Resolución del destinatario (solo identificadores del contacto)
 # --------------------------------------------------------------------------- #
-def _valid_wa_id(value: str) -> bool:
+def _valid_wa_id(value: Optional[str]) -> bool:
+    """wa_id: dígitos, largo plausible (formato que genera el normalizer, sin `+`)."""
     return bool(value) and value.isdigit() and 8 <= len(value) <= 15
 
 
-def _valid_phone_e164(value: str) -> bool:
-    return bool(value) and value.startswith("+") and value[1:].isdigit() and 8 <= len(value[1:]) <= 15
+def _valid_phone_e164(value: Optional[str]) -> bool:
+    """
+    phone_e164: el normalizer persiste `+`+dígitos (`normalize_wa_id_to_e164` → `+549…`).
+    Se acepta también el formato histórico de solo dígitos (`549…`) por robustez; el valor
+    NO se modifica antes de pasarlo al sender (el cliente real de 1I.2 lo formatea).
+    """
+    if not value:
+        return False
+    digits = value[1:] if value.startswith("+") else value
+    return digits.isdigit() and 8 <= len(digits) <= 15
 
 
 def resolve_meta_recipient(db: Session, contact_id: int) -> Optional[str]:
     """
     Destinatario Meta del contacto, en orden ESTRICTO de preferencia:
 
-        1) wa_id primario · 2) wa_id · 3) phone_e164 primario · 4) phone_e164
+        1) wa_id primario · 2) wa_id no-primario · 3) phone_e164 primario · 4) phone_e164
 
-    Valida el formato básico SIN modificar el valor. Devuelve el primero con formato
-    válido, o None si no hay ninguno. NUNCA usa el display_number de la línea, el
+    Dentro de cada grupo se recorren TODOS los candidatos por `id` ascendente (orden
+    determinista), se ignoran los inválidos y se devuelve el primer válido. Valida el
+    formato básico SIN modificar el valor. NUNCA usa el display_number de la línea, el
     phone_masked, el nombre del contacto ni el teléfono del lead/vendedor.
     """
     I = models.WhatsAppContactIdentifier
     rows = (
-        db.query(I.identifier_type, I.identifier_value, I.is_primary)
+        db.query(I.id, I.identifier_type, I.identifier_value, I.is_primary)
         .filter(
             I.contact_id == contact_id,
             I.provider == PROVIDER,
             I.identifier_type.in_([_WA_ID, _PHONE_E164]),
         )
+        .order_by(I.id.asc())
         .all()
     )
-
-    def pick(itype: str, primary: bool) -> Optional[str]:
-        for t, v, p in rows:
-            if t == itype and bool(p) == primary:
-                return v
-        return None
 
     for itype, primary, validator in (
         (_WA_ID, True, _valid_wa_id),
@@ -158,9 +173,9 @@ def resolve_meta_recipient(db: Session, contact_id: int) -> Optional[str]:
         (_PHONE_E164, True, _valid_phone_e164),
         (_PHONE_E164, False, _valid_phone_e164),
     ):
-        value = pick(itype, primary)
-        if value is not None and validator(value):
-            return value
+        for _id, t, value, is_primary in rows:  # ya ordenado por id asc
+            if t == itype and bool(is_primary) == primary and validator(value):
+                return value
     return None
 
 
@@ -222,6 +237,24 @@ def _replay_or_mismatch(
     if not same:
         raise OutboundError(409, CODE_MISMATCH, "client_request_id ya usado con otro contenido")
     return Replay(message=existing)
+
+
+def _cas_pending_to_sending(db: Session, message_id: int) -> bool:
+    """
+    Compare-and-set atómico `pending` → `sending` vía UPDATE condicional.
+
+    Devuelve True SOLO si actualizó exactamente una fila (`WHERE current_status='pending'`).
+    Si el mensaje ya avanzó (delivered/failed/etc.) el UPDATE no matchea y devuelve False:
+    el llamador NO debe invocar al sender.
+    """
+    M = models.WhatsAppMessage
+    res = db.execute(
+        update(M)
+        .where(M.id == message_id, M.current_status == STATUS_PENDING)
+        .values(current_status=STATUS_SENDING)
+    )
+    db.commit()
+    return res.rowcount == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -336,16 +369,19 @@ def reserve_outbound(
 
     message_id = msg.id
 
-    # 11) Transición compare-and-set pending → sending (transacción corta propia).
-    locked = (
-        db.query(M)
-        .filter(M.id == message_id, M.current_status == STATUS_PENDING)
-        .with_for_update()
-        .first()
-    )
-    if locked is not None:
-        locked.current_status = STATUS_SENDING
-        db.commit()
+    # 11) CAS OBLIGATORIO pending → sending. Solo se invoca al sender (Reserved) si el
+    #     UPDATE condicional actualizó EXACTAMENTE una fila. Si no, NUNCA se envía.
+    if not _cas_pending_to_sending(db, message_id):
+        db.expire_all()
+        current = db.query(M).filter(M.id == message_id).first()
+        if current is None:
+            # Estado inconsistente: la fila recién reservada desapareció.
+            raise OutboundError(500, CODE_INTERNAL, "La reserva desapareció tras el CAS")
+        # El mensaje ya no estaba `pending` (avanzó por otra vía): es la MISMA solicitud
+        # (mismo client_request_id) ⇒ replay idempotente, sin reenviar.
+        logger.info("[whatsapp-outbound] CAS pending->sending sin efecto message_id=%s current=%s",
+                    message_id, current.current_status)
+        return Replay(message=current)
 
     logger.info(
         "[whatsapp-outbound] reservado message_id=%s conversation_id=%s line_id=%s "
@@ -382,18 +418,35 @@ def apply_result(db: Session, message_id: int, result: SendResult) -> models.Wha
     current = msg.current_status
     changed = False
 
-    if result.outcome == OUTCOME_ACCEPTED:
-        if next_current_status(current, STATUS_ACCEPTED) == STATUS_ACCEPTED:
+    def to_unknown(code, message_safe):
+        # `unknown` NUNCA degrada un estado ya avanzado (sent/delivered/read/failed).
+        if current in (STATUS_PENDING, STATUS_SENDING):
+            msg.current_status = STATUS_UNKNOWN
+            msg.error_code = code
+            msg.error_message_safe = message_safe
+            return True
+        return False
+
+    if result.outcome not in VALID_OUTCOMES:
+        # Un outcome desconocido NO entra como definitive_failure: se trata como ambiguo.
+        changed = to_unknown(CODE_INVALID_RESULT, _MSG_INVALID_RESULT)
+    elif result.outcome == OUTCOME_ACCEPTED:
+        external_id = (result.external_message_id or "").strip()
+        if not external_id:
+            # `accepted` sin identificador (null/vacío/whitespace) NO se guarda accepted.
+            changed = to_unknown(CODE_ACCEPTED_NO_EXTERNAL_ID, _MSG_ACCEPTED_NO_ID)
+        elif next_current_status(current, STATUS_ACCEPTED) == STATUS_ACCEPTED:
             msg.current_status = STATUS_ACCEPTED
             msg.external_message_id = result.external_message_id
             msg.error_code = None
             msg.error_message_safe = None
             changed = True
     elif result.outcome == OUTCOME_AMBIGUOUS:
-        if current in (STATUS_PENDING, STATUS_SENDING):
-            msg.current_status = STATUS_UNKNOWN
-            changed = True
-    else:  # definitive_failure
+        changed = to_unknown(
+            result.error_code or None,
+            safe_error(result.error_message_safe) if result.error_message_safe else None,
+        )
+    else:  # definitive_failure (outcome válido garantizado por la guarda de arriba)
         if next_current_status(current, STATUS_FAILED) == STATUS_FAILED:
             msg.current_status = STATUS_FAILED
             msg.error_code = result.error_code or None
@@ -410,7 +463,7 @@ def apply_result(db: Session, message_id: int, result: SendResult) -> models.Wha
     else:
         db.rollback()
         logger.info(
-            "[whatsapp-outbound] resultado tardío ignorado message_id=%s current=%s outcome=%s",
+            "[whatsapp-outbound] resultado sin efecto message_id=%s current=%s outcome=%s",
             message_id, current, result.outcome,
         )
     return msg

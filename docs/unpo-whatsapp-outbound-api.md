@@ -55,10 +55,17 @@ Autenticado (JWT). Roles: `admin`, `vendedor` (con `can_send`).
 
 | situación | HTTP | body |
 |---|---|---|
-| primer envío aceptado | `201` | `accepted=true, duplicate=false, outcome=accepted` |
-| resultado ambiguo (timeout/5xx/caída) | `202` | `accepted=false, outcome=unknown` |
+| primer envío aceptado (con wamid) | `201` | `accepted=true, duplicate=false, outcome=accepted` |
+| resultado ambiguo (timeout/5xx/caída/excepción) | `202` | `accepted=false, outcome=unknown` |
+| `accepted` del proveedor **sin** identificador (wamid) | `202` | `accepted=false, outcome=unknown` |
+| resultado del proveedor con `outcome` inválido | `202` | `accepted=false, outcome=unknown` |
 | fallo definitivo del proveedor | `200` | `accepted=false, outcome=failed` |
 | replay idempotente | `200` | `duplicate=true, outcome` según el estado existente |
+
+Los estados `unknown` guardan internamente un `error_code` estable
+(`WHATSAPP_ACCEPTED_WITHOUT_EXTERNAL_ID`, `WHATSAPP_INVALID_SENDER_RESULT`,
+`WHATSAPP_SENDER_EXCEPTION`) que **no** se expone en la respuesta. Ningún `unknown` se
+reintenta automáticamente.
 
 ### Errores (no se crea/duplica mensaje)
 

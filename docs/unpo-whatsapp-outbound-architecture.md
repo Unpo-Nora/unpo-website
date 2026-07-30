@@ -72,12 +72,20 @@ consulta de "en vuelo" dentro de esa sección crítica. Los estados `accepted`, 
 
 `resolve_meta_recipient(db, contact_id)` en orden estricto de preferencia:
 
-1. `wa_id` primario · 2. `wa_id` · 3. `phone_e164` primario · 4. `phone_e164`
+1. `wa_id` primario · 2. `wa_id` no-primario · 3. `phone_e164` primario · 4. `phone_e164`
 
-Valida el formato básico **sin modificar** el valor. NUNCA usa el `display_number` de la
-línea, el `phone_masked`, el nombre del contacto ni el teléfono del lead/vendedor. Sin
-identificador válido → `409 WHATSAPP_RECIPIENT_UNAVAILABLE`. El destinatario nunca aparece
-en respuestas ni logs.
+Dentro de cada grupo se recorren **todos** los candidatos por `id` ascendente (determinista),
+se **ignoran los inválidos** y se devuelve el primer válido (no se descarta el grupo entero
+por un primer candidato inválido). Valida el formato básico **sin modificar** el valor.
+
+Formato de `phone_e164`: el normalizer inbound persiste `+`+dígitos
+(`normalize_wa_id_to_e164` → `+549…`); por robustez también se acepta el formato histórico
+de **solo dígitos** (`549…`), y el valor se pasa al sender tal cual. `wa_id` es dígitos sin
+`+`.
+
+NUNCA usa el `display_number` de la línea, el `phone_masked`, el nombre del contacto ni el
+teléfono del lead/vendedor. Sin identificador válido → `409 WHATSAPP_RECIPIENT_UNAVAILABLE`.
+El destinatario nunca aparece en respuestas ni logs.
 
 ## Ventana de atención (24 h)
 
@@ -100,11 +108,30 @@ frontend. No se implementan templates en 1I.1.
 1. flag → 2. auth → 3. IDOR (`get_authorized_conversation`) → 4. lock `FOR UPDATE` +
 revalidar autorización → 5. línea activa → 6. `can_send` → 7. idempotencia (replay/mismatch)
 → 8. ventana → 9. destinatario → 10. "una en vuelo" → 11. reserva `pending` + **commit
-corto** (libera el lock) → 12. compare-and-set `pending→sending` → 13. **invocar al sender
-FUERA de transacción** → 14. `apply_result` (recarga con lock; compare-and-set; sin
-retroceder `sent/delivered/read`) → 15. respuesta segura.
+corto** (libera el lock) → 12. **CAS obligatorio** `pending→sending` (UPDATE condicional,
+`rowcount == 1`) → 13. **invocar al sender FUERA de transacción** → 14. `apply_result`
+(recarga con lock; compare-and-set; sin retroceder `sent/delivered/read`) → 15. respuesta
+segura.
 
 Una caída/timeout/desconexión durante el envío se traduce a **ambiguo** ⇒ `unknown`.
+
+## Robustez de transiciones (1I.1b)
+
+- **CAS obligatorio** `pending→sending`: solo se invoca al sender si el UPDATE condicional
+  (`WHERE current_status='pending'`) afectó exactamente una fila. Si falla, NO se envía: se
+  relee el mensaje y se devuelve replay idempotente (misma solicitud) o un error interno
+  estable si el estado es inconsistente. Garantía: **nunca** se envía sobre un mensaje que
+  ya avanzó (delivered/failed/etc.).
+- **`accepted` exige `external_message_id`**: si el sender responde `accepted` pero el id
+  es null/vacío/whitespace, NO se guarda `accepted`: queda `unknown` con
+  `error_code=WHATSAPP_ACCEPTED_WITHOUT_EXTERNAL_ID` (sin auto-reintento).
+- **Outcome inválido**: un `outcome` fuera de `{accepted, definitive_failure, ambiguous}`
+  NO entra como `definitive_failure`: se trata como `unknown` con
+  `error_code=WHATSAPP_INVALID_SENDER_RESULT`.
+- **Excepción del sender**: una excepción al invocar al sender se convierte en `unknown`
+  (`error_code=WHATSAPP_SENDER_EXCEPTION`, `error_message_safe` literal fijo). El log
+  registra **solo** `message_id` y `exception_type=type(exc).__name__` — nunca
+  `str/repr/args` de la excepción (podrían traer texto, destinatario, URL o token).
 
 ## Sender inyectable
 

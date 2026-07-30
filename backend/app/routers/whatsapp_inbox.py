@@ -454,10 +454,16 @@ async def send_message(
     # recibió) ⇒ el mensaje queda `unknown` y NUNCA se reintenta automáticamente.
     try:
         result = await sender.send_text(outcome.command)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("[whatsapp-outbound] fallo del sender message_id=%s: %s",
-                     outcome.message_id, safe_error(exc))
-        result = SendResult(outcome=OUTCOME_AMBIGUOUS, error_message_safe=safe_error(exc))
+    except Exception as exc:  # noqa: BLE001 — caída/timeout/desconexión = resultado ambiguo
+        # NO se loguea str/repr/args de la excepción (podrían traer texto, recipient, URL o
+        # token): solo el TIPO. El error_message_safe es un literal fijo.
+        logger.warning("[whatsapp-outbound] sender_exception message_id=%s exception_type=%s",
+                       outcome.message_id, type(exc).__name__)
+        result = SendResult(
+            outcome=OUTCOME_AMBIGUOUS,
+            error_code=outbound_svc.CODE_SENDER_EXCEPTION,
+            error_message_safe="outbound result is ambiguous",
+        )
     msg = outbound_svc.apply_result(db, outcome.message_id, result)
     oc = outbound_svc.response_outcome(msg.current_status)
     response.status_code = 201 if oc == "accepted" else (202 if oc == "unknown" else 200)
