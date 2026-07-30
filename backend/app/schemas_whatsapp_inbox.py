@@ -13,7 +13,8 @@ Reglas de exposición (arquitectura §9):
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Literal, Optional
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -180,3 +181,34 @@ class LineUnread(BaseModel):
 class UnreadCountsResponse(BaseModel):
     total_unread: int
     lines: List[LineUnread]
+
+
+# --- Etapa 1I.1: envío saliente de texto -------------------------------------
+class OutboundTextRequest(BaseModel):
+    """
+    Body del envío saliente. `client_request_id` es la ÚNICA autoridad de idempotencia
+    (UUID válido; pydantic devuelve 422 si no lo es). No se usa Idempotency-Key header.
+
+    El texto NO se acota por longitud en el schema: el servicio valida vacío/whitespace y
+    el máximo de 4096 sobre la representación CANÓNICA (CRLF→LF), devolviendo códigos
+    estables (`WHATSAPP_TEXT_EMPTY` / `WHATSAPP_TEXT_TOO_LONG`).
+    """
+    model_config = ConfigDict(extra="forbid")
+    message_type: Literal["text"] = "text"
+    text: str
+    client_request_id: UUID
+
+
+class OutboundSendResponse(BaseModel):
+    """
+    Respuesta SEGURA del envío. Reusa `MessageOut` (que NO expone external_message_id,
+    recipient, wa_id, phone_number_id, waba_id, ni error técnico crudo).
+
+    - `accepted`: Meta aceptó el mensaje (hay wamid).
+    - `duplicate`: replay idempotente del mismo `client_request_id`.
+    - `outcome`: `accepted` | `failed` | `unknown` (unknown = pending/sending/ambiguo).
+    """
+    message: MessageOut
+    accepted: bool
+    duplicate: bool
+    outcome: Literal["accepted", "failed", "unknown"]

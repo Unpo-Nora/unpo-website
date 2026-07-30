@@ -26,7 +26,7 @@ import logging
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -35,8 +35,16 @@ from .. import crud, models
 from .. import schemas_whatsapp_inbox as sch
 from ..database import get_db
 from ..dependencies.permissions import VALID_ROLES, require_roles
+from ..services.whatsapp import config as wa_config
 from ..services.whatsapp import inbox as svc
+from ..services.whatsapp import outbound as outbound_svc
 from ..services.whatsapp.redaction import safe_error
+from ..services.whatsapp.sender import (
+    OUTCOME_AMBIGUOUS,
+    DisabledWhatsAppSender,
+    SendResult,
+    WhatsAppSender,
+)
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -45,6 +53,15 @@ router = APIRouter(prefix="/whatsapp", tags=["whatsapp-inbox"])
 # Dependencias de rol reutilizables.
 _staff = require_roles("admin", "vendedor")
 _admin_only = require_roles("admin")
+
+
+def get_whatsapp_sender() -> WhatsAppSender:
+    """
+    Dependencia inyectable del sender saliente. En runtime (1I.1) devuelve el
+    `DisabledWhatsAppSender` (NO hace red). Los tests la sobrescriben con un
+    `FakeWhatsAppSender` vía `app.dependency_overrides[get_whatsapp_sender]`.
+    """
+    return DisabledWhatsAppSender()
 
 
 def _utcnow() -> datetime:
@@ -90,6 +107,16 @@ def _assignment_out(row: models.WhatsAppConversationAssignment) -> sch.Assignmen
         assignment_source=row.assignment_source,
         reason=row.reason,
         created_at=row.created_at,
+    )
+
+
+def _message_out(m: models.WhatsAppMessage) -> sch.MessageOut:
+    """MessageOut seguro (NO expone external_message_id/wamid ni client_request_id)."""
+    return sch.MessageOut(
+        id=m.id, conversation_id=m.conversation_id, direction=m.direction,
+        message_type=m.message_type, text_body=m.text_body,
+        current_status=m.current_status, provider_timestamp=m.provider_timestamp,
+        sender_user_id=m.sender_user_id, created_at=m.created_at,
     )
 
 
@@ -371,6 +398,72 @@ def get_messages(
         items=items, limit=limit, count=len(items), has_more=has_more,
         next_cursor=next_cursor, offset=use_offset,
         older_cursor=older_cursor, newer_cursor=newer_cursor, direction=direction,
+    )
+
+
+# --------------------------------------------------------------------------- #
+# POST /whatsapp/conversations/{id}/messages  (envío saliente de texto — 1I.1)
+# --------------------------------------------------------------------------- #
+@router.post("/conversations/{conversation_id}/messages",
+             response_model=sch.OutboundSendResponse)
+async def send_message(
+    conversation_id: int,
+    body: sch.OutboundTextRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(_staff),
+    sender: WhatsAppSender = Depends(get_whatsapp_sender),
+):
+    """
+    Envía un mensaje de texto saliente (admin/vendedor con `can_send`).
+
+    Reserva local ANTES de invocar al sender (idempotencia por `client_request_id`,
+    una salida en vuelo por conversación, ventana de 24h, IDOR-safe). El sender se
+    invoca FUERA de la transacción; su resultado se aplica con compare-and-set sin
+    retroceder estados. NUNCA expone recipient, wamid, phone_number_id ni la respuesta
+    cruda de Meta. Ver `services/whatsapp/outbound.py`.
+    """
+    # Feature flag: apagado ⇒ 503 sin crear ninguna fila (auth ya corrió en la dependencia).
+    if not wa_config.outbound_enabled():
+        raise HTTPException(status_code=503,
+                            detail={"code": outbound_svc.CODE_DISABLED,
+                                    "message": "El envío saliente está deshabilitado"})
+
+    try:
+        outcome = outbound_svc.reserve_outbound(
+            db, current_user, conversation_id,
+            message_type=body.message_type, text=body.text,
+            client_request_id=body.client_request_id,
+        )
+    except outbound_svc.OutboundError as exc:
+        raise HTTPException(status_code=exc.http_status,
+                            detail={"code": exc.code, "message": exc.message})
+
+    # Replay idempotente: NO se reinvoca el sender.
+    if isinstance(outcome, outbound_svc.Replay):
+        msg = outcome.message
+        oc = outbound_svc.response_outcome(msg.current_status)
+        response.status_code = 200
+        return sch.OutboundSendResponse(
+            message=_message_out(msg), accepted=(oc == "accepted"),
+            duplicate=True, outcome=oc,
+        )
+
+    # Reserva nueva: invocar al sender FUERA de transacción larga y aplicar el resultado.
+    # Una caída/timeout/desconexión durante el envío es AMBIGUA (no sabemos si Meta lo
+    # recibió) ⇒ el mensaje queda `unknown` y NUNCA se reintenta automáticamente.
+    try:
+        result = await sender.send_text(outcome.command)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("[whatsapp-outbound] fallo del sender message_id=%s: %s",
+                     outcome.message_id, safe_error(exc))
+        result = SendResult(outcome=OUTCOME_AMBIGUOUS, error_message_safe=safe_error(exc))
+    msg = outbound_svc.apply_result(db, outcome.message_id, result)
+    oc = outbound_svc.response_outcome(msg.current_status)
+    response.status_code = 201 if oc == "accepted" else (202 if oc == "unknown" else 200)
+    return sch.OutboundSendResponse(
+        message=_message_out(msg), accepted=(oc == "accepted"),
+        duplicate=False, outcome=oc,
     )
 
 
