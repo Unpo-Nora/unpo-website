@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { Search, History, FileText, Download, XCircle, MessageCircle, ShoppingCart, Trash2 } from 'lucide-react';
+import { Search, History, FileText, Download, XCircle, MessageCircle, ShoppingCart, Trash2, Pencil } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 import CloseSaleModal from './CloseSaleModal';
@@ -16,6 +16,9 @@ interface Client {
     address: string;
     locality: string;
     province: string;
+    zip_code?: string;
+    notes?: string;
+    seller?: string;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -27,6 +30,7 @@ export default function ClientsDashboard() {
     const [currentPage, setCurrentPage] = useState(1);
     const [clientToCloseSale, setClientToCloseSale] = useState<Client | null>(null);
     const [clientForRemitos, setClientForRemitos] = useState<Client | null>(null);
+    const [clientToEdit, setClientToEdit] = useState<Client | null>(null);
     const [refreshKey, setRefreshKey] = useState(0);
 
     useEffect(() => {
@@ -84,6 +88,39 @@ export default function ClientsDashboard() {
     };
 
 
+    const handleExportExcel = async () => {
+        if (filteredClients.length === 0) {
+            alert("No hay clientes para exportar");
+            return;
+        }
+
+        try {
+            const XLSX = await import('xlsx');
+            const dataToExport = filteredClients.map(c => ({
+                "Nombre": c.full_name || "",
+                "Email": c.email || "",
+                "Teléfono": c.phone || "",
+                "DNI/CUIT": c.dni_cuit || "",
+                "Dirección": c.address || "",
+                "Localidad": c.locality || "",
+                "Provincia": c.province || "",
+                "C.P.": c.zip_code || "",
+                "Vendedor": c.seller || "",
+                "Notas": c.notes || ""
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Clientes");
+
+            const dateStr = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `clientes_UNPO_${dateStr}.xlsx`);
+        } catch (error) {
+            console.error("Error al exportar a Excel:", error);
+            alert("Error al intentar exportar. Es posible que el módulo 'xlsx' esté cargando.");
+        }
+    };
+
     const filteredClients = clients.filter(c =>
         c.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.phone?.includes(searchTerm) ||
@@ -115,6 +152,12 @@ export default function ClientsDashboard() {
                         />
                     </div>
                     <div className="flex items-center gap-3">
+                        <button
+                            onClick={handleExportExcel}
+                            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-black rounded-xl transition-all shadow-md shadow-emerald-100"
+                        >
+                            <Download size={16} /> Exportar Excel
+                        </button>
                         <span className="text-sm font-bold text-slate-500 bg-white px-4 py-2 rounded-xl border border-slate-200">
                             Total Clientes: {clients.length}
                         </span>
@@ -159,6 +202,13 @@ export default function ClientsDashboard() {
                                     <td className="px-8 py-6 text-right">
                                         <div className="flex flex-col items-end gap-3">
                                             <div className="flex gap-2 mb-2">
+                                                <button
+                                                    onClick={() => setClientToEdit(client)}
+                                                    className="inline-flex items-center gap-2 px-3 py-2 bg-slate-100 hover:bg-slate-800 text-slate-600 hover:text-white text-xs font-black rounded-xl transition-all"
+                                                    title="Editar cliente"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
                                                 <button
                                                     onClick={() => setClientForRemitos(client)}
                                                     className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-100"
@@ -238,6 +288,18 @@ export default function ClientsDashboard() {
                     onClose={() => setClientForRemitos(null)}
                     onDownload={handleDownloadPDF}
                     onCancel={handleCancelOrder}
+                />
+            )}
+
+            {/* Edit Client Modal */}
+            {clientToEdit && (
+                <EditClientModal
+                    client={clientToEdit}
+                    onClose={() => setClientToEdit(null)}
+                    onSaved={(updated) => {
+                        setClients(prev => prev.map(c => c.id === updated.id ? { ...c, ...updated } : c));
+                        setClientToEdit(null);
+                    }}
                 />
             )}
         </div>
@@ -411,6 +473,128 @@ function RemitosModal({ client, onClose, onDownload, onCancel }: { client: Clien
                             </div>
                         </div>
                     )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function EditClientModal({ client, onClose, onSaved }: { client: Client, onClose: () => void, onSaved: (updated: Partial<Client> & { id: number }) => void }) {
+    const [form, setForm] = useState({
+        full_name: client.full_name || "",
+        email: client.email || "",
+        phone: client.phone || "",
+        dni_cuit: client.dni_cuit || "",
+        address: client.address || "",
+        locality: client.locality || "",
+        province: client.province || "",
+        zip_code: client.zip_code || "",
+        notes: client.notes || ""
+    });
+    const [saving, setSaving] = useState(false);
+
+    const handleChange = (field: keyof typeof form, value: string) =>
+        setForm(prev => ({ ...prev, [field]: value }));
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const response = await apiFetch(`/leads/${client.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(form)
+            });
+
+            if (response.ok) {
+                onSaved({ id: client.id, ...form });
+            } else {
+                const data = await response.json().catch(() => null);
+                alert(data?.detail || "No se pudieron guardar los cambios del cliente.");
+            }
+        } catch (error) {
+            console.error("Error al guardar cliente:", error);
+            alert("Error de red al guardar los cambios.");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const labelClass = "block text-xs font-black text-slate-400 uppercase tracking-widest mb-2";
+    const inputClass = "w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500 transition-all";
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
+            <div className="relative bg-white w-full max-w-2xl rounded-[32px] shadow-2xl overflow-hidden border border-white translate-y-[-20px] animate-in fade-in zoom-in duration-300">
+                <div className="p-8">
+                    <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-6">
+                        <div>
+                            <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                                <Pencil className="text-emerald-600" size={24} />
+                                Editar Cliente
+                            </h3>
+                            <p className="text-slate-500 font-medium mt-1">Cliente: <span className="text-slate-800 font-bold">{client.full_name}</span></p>
+                        </div>
+                        <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+                            <XCircle size={24} className="text-slate-400" />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[55vh] overflow-y-auto pr-1">
+                        <div className="sm:col-span-2">
+                            <label className={labelClass}>Nombre completo</label>
+                            <input type="text" className={inputClass} value={form.full_name} onChange={(e) => handleChange('full_name', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>Email</label>
+                            <input type="email" className={inputClass} value={form.email} onChange={(e) => handleChange('email', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>Teléfono</label>
+                            <input type="text" className={inputClass} value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>DNI/CUIT</label>
+                            <input type="text" className={inputClass} value={form.dni_cuit} onChange={(e) => handleChange('dni_cuit', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>Dirección</label>
+                            <input type="text" className={inputClass} value={form.address} onChange={(e) => handleChange('address', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>Localidad</label>
+                            <input type="text" className={inputClass} value={form.locality} onChange={(e) => handleChange('locality', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>Provincia</label>
+                            <input type="text" className={inputClass} value={form.province} onChange={(e) => handleChange('province', e.target.value)} />
+                        </div>
+                        <div>
+                            <label className={labelClass}>C.P.</label>
+                            <input type="text" className={inputClass} value={form.zip_code} onChange={(e) => handleChange('zip_code', e.target.value)} />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <label className={labelClass}>Notas</label>
+                            <textarea rows={3} className={`${inputClass} resize-none`} value={form.notes} onChange={(e) => handleChange('notes', e.target.value)} />
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-slate-100">
+                        <button
+                            onClick={onClose}
+                            disabled={saving}
+                            className="px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold rounded-xl transition-all disabled:opacity-50"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleSave}
+                            disabled={saving}
+                            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl transition-all shadow-md shadow-emerald-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {saving ? "Guardando..." : "Guardar Cambios"}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

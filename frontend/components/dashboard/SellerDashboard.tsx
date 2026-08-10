@@ -412,8 +412,12 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
         }
     };
 
+    // La pestaña Contactados incluye los cotizados (NEGOTIATION): siguen en gestión.
+    const matchesTab = (l: Lead) =>
+        activeTab === "CONTACTED" ? (l.status === "CONTACTED" || l.status === "NEGOTIATION") : l.status === activeTab;
+
     const filteredLeads = leads
-        .filter(l => l.status === activeTab)
+        .filter(matchesTab)
         .filter(l =>
             l.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             l.phone?.includes(searchTerm) ||
@@ -510,7 +514,7 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                                 }`}
                         >
                             <History size={18} />
-                            Contactados ({leads.filter(l => l.status === 'CONTACTED').length})
+                            Contactados ({leads.filter(l => l.status === 'CONTACTED' || l.status === 'NEGOTIATION').length})
                         </button>
                     </div>
                 </div>
@@ -642,6 +646,9 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                                         ) : (
                                             <div className="space-y-2">
                                                 <div className="flex items-center gap-2">
+                                                    {lead.status === 'NEGOTIATION' && (
+                                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200 uppercase">Cotizado</span>
+                                                    )}
                                                     {getFeedbackBadge(lead.feedback_status)}
                                                     {currentUser?.role === 'admin' && lead.seller && (
                                                         <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase">
@@ -753,7 +760,12 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                                             {activeTab === "NEW" ? (
                                                 <span className="px-2 py-1 rounded-lg text-[10px] font-black uppercase bg-blue-50 text-blue-600 border border-blue-100">Nuevo</span>
                                             ) : (
-                                                getFeedbackBadge(lead.feedback_status)
+                                                <div className="flex flex-col items-end gap-1">
+                                                    {lead.status === 'NEGOTIATION' && (
+                                                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200 uppercase">Cotizado</span>
+                                                    )}
+                                                    {getFeedbackBadge(lead.feedback_status)}
+                                                </div>
                                             )}
                                         </div>
                                     </div>

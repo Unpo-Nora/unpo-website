@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { X, ShoppingCart, Truck, CheckCircle2, Package, Search, ChevronRight, User } from 'lucide-react';
+import { X, ShoppingCart, Truck, CheckCircle2, Package, Search, ChevronLeft, ChevronRight, User } from 'lucide-react';
 import { API_URL, apiFetch } from '@/lib/api';
 import { formatCurrency } from '@/lib/format';
 
@@ -56,11 +56,28 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     });
 
     const [loading, setLoading] = useState(false);
+    const [quotedMarked, setQuotedMarked] = useState(false);
 
     useEffect(() => {
         fetchProducts();
         fetchExchangeRate();
     }, []);
+
+    // Al generar un presupuesto, el lead contactado pasa a NEGOTIATION ("Cotizado").
+    // No toca clientes existentes ni bloquea la apertura del presupuesto si falla.
+    const markLeadQuoted = async () => {
+        if (quotedMarked || lead?.status !== 'CONTACTED') return;
+        setQuotedMarked(true);
+        try {
+            await apiFetch(`/leads/${lead.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'NEGOTIATION' })
+            });
+        } catch (error) {
+            console.error("No se pudo marcar el lead como cotizado:", error);
+        }
+    };
 
     const fetchExchangeRate = async () => {
         try {
@@ -131,9 +148,9 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     };
 
     const rawTotalAmount = cart.reduce((acc, current) => acc + current.total_price, 0);
-    const minMonto = 100000;
-    const canProceed = rawTotalAmount >= minMonto;
-    
+    // Sin monto mínimo de compra (se eliminó el piso de $100.000 en 2026-08).
+    const canProceed = cart.length > 0;
+
     // Auto reset discount if total drops below 150000
     useEffect(() => {
         if (rawTotalAmount < 150000 && discountPercent > 0) {
@@ -378,6 +395,8 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                                 <option value={5}>5% OFF</option>
                                                 <option value={10}>10% OFF</option>
                                                 <option value={15}>15% OFF</option>
+                                                <option value={20}>20% OFF</option>
+                                                <option value={25}>25% OFF</option>
                                             </select>
                                         </div>
                                     )}
@@ -422,12 +441,6 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                         </div>
                                     </div>
 
-                                    {!canProceed && (
-                                        <p className="text-xs text-rose-500 font-bold text-center mb-4 bg-rose-50 p-2 rounded-lg">
-                                            Mínimo de compra: $100.000 (Faltan ${(100000 - rawTotalAmount).toLocaleString()})
-                                        </p>
-                                    )}
-
                                     <button
                                         disabled={!canProceed}
                                         onClick={() => setStep(2)}
@@ -438,7 +451,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
 
                                     {cart.length > 0 && (
                                         <button
-                                            onClick={() => setShowBudgetPreview(true)}
+                                            onClick={() => { markLeadQuoted(); setShowBudgetPreview(true); }}
                                             className="w-full mt-3 py-3 bg-white border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 text-slate-700 hover:text-blue-700 font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
                                         >
                                             Generar Presupuesto
@@ -480,7 +493,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                     <div><label className="text-xs font-bold text-slate-500 uppercase">Fecha de Entrega Aprox</label><input type="date" name="delivery_date" value={formData.delivery_date} onChange={handleInputChange} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl" /></div>
                                 </div>
 
-                                <div className="pt-8">
+                                <div className="pt-8 space-y-3">
                                     <button
                                         disabled={loading}
                                         onClick={handleSubmit}
@@ -489,6 +502,13 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                         {loading ? 'Procesando...' : (
                                             <><CheckCircle2 size={24} /> Generar Remito y Finalizar</>
                                         )}
+                                    </button>
+                                    <button
+                                        disabled={loading}
+                                        onClick={() => setStep(1)}
+                                        className="w-full py-3 bg-white border-2 border-slate-200 hover:border-slate-400 text-slate-600 font-bold rounded-2xl transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <ChevronLeft size={18} /> Volver al Carrito
                                     </button>
                                 </div>
                             </div>

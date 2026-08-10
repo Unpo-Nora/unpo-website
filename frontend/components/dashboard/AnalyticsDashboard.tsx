@@ -13,7 +13,10 @@ import {
     Star,
     CalendarDays,
     Download,
-    DollarSign
+    DollarSign,
+    MessageCircle,
+    MapPin,
+    Filter
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
@@ -65,6 +68,33 @@ interface AnalyticsData {
     };
 }
 
+interface LeadQualityData {
+    period: { year: number; month: number };
+    total_leads: number;
+    whatsapp_leads: number;
+    quality_distribution: { key: string; label: string; count: number }[];
+    funnel: { stage: string; count: number }[];
+    top_cities: { city: string; clients: number; quoted: number; ratio_percent: number }[];
+}
+
+const QUALITY_COLORS: Record<string, string> = {
+    basura: '#7c3aed',
+    contactado: '#2563eb',
+    cotizado: '#f59e0b',
+    cliente: '#10b981',
+    sin_gestion: '#94a3b8'
+};
+
+const QUALITY_DESCRIPTIONS: Record<string, string> = {
+    basura: 'Leads que no logramos conversar, no son del perfil o no existen.',
+    contactado: 'Leads con ida y vuelta pero sin avance.',
+    cotizado: 'Leads con conversación y presupuesto enviado.',
+    cliente: 'Leads que se cotizaron y cerraron una venta.',
+    sin_gestion: 'Leads aún sin gestionar.'
+};
+
+const FUNNEL_COLORS = ['bg-blue-900', 'bg-blue-600', 'bg-orange-500', 'bg-yellow-400', 'bg-emerald-500'];
+
 export default function AnalyticsDashboard() {
     const [data, setData] = useState<AnalyticsData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -77,6 +107,10 @@ export default function AnalyticsDashboard() {
     const [historicalMonth, setHistoricalMonth] = useState(new Date().getMonth() + 1);
     const [historicalData, setHistoricalData] = useState<any>(null);
     const [historicalLoading, setHistoricalLoading] = useState(false);
+
+    // Lead Quality States (comparte el selector de período de HISTORICOS)
+    const [leadQualityData, setLeadQualityData] = useState<LeadQualityData | null>(null);
+    const [leadQualityLoading, setLeadQualityLoading] = useState(false);
 
     // Vendedores States
     const [selectedSeller, setSelectedSeller] = useState<string>('');
@@ -121,6 +155,29 @@ export default function AnalyticsDashboard() {
                 }
             };
             fetchHistorical();
+        }
+    }, [activeTab, historicalYear, historicalMonth]);
+
+    useEffect(() => {
+        if (activeTab === 'HISTORICOS') {
+            const fetchLeadQuality = async () => {
+                setLeadQualityLoading(true);
+                try {
+                    const response = await apiFetch(`/analytics/lead-quality?year=${historicalYear}&month=${historicalMonth}`);
+                    if (response.ok) {
+                        const result = await response.json();
+                        setLeadQualityData(result);
+                    } else {
+                        setLeadQualityData(null);
+                    }
+                } catch (error) {
+                    console.error("Error fetching lead quality:", error);
+                    setLeadQualityData(null);
+                } finally {
+                    setLeadQualityLoading(false);
+                }
+            };
+            fetchLeadQuality();
         }
     }, [activeTab, historicalYear, historicalMonth]);
 
@@ -196,6 +253,12 @@ export default function AnalyticsDashboard() {
     };
 
     const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6', '#ef4444', '#64748b', '#06b6d4'];
+
+    // Derivados de Calidad de Leads
+    const qualityBuckets = leadQualityData?.quality_distribution?.filter(b => b.count > 0) || [];
+    const qualityTotal = qualityBuckets.reduce((acc, b) => acc + b.count, 0);
+    const funnelBase = leadQualityData?.funnel?.[0]?.count || 0;
+    const maxCityRatio = Math.max(0, ...(leadQualityData?.top_cities?.map(c => c.ratio_percent) || []));
 
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
@@ -1073,6 +1136,167 @@ export default function AnalyticsDashboard() {
                                 </div>
                             </>
                         ) : null}
+
+                        {/* Reporte de Calidad de Leads */}
+                        <div className="space-y-6 pt-4">
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900 italic tracking-tighter flex items-center gap-2">
+                                    <Star size={22} className="text-orange-500" />
+                                    Reporte de Calidad de Leads
+                                </h3>
+                                <p className="text-sm text-slate-500 font-medium mt-1">Análisis de la calidad de gestión comercial del período seleccionado.</p>
+                            </div>
+
+                            {leadQualityLoading ? (
+                                <div className="text-center py-16 text-slate-400 font-medium">Analizando calidad de leads...</div>
+                            ) : leadQualityData ? (
+                                <>
+                                    {/* KPIs de Calidad */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <StatCard
+                                            title="Leads Totales"
+                                            value={leadQualityData.total_leads.toString()}
+                                            subtitle="Recibidos en el período"
+                                            icon={<Users className="text-blue-600" />}
+                                            color="bg-blue-50"
+                                        />
+                                        <StatCard
+                                            title="Leads recibidos en WhatsApp"
+                                            value={leadQualityData.whatsapp_leads.toString()}
+                                            subtitle="Ingresados por WhatsApp"
+                                            icon={<MessageCircle className="text-emerald-600" />}
+                                            color="bg-emerald-50"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                        {/* Distribución de Calidad (Donut) */}
+                                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-violet-200/20 border border-violet-50 lg:col-span-2">
+                                            <div className="mb-6">
+                                                <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                                    <BarChart3 size={20} className="text-violet-600" />
+                                                    Distribución de Calidad
+                                                </h3>
+                                                <p className="text-sm text-slate-500 font-medium mt-1">Clasificación de los leads del período según su gestión.</p>
+                                            </div>
+                                            <div className="flex flex-col md:flex-row items-center gap-8">
+                                                <div className="h-[260px] w-full md:w-1/2">
+                                                    {qualityBuckets.length > 0 ? (
+                                                        <ResponsiveContainer width="100%" height="100%">
+                                                            <PieChart>
+                                                                <Pie
+                                                                    data={qualityBuckets}
+                                                                    innerRadius={65}
+                                                                    outerRadius={95}
+                                                                    paddingAngle={4}
+                                                                    dataKey="count"
+                                                                    nameKey="label"
+                                                                >
+                                                                    {qualityBuckets.map((entry) => (
+                                                                        <Cell key={`cell-${entry.key}`} fill={QUALITY_COLORS[entry.key] || '#94a3b8'} />
+                                                                    ))}
+                                                                </Pie>
+                                                                <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontWeight: 'bold' }} />
+                                                            </PieChart>
+                                                        </ResponsiveContainer>
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center text-slate-400 italic text-sm">Sin leads clasificados en el período.</div>
+                                                    )}
+                                                </div>
+                                                <div className="w-full md:w-1/2 space-y-4">
+                                                    {qualityBuckets.map((b) => (
+                                                        <div key={b.key} className="flex items-start gap-3">
+                                                            <span className="w-3 h-3 rounded-full mt-1 shrink-0" style={{ backgroundColor: QUALITY_COLORS[b.key] || '#94a3b8' }} />
+                                                            <div>
+                                                                <p className="text-sm font-black text-slate-900">
+                                                                    {b.label}
+                                                                    <span className="ml-2 font-bold" style={{ color: QUALITY_COLORS[b.key] || '#94a3b8' }}>
+                                                                        {qualityTotal > 0 ? ((b.count / qualityTotal) * 100).toLocaleString('es-AR', { maximumFractionDigits: 1 }) : 0}% ({b.count})
+                                                                    </span>
+                                                                </p>
+                                                                <p className="text-xs text-slate-500 font-medium mt-0.5">{QUALITY_DESCRIPTIONS[b.key] || ''}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Embudo de Conversión */}
+                                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-blue-200/20 border border-blue-50">
+                                            <div className="mb-8">
+                                                <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                                    <Filter size={20} className="text-blue-600" />
+                                                    Embudo de Conversión
+                                                </h3>
+                                                <p className="text-sm text-slate-500 font-medium mt-1">Avance de los leads por cada etapa comercial.</p>
+                                            </div>
+                                            <div className="space-y-5">
+                                                {leadQualityData.funnel.map((f, idx) => {
+                                                    const pct = funnelBase > 0 ? (f.count / funnelBase) * 100 : 0;
+                                                    return (
+                                                        <div key={idx} className="space-y-2">
+                                                            <div className="flex justify-between text-sm font-bold">
+                                                                <span className="text-slate-700">{f.stage}</span>
+                                                                <span className="text-slate-900">
+                                                                    {f.count} <span className="text-slate-400 font-medium">({pct.toLocaleString('es-AR', { maximumFractionDigits: 1 })}%)</span>
+                                                                </span>
+                                                            </div>
+                                                            <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className={`h-full rounded-full transition-all ${FUNNEL_COLORS[idx % FUNNEL_COLORS.length]}`}
+                                                                    style={{ width: `${f.count > 0 ? Math.max(pct, 2) : 0}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        {/* Top 5 Ciudades */}
+                                        <div className="bg-white p-8 rounded-[32px] shadow-md shadow-emerald-200/20 border border-emerald-50">
+                                            <div className="mb-8">
+                                                <h3 className="text-xl font-black text-slate-900 italic flex items-center gap-2">
+                                                    <MapPin size={20} className="text-emerald-600" />
+                                                    Top 5 Ciudades con Mejor Calidad de Leads
+                                                </h3>
+                                                <p className="text-sm text-slate-500 font-medium mt-1">Según % de leads cliente sobre leads cotizados.</p>
+                                            </div>
+                                            {leadQualityData.top_cities.length > 0 ? (
+                                                <div className="space-y-5">
+                                                    {leadQualityData.top_cities.map((c, idx) => (
+                                                        <div key={idx} className="space-y-2">
+                                                            <div className="flex justify-between text-sm font-bold">
+                                                                <span className="text-slate-700">{c.city}</span>
+                                                                <span className="text-emerald-600">
+                                                                    {c.ratio_percent.toLocaleString('es-AR', { maximumFractionDigits: 1 })}%
+                                                                    <span className="text-slate-400 font-medium ml-2">({c.clients} de {c.quoted} cotizados)</span>
+                                                                </span>
+                                                            </div>
+                                                            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                                <div
+                                                                    className="h-full bg-emerald-500 rounded-full transition-all"
+                                                                    style={{ width: `${maxCityRatio > 0 ? (c.ratio_percent / maxCityRatio) * 100 : 0}%` }}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <div className="p-8 rounded-2xl bg-slate-50 border border-slate-100 text-center text-sm text-slate-400 italic">
+                                                    Sin datos de ciudad para este período (la ciudad se carga con los datos de facturación).
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="bg-white p-10 rounded-[32px] shadow-sm border border-slate-100 text-center text-slate-400 italic text-sm">
+                                    Sin datos de calidad de leads para este período.
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
             </div>
