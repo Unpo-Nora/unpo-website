@@ -5,9 +5,11 @@ services:
     image: postgres:16-alpine
     restart: always
     environment:
-      POSTGRES_USER: unpo_admin
-      POSTGRES_PASSWORD: secure_password_123
-      POSTGRES_DB: unpo_nora_db
+      # Valores definidos en .env (no versionado). Sin defaults: si faltan, compose falla
+      # explícito en vez de levantar la DB con una credencial conocida.
+      POSTGRES_USER: ${POSTGRES_USER:?Definir POSTGRES_USER en .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Definir POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:?Definir POSTGRES_DB en .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
