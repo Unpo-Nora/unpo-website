@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 export default function ImportDashboard() {
     const [file, setFile] = useState<File | null>(null);
@@ -24,12 +25,8 @@ export default function ImportDashboard() {
         formData.append('file', file);
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/import/`, {
+            const response = await apiFetch('/leads/import/', {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
                 body: formData,
             });
 

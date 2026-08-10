@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { API_URL, setOnUnauthorized } from '@/lib/api';
 
 interface User {
     id: number;
@@ -33,9 +34,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
     }, []);
 
+    // Sesión expirada en cualquier apiFetch (401) → cerrar sesión y volver al inicio.
+    useEffect(() => {
+        setOnUnauthorized(() => logout());
+        return () => setOnUnauthorized(null);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const validateToken = async (token: string) => {
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/me`, {
+            const response = await fetch(`${API_URL}/auth/me`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
             if (response.ok) {

@@ -152,6 +152,28 @@ class Product(ProductBase):
     class Config:
         from_attributes = True
 
+class ProductPublic(BaseModel):
+    """Vista pública del producto: sin costos, precios internos ni proveedor."""
+    sku: Optional[str] = None
+    name: str
+    description: Optional[str] = None
+    brand_id: Optional[int] = None
+    category_id: Optional[int] = None
+    moq: Optional[int] = 1
+    stock_quantity: Optional[int] = 0
+    is_active: Optional[bool] = True
+    weight: Optional[Decimal] = None
+    height: Optional[Decimal] = None
+    width: Optional[Decimal] = None
+    length: Optional[Decimal] = None
+    color: Optional[str] = None
+    specs: Optional[Dict[str, Any]] = None
+    images: Optional[List[str]] = None
+    videos: Optional[List[str]] = None
+
+    class Config:
+        from_attributes = True
+
 class StockAdjustment(BaseModel):
     adjustment: int
 

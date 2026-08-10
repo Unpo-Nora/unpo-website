@@ -5,11 +5,15 @@ from typing import List
 from .. import crud, models, schemas, database, meta_api
 from ..utils import importer
 from ..dependencies.permissions import require_roles
+from .auth import get_current_user
 import urllib.parse
 import os
 import json
 import hmac
 import hashlib
+import logging
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter(
     prefix="/leads",
@@ -23,8 +27,6 @@ def create_lead(lead: schemas.LeadCreate, db: Session = Depends(get_db)):
     created_lead = crud.create_lead(db=db, lead=lead)
     return created_lead
 
-from .auth import get_current_user
-
 @router.get("/", response_model=List[schemas.LeadResponse])
 def read_leads(
     skip: int = 0,
@@ -34,11 +36,8 @@ def read_leads(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_user)
 ):
-    print(f"DEBUG: User {current_user.email} with role {current_user.role} requesting leads. status={status} brand={brand}")
     if current_user.role == "admin":
-        results = crud.get_leads(db, skip=skip, limit=limit, status=status, brand=brand)
-        print(f"DEBUG: Admin results count: {len(results)}")
-        return results
+        return crud.get_leads(db, skip=skip, limit=limit, status=status, brand=brand)
 
     # For sellers:
     # 1. If searching for NEW, show all NEW.
@@ -164,16 +163,15 @@ async def verify_webhook(
 ):
     verify_token = os.getenv("META_VERIFY_TOKEN", "")
     if hub_mode == "subscribe" and hub_verify_token == verify_token:
-        print("Webhook verified successfully!")
-        # Meta expects the raw integer hub_challenge
-        return int(hub_challenge)
+        # Meta espera el hub.challenge crudo como cuerpo de la respuesta
+        return PlainTextResponse(content=hub_challenge or "")
     raise HTTPException(status_code=403, detail="Verification failed")
 
 @router.post("/webhook")
 async def receive_webhook(request: Request, db: Session = Depends(get_db)):
+    # No logear el payload ni los datos del lead: contienen datos personales (PII).
     body = await request.json()
-    print("Received webhook event:", body)
-    
+
     if body.get("object") == "page":
         for entry in body.get("entry", []):
             for change in entry.get("changes", []):
@@ -181,21 +179,18 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                 if change.get("field") == "leadgen":
                     leadgen_id = value.get("leadgen_id")
                     if leadgen_id:
-                        print(f"DEBUG: Extracted leadgen_id: {leadgen_id}, llamando a Meta Graph API...")
                         access_token = os.getenv("META_PAGE_ACCESS_TOKEN", "")
                         lead_data = await meta_api.get_lead_data(leadgen_id, access_token)
-                        
+
                         if lead_data:
-                            print(f"DEBUG: Data cruda de Meta: {lead_data}")
                             transformed = meta_api.transform_meta_lead_to_schemas(lead_data)
-                            from .. import crud, schemas
                             transformed['status'] = "NEW"
                             lead_create = schemas.LeadCreate(**transformed)
                             # Verify if lead doesn't exist already to avoid dupes (basic check)
                             crud.create_lead(db=db, lead=lead_create)
-                            print(f"✅ Lead {leadgen_id} guardado exitosamente.")
+                            logger.info("Lead de Meta %s guardado.", leadgen_id)
                         else:
-                            print(f"❌ Error: Graph API no devolvió datos para auth token. ¿Token vencido o sin permisos?")
+                            logger.warning("Graph API no devolvió datos para el lead %s (¿token vencido o sin permisos?)", leadgen_id)
     return {"status": "ok"}
 
 # --- Webhook Meta Lead Ads NORA (marca NORA, separado del webhook UNPO de arriba) ---

@@ -15,12 +15,12 @@ import {
     CheckCircle,
     Trash2,
     Download,
-    XCircle,
     Users,
     ChevronDown,
     ChevronUp
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { apiFetch } from '@/lib/api';
 import CloseSaleModal from './CloseSaleModal';
 
 interface Lead {
@@ -89,12 +89,7 @@ export default function SellerDashboard() {
 
     const fetchLeads = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/?brand=unpo`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const response = await apiFetch('/leads/?brand=unpo');
             const data = await response.json();
             setLeads(data);
             setLoading(false);
@@ -111,12 +106,10 @@ export default function SellerDashboard() {
         // Move to contacted automatically if it was new
         if (lead.status === 'NEW' && currentUser?.email) {
             try {
-                const token = localStorage.getItem('token');
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
+                const response = await apiFetch(`/leads/${lead.id}`, {
                     method: 'PATCH',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         status: 'CONTACTED',
@@ -139,12 +132,8 @@ export default function SellerDashboard() {
 
     const handleMarkContacted = async (lead: Lead) => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}/mark-contacted`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            const response = await apiFetch(`/leads/${lead.id}/mark-contacted`, {
+                method: 'PUT'
             });
 
             if (response.ok) {
@@ -207,12 +196,10 @@ export default function SellerDashboard() {
         }
 
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${selectedLead.id}`, {
+            const response = await apiFetch(`/leads/${selectedLead.id}`, {
                 method: 'PATCH',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     feedback_status: finalFeedbackStatus,
@@ -237,12 +224,10 @@ export default function SellerDashboard() {
 
     const handleRevertToNew = async (lead: Lead) => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
+            const response = await apiFetch(`/leads/${lead.id}`, {
                 method: 'PATCH',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     status: 'NEW',
@@ -263,12 +248,10 @@ export default function SellerDashboard() {
         if (!leadToDelete) return;
         setIsDeleting(true);
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${leadToDelete.id}`, {
+            const response = await apiFetch(`/leads/${leadToDelete.id}`, {
                 method: 'PATCH',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     status: 'LOST',
@@ -311,11 +294,6 @@ export default function SellerDashboard() {
 
         const base = "https://wa.me/" + phone;
         const sellerFirstName = currentUser?.full_name?.split(' ')[0] || "un vendedor";
-        const platformMap: Record<string, string> = {
-            'ig': 'Instagram',
-            'fb': 'Facebook',
-        };
-        const platformFriendlyName = platformMap[lead.platform?.toLowerCase()] || "nuestra página web";
 
         const message = `Hola ${lead.full_name}, ¿cómo estás?  
 Mi nombre es ${sellerFirstName}, un gusto saludarte.
@@ -352,12 +330,10 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
                 platform: 'Bazar / Personal',
                 seller: currentUser?.email
             };
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
+            const response = await apiFetch('/leads/', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
             });
@@ -382,12 +358,7 @@ Además, ofrecemos descuentos especiales para compras de mayor volumen.`;
 
     const handleDownloadCatalog = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/catalog/pdf`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const response = await apiFetch('/products/catalog/pdf');
 
             if (response.ok) {
                 const blob = await response.blob();

@@ -31,11 +31,9 @@ Una vez que los contenedores "Healthy", podrás acceder a:
 
 ## 🔑 Credenciales de Acceso (Staff)
 
-| Rol | Usuario | Contraseña |
-|---|---|---|
-| **Admin** | `gonzaloR@unpo.com.ar` | `Grobles*24` |
-| **Vendedor** | `pedroN@unpo.com.ar` | `Pnano*27` |
-| **Soporte Técnico** | `julianv@unpo.com.ar` | `Jvelazquez*18` |
+Las credenciales de staff **no se versionan en este repositorio**. Solicitarlas al administrador del sistema por un canal seguro (nunca por commit, chat público ni documentación).
+
+> Nota de seguridad: versiones anteriores de este archivo contenían contraseñas reales. Esas credenciales deben considerarse comprometidas y rotarse.
 
 ## 📦 Estructura del Proyecto
 

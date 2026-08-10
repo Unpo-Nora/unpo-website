@@ -67,6 +67,13 @@ def archive_product(db: Session, sku: str):
 def get_setting(db: Session, key: str):
     return db.query(models.Settings).filter(models.Settings.key == key).first()
 
+DEFAULT_EXCHANGE_RATE = 1450.0
+
+def get_exchange_rate(db: Session) -> float:
+    """Tipo de cambio manual (settings.manual_exchange_rate), con fallback al valor por defecto."""
+    setting = get_setting(db, key="manual_exchange_rate")
+    return float(setting.value) if setting else DEFAULT_EXCHANGE_RATE
+
 def update_setting(db: Session, key: str, value: str):
     setting = get_setting(db, key)
     if not setting:

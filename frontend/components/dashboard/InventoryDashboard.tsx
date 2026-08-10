@@ -2,8 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-    Package,
-    RefreshCcw,
     Search,
     AlertTriangle,
     CheckCircle2,
@@ -17,6 +15,7 @@ import {
     Wallet,
     Trash2
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import ProductModal from './ProductModal';
 
@@ -79,11 +78,7 @@ export default function InventoryDashboard() {
 
     const fetchProducts = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=10000`;
-            const response = await fetch(apiUrl, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch('/products/?limit=10000');
             const data = await response.json();
             setProducts(data);
             setLoading(false);
@@ -94,10 +89,9 @@ export default function InventoryDashboard() {
 
     const fetchAuditLogs = async () => {
         try {
-            const token = localStorage.getItem('token');
             const skip = (auditCurrentPage - 1) * AUDIT_ITEMS_PER_PAGE;
-            let url = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/history?limit=${AUDIT_ITEMS_PER_PAGE}&skip=${skip}`;
-            
+            let url = `/products/history?limit=${AUDIT_ITEMS_PER_PAGE}&skip=${skip}`;
+
             if (activeTab === 'historial') {
                 const now = new Date();
                 url += `&month=${now.getMonth() + 1}&year=${now.getFullYear()}`;
@@ -105,10 +99,8 @@ export default function InventoryDashboard() {
                 if (auditFilterMonth) url += `&month=${auditFilterMonth}`;
                 if (auditFilterYear) url += `&year=${auditFilterYear}`;
             }
-            
-            const res = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+
+            const res = await apiFetch(url);
             if (res.ok) {
                 const result = await res.json();
                 setAuditLogs(result.data || []);
@@ -129,10 +121,7 @@ export default function InventoryDashboard() {
 
     const fetchExchangeRate = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch('/settings/manual_exchange_rate');
             if (response.ok) {
                 const data = await response.json();
                 setExchangeRate(data.value);
@@ -143,10 +132,7 @@ export default function InventoryDashboard() {
 
     const fetchCapitalIva = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_ivas/list`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch('/settings/capital_ivas/list');
             if (response.ok) {
                 const data = await response.json();
                 setIvaList(data);
@@ -157,13 +143,9 @@ export default function InventoryDashboard() {
     const handleAddCapitalIva = async () => {
         if (newIvaAmount <= 0) return;
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_ivas/`, {
+            const response = await apiFetch('/settings/capital_ivas/', {
                 method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json' 
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount: newIvaAmount, observation: newIvaObs })
             });
             if (response.ok) {
@@ -182,10 +164,8 @@ export default function InventoryDashboard() {
     const handleDeleteCapitalIva = async (id: number) => {
         if (!confirm("¿Eliminar este registro de IVA? El monto se descontará del total.")) return;
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/capital_ivas/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const response = await apiFetch(`/settings/capital_ivas/${id}`, {
+                method: 'DELETE'
             });
             if (response.ok) {
                 fetchCapitalIva();
@@ -200,21 +180,15 @@ export default function InventoryDashboard() {
 
         setSavingRate(true);
         try {
-            const token = localStorage.getItem('token');
-            const apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/batch_update`;
-            
             const payload = {
                 stock_adjustments: pendingStock,
                 price_updates: pendingPrice,
                 new_exchange_rate: newExchangeRate !== exchangeRate ? newExchangeRate : null
             };
 
-            const response = await fetch(apiUrl, {
+            const response = await apiFetch('/products/batch_update', {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
@@ -261,16 +235,12 @@ export default function InventoryDashboard() {
                 };
             }
             
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${sku}`, {
+            const response = await apiFetch(`/products/${sku}`, {
                 method: 'PUT',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json' 
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
-            
+
             if (response.ok) {
                 setMessage({ type: 'success', text: `Costo excluido de ${sku}.` });
                 fetchProducts();

@@ -7,11 +7,10 @@ import {
     ChevronLeft,
     ChevronRight,
     History,
-    CheckCircle,
-    Save,
     RotateCcw
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
+import { apiFetch } from '@/lib/api';
 
 interface Lead {
     id: number;
@@ -45,12 +44,7 @@ export default function NoraDashboard() {
 
     const fetchLeads = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/?brand=nora`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
+            const response = await apiFetch('/leads/?brand=nora');
             const data = await response.json();
             // Filtrar solo los de NORA (defensa en profundidad: el backend ya filtra por brand=nora)
             const noraLeads = data.filter((l: Lead) => l.source === 'WEB_NORA');
@@ -69,12 +63,10 @@ export default function NoraDashboard() {
 
         if (lead.status === 'NEW' && currentUser?.email) {
             try {
-                const token = localStorage.getItem('token');
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
+                const response = await apiFetch(`/leads/${lead.id}`, {
                     method: 'PATCH',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}`
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
                         status: 'CONTACTED',
@@ -97,12 +89,10 @@ export default function NoraDashboard() {
 
     const handleRevertToNew = async (lead: Lead) => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/${lead.id}`, {
+            const response = await apiFetch(`/leads/${lead.id}`, {
                 method: 'PATCH',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     status: 'NEW',

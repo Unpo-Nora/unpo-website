@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Send, Loader2, CheckCircle } from 'lucide-react';
+import { API_URL } from '@/lib/api';
+import { NORA_SELLER_PHONE } from '@/lib/constants';
 
 export default function WaitlistForm() {
     const [isLoading, setIsLoading] = useState(false);
@@ -29,7 +31,7 @@ export default function WaitlistForm() {
         setIsLoading(true);
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
+            const response = await fetch(`${API_URL}/leads/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -44,7 +46,7 @@ export default function WaitlistForm() {
             if (response.ok) {
                 const text = `Hola! Quiero recibir asesoramiento sobre NORA. Mi nombre es *${formData.full_name}* y me interesó la opción: *${formData.product_interest}*.`;
                 const encodedText = encodeURIComponent(text);
-                window.open(`https://wa.me/5491131488378?text=${encodedText}`, '_blank');
+                window.open(`https://wa.me/${NORA_SELLER_PHONE}?text=${encodedText}`, '_blank');
 
                 setIsSuccess(true);
                 setFormData({

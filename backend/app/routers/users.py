@@ -6,21 +6,17 @@ from ..models import User
 from ..schemas_auth import UserResponse, UserCreate, PasswordUpdate
 from ..utils.auth import get_password_hash
 from .auth import get_current_user
+from ..dependencies.permissions import require_roles
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
 @router.get("/", response_model=List[UserResponse])
-def get_all_users(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
+def get_all_users(db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
     users = db.query(User).all()
     return users
 
 @router.post("/", response_model=UserResponse)
-def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
+def create_user(user: UserCreate, db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
     db_user = db.query(User).filter(User.email == user.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -52,10 +48,7 @@ def update_password(user_id: int, password_data: PasswordUpdate, db: Session = D
     return {"message": "Password updated successfully"}
 
 @router.delete("/{user_id}")
-def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not enough permissions")
-    
+def delete_user(user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_roles("admin"))):
     # Prevenir que un admin se borre a si mismo por error (opcional, pero buena práctica)
     if current_user.id == user_id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")

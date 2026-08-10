@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from .. import models, database, crud
 from .auth import get_current_user
+from ..dependencies.permissions import require_roles
 from pydantic import BaseModel
 from typing import List, Dict, Any
 from datetime import datetime
@@ -66,6 +67,35 @@ def _group_product_stats(raw_stats):
     )
     return sorted_products
 
+def _normalize_platform_counts(raw_platforms):
+    """Agrupa conteos de leads por plataforma normalizando alias (ig/fb/web...)."""
+    final_platform = {}
+    for plat, count in raw_platforms:
+        p_name = plat or "Página Web"
+        p_lower = str(p_name).lower()
+        if "ig" in p_lower or "instagram" in p_lower: p_name = "Instagram"
+        elif p_lower in ["f", "fb"] or "facebook" in p_lower: p_name = "Facebook"
+        elif p_lower in ["g", "web"] or "página web" in p_lower or "pagina web" in p_lower: p_name = "Página Web"
+
+        final_platform[p_name] = final_platform.get(p_name, 0) + count
+    return [{"platform": k, "count": v} for k, v in final_platform.items()]
+
+def _tx_amount_ars(tx, exchange_rate: float) -> float:
+    """Monto de una transacción financiera convertido a ARS según su moneda."""
+    amt = float(tx.monto)
+    if tx.moneda == "USD":
+        amt *= exchange_rate
+    return amt
+
+def _least_sold_with_stock(db: Session, sold_by_sku: dict, qty_key: str):
+    """Productos activos con stock ordenados por unidades vendidas ascendente (top 20)."""
+    active_stock_prods = db.query(models.Product.sku, models.Product.name).filter(
+        models.Product.is_active != False,
+        (models.Product.stock_quantity > 0) | (models.Product.stock_quantity == None)
+    ).all()
+    items = [{"product_name": name, qty_key: sold_by_sku.get(sku, 0)} for sku, name in active_stock_prods]
+    return sorted(items, key=lambda x: x[qty_key])[:20]
+
 class VisitRequest(BaseModel) :
     visitor_id: str
 
@@ -82,11 +112,8 @@ def record_visit(request: VisitRequest, db: Session = Depends(get_db)):
 @router.get("/summary")
 def get_analytics_summary(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    # Solo administradores pueden ver métricas gerenciales
-    if current_user.role != "admin":
-        return {"error": "Unauthorized"}
 
     # 1. Resumen de Leads
     total_leads = db.query(models.Lead).count()
@@ -291,8 +318,7 @@ def get_analytics_summary(
     ).scalar()
     monthly_total_sales = float(raw_monthly_sales_amount or 0)
 
-    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
-    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
+    exchange_rate = crud.get_exchange_rate(db)
 
     monthly_tx_expenses = db.query(models.FinancialTransaction).filter(
         models.FinancialTransaction.fecha >= current_month_start,
@@ -300,10 +326,7 @@ def get_analytics_summary(
     ).all()
     monthly_total_expenses = 0.0
     for tx in monthly_tx_expenses:
-        amt = float(tx.monto)
-        if tx.moneda == "USD":
-            amt *= exchange_rate
-        monthly_total_expenses += amt
+        monthly_total_expenses += _tx_amount_ars(tx, exchange_rate)
 
     # F. Historical Sales & Expenses (Last 12 months)
     all_completed_sales = db.query(
@@ -334,11 +357,8 @@ def get_analytics_summary(
         month_key = extx.fecha.strftime("%Y-%m")
         if month_key not in monthly_stats_dict:
             monthly_stats_dict[month_key] = {"amount": 0.0, "count": 0, "expenses": 0.0, "new_leads": 0}
-        
-        amt = float(extx.monto)
-        if extx.moneda == "USD":
-            amt *= exchange_rate
-        monthly_stats_dict[month_key]["expenses"] += amt
+
+        monthly_stats_dict[month_key]["expenses"] += _tx_amount_ars(extx, exchange_rate)
 
     # Query leads count grouped by month directly in database
     if db.bind.dialect.name == "postgresql":
@@ -398,16 +418,11 @@ def get_analytics_summary(
     for extx in current_month_expenses_query:
         if extx.fecha:
             day_str = str(extx.fecha.day)
-            amt = float(extx.monto)
-            if extx.moneda == "USD":
-                amt *= exchange_rate
-            daily_expenses_stats[day_str] += amt
+            daily_expenses_stats[day_str] += _tx_amount_ars(extx, exchange_rate)
 
     daily_sales_data = [{"day": k, "amount": v} for k, v in daily_sales_stats.items()]
     daily_expenses_data = [{"day": k, "amount": v} for k, v in daily_expenses_stats.items()]
     daily_orders_data = [{"day": k, "count": v} for k, v in daily_orders_stats.items()]
-
-    # Exchange rate is now fetched at the beginning of this function
 
     raw_stock_value = db.query(
         models.Product.name,
@@ -449,18 +464,8 @@ def get_analytics_summary(
     ).group_by(models.OrderItem.product_sku).all()
     
     sales_dict = {sku: int(qty or 0) for sku, qty in raw_sales_per_product}
-    
-    active_stock_prods = db.query(models.Product.sku, models.Product.name).filter(
-        models.Product.is_active != False,
-        (models.Product.stock_quantity > 0) | (models.Product.stock_quantity == None)
-    ).all()
-    
-    least_sold_list = []
-    for sku, name in active_stock_prods:
-        qty = sales_dict.get(sku, 0)
-        least_sold_list.append({"product_name": name, "count": qty})
-    
-    least_sold_data = sorted(least_sold_list, key=lambda x: x["count"])[:20]
+
+    least_sold_data = _least_sold_with_stock(db, sales_dict, "count")
 
     # 11. Lead Feedback
     raw_feedback = db.query(
@@ -502,16 +507,7 @@ def get_analytics_summary(
         func.count(models.Lead.id)
     ).group_by(models.Lead.platform).all()
     
-    final_platform = {}
-    for plat, count in raw_platforms:
-        p_name = plat or "Página Web"
-        p_lower = str(p_name).lower()
-        if "ig" in p_lower or "instagram" in p_lower: p_name = "Instagram"
-        elif p_lower in ["f", "fb"] or "facebook" in p_lower: p_name = "Facebook"
-        elif p_lower in ["g", "web"] or "página web" in p_lower or "pagina web" in p_lower: p_name = "Página Web"
-        
-        final_platform[p_name] = final_platform.get(p_name, 0) + count
-    platform_data = [{"platform": k, "count": v} for k, v in final_platform.items()]
+    platform_data = _normalize_platform_counts(raw_platforms)
 
     return {
         "visitors": {
@@ -558,10 +554,8 @@ def get_historical_analytics(
     year: int,
     month: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        return {"error": "Unauthorized"}
     
     start_date = datetime(year, month, 1)
     month_days = calendar.monthrange(year, month)[1]
@@ -580,9 +574,8 @@ def get_historical_analytics(
     sales_amount = float(sales_q[1] or 0)
 
     # Gastos en ese mes historico
-    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
-    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
-    
+    exchange_rate = crud.get_exchange_rate(db)
+
     hist_txs = db.query(models.FinancialTransaction).filter(
         models.FinancialTransaction.fecha >= start_date,
         models.FinancialTransaction.fecha <= end_date,
@@ -590,10 +583,7 @@ def get_historical_analytics(
     ).all()
     historical_expenses = 0.0
     for htx in hist_txs:
-        amt = float(htx.monto)
-        if htx.moneda == "USD":
-            amt *= exchange_rate
-        historical_expenses += amt
+        historical_expenses += _tx_amount_ars(htx, exchange_rate)
 
     # 2. Leads ingresados
     leads_entered = db.query(models.Lead).filter(
@@ -657,20 +647,9 @@ def get_historical_analytics(
     top_products = [{"product_name": p[1], "quantity_sold": int(p[2] or 0)} for p in raw_monthly_products[:10]]
     
     # 6. Productos menos vendidos (Solo con stock actual)
-    active_stock_prods = db.query(models.Product.sku, models.Product.name).filter(
-        models.Product.is_active != False,
-        (models.Product.stock_quantity > 0) | (models.Product.stock_quantity == None)
-    ).all()
-    
     sold_dict = {p[0]: int(p[2] or 0) for p in raw_monthly_products}
-    
-    least_sold_list = []
-    for sku, name in active_stock_prods:
-        qty = sold_dict.get(sku, 0)
-        least_sold_list.append({"product_name": name, "quantity_sold": qty})
-    
-    least_sold_list.sort(key=lambda x: x["quantity_sold"])
-    bottom_products = least_sold_list[:20]
+
+    bottom_products = _least_sold_with_stock(db, sold_dict, "quantity_sold")
 
     # 7. Plataforma Origen
     raw_platforms = db.query(
@@ -681,17 +660,7 @@ def get_historical_analytics(
         models.Lead.created_at <= end_date
     ).group_by(models.Lead.platform).all()
     
-    final_platform = {}
-    for plat, count in raw_platforms:
-        p_name = plat or "Página Web"
-        p_lower = str(p_name).lower()
-        if "ig" in p_lower or "instagram" in p_lower: p_name = "Instagram"
-        elif p_lower in ["f", "fb"] or "facebook" in p_lower: p_name = "Facebook"
-        elif p_lower in ["g", "web"] or "página web" in p_lower or "pagina web" in p_lower: p_name = "Página Web"
-        
-        final_platform[p_name] = final_platform.get(p_name, 0) + count
-        
-    platform_data = [{"platform": k, "count": v} for k, v in final_platform.items()]
+    platform_data = _normalize_platform_counts(raw_platforms)
 
     # 8. Visitas y Contactos Diarios para el mes histórico
     visits_by_day = {str(d): 0 for d in range(1, month_days + 1)}
@@ -745,7 +714,7 @@ def get_seller_trends(
     current_user: models.User = Depends(get_current_user)
 ):
     if current_user.role != "admin" and current_user.email != seller_email:
-        return {"error": "Unauthorized"}
+        raise HTTPException(status_code=403, detail="No tiene permisos para ver estas métricas")
         
     now = datetime.now()
     current_month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
@@ -823,18 +792,14 @@ def get_seller_trends(
     }
 
 from ..schemas import Expense, ExpenseCreate
-from .. import crud
 
 @router.get("/expenses", response_model=List[Expense])
 def get_expenses(
     year: int = None,
     month: int = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Unauthorized")
     try:
         expenses = crud.get_expenses(db, year, month)
         return [{"id": e.id, "amount": e.amount, "description": e.description, "date": e.date.isoformat() if e.date else None, "user_email": getattr(e, "user_email", None)} for e in expenses]
@@ -845,11 +810,8 @@ def get_expenses(
 def create_expense(
     expense: ExpenseCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Unauthorized")
     expense.user_email = current_user.email
     return crud.create_expense(db, expense)
 
@@ -857,13 +819,9 @@ def create_expense(
 def delete_expense(
     expense_id: int,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Unauthorized")
     success = crud.delete_expense(db, expense_id)
     if not success:
-        from fastapi import HTTPException
         raise HTTPException(status_code=404, detail="Expense not found")
     return {"status": "success"}

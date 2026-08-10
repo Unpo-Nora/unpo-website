@@ -12,7 +12,7 @@ export default function InventoryPage() {
     React.useEffect(() => {
         const allowedRoles = ['admin', 'vendedor', 'seller', 'vendor'];
         if (!loading && (!user || !allowedRoles.includes(user.role))) {
-            router.push('/login');
+            router.push('/admin/login');
         }
     }, [user, loading, router]);
 

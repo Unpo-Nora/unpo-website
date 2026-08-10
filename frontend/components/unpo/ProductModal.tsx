@@ -2,11 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Package, Hash, AlertCircle } from 'lucide-react';
+import { API_URL } from '@/lib/api';
 
 interface Product {
     sku: string;
     name: string;
-    price_wholesale: number;
     stock_quantity: number;
     category_id?: number;
     description?: string;
@@ -42,8 +42,7 @@ export default function ProductModal({ product, isOpen, onClose, categoryName }:
         setTimeout(onClose, 300);
     };
 
-    const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const baseUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`;
+    const baseUrl = `${API_URL}`;
 
     // Combinar imágenes y videos en una sola lista multimedia
     const media = [

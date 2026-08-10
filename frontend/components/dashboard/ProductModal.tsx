@@ -1,5 +1,8 @@
+"use client";
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Box, DollarSign, ArchiveRestore, Archive, UploadCloud, ImageIcon, Trash2 } from 'lucide-react';
+import { X, Save, Box, DollarSign, Archive, UploadCloud, ImageIcon, Trash2 } from 'lucide-react';
+import { API_URL, apiFetch } from '@/lib/api';
 
 interface ProductModalProps {
     isOpen: boolean;
@@ -33,9 +36,8 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
 
     useEffect(() => {
         const fetchExchange = async () => {
-             const token = localStorage.getItem('token');
              try {
-                const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const res = await apiFetch('/settings/manual_exchange_rate');
                 if(res.ok) {
                     const data = await res.json();
                     setExchangeRate(Number(data.value) || 1);
@@ -46,9 +48,8 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
         
         if (!product && isOpen) {
             const fetchNextSku = async () => {
-                 const token = localStorage.getItem('token');
                  try {
-                     const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/next-sku`, { headers: { 'Authorization': `Bearer ${token}` }});
+                     const res = await apiFetch('/products/next-sku');
                      if (res.ok) {
                          const data = await res.json();
                          setNextSku(data.next_sku);
@@ -59,19 +60,18 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
         }
 
         const fetchCategories = async () => {
-             const token = localStorage.getItem('token');
              try {
-                 const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/categories`, { headers: { 'Authorization': `Bearer ${token}` }});
+                 const res = await apiFetch('/products/categories');
                  if (res.ok) {
                      let data = await res.json();
                      const allowed = ["DECORACION", "HOGAR", "MARROQUINERIA", "BAZAR", "TECNOLOGIA", "JUGUETE"];
-                     
+
                      const missing = allowed.filter(allowName => !data.some((c: any) => c.name.trim().toUpperCase() === allowName));
                      for (const m of missing) {
                          try {
-                             const cRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/categories`, {
+                             const cRes = await apiFetch('/products/categories', {
                                  method: 'POST',
-                                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                                 headers: { 'Content-Type': 'application/json' },
                                  body: JSON.stringify({name: m})
                              });
                              if(cRes.ok) {
@@ -174,10 +174,9 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
         setError('');
 
         try {
-            const token = localStorage.getItem('token');
             const url = product
-                ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${product.sku}`
-                : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/`;
+                ? `/products/${product.sku}`
+                : `/products/`;
 
             const method = product ? 'PUT' : 'POST';
 
@@ -185,12 +184,9 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
             let retries = 3;
             while(retries > 0) {
                 try {
-                    response = await fetch(url, {
+                    response = await apiFetch(url, {
                         method,
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        },
+                        headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(formData)
                     });
                     
@@ -216,9 +212,8 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                         imageFormData.append('file', file);
 
                         try {
-                            await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${sku}/images`, {
+                            await apiFetch(`/products/${sku}/images`, {
                                 method: 'POST',
-                                headers: { 'Authorization': `Bearer ${token}` },
                                 body: imageFormData
                             });
                         } catch (imgError) {
@@ -268,11 +263,8 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
 
         setSaving(true);
         try {
-            const token = localStorage.getItem('token');
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${product.sku}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const response = await apiFetch(`/products/${product.sku}`, {
+                method: 'DELETE'
             });
 
             if (response.ok) {
@@ -294,11 +286,8 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
 
         setSaving(true);
         try {
-            const token = localStorage.getItem('token');
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/${product.sku}/hard`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const response = await apiFetch(`/products/${product.sku}/hard`, {
+                method: 'DELETE'
             });
 
             if (response.ok) {
@@ -500,7 +489,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                     {/* Existing Images */}
                                     {existingImages.map((imgUrl, idx) => (
                                         <div key={`existing-${idx}`} className="relative group aspect-square rounded-xl bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center">
-                                            <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${imgUrl}`} alt="Product snapshot" className="w-full h-full object-cover" />
+                                            <img src={`${API_URL}${imgUrl}`} alt="Product snapshot" className="w-full h-full object-cover" />
                                         </div>
                                     ))}
 

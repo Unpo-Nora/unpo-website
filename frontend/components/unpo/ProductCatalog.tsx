@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Search, Package, ShoppingCart, Filter, ArrowRight, ListFilter, X, ChevronRight, Hash } from 'lucide-react';
+import { Search, Package, ArrowRight, ListFilter, X, ChevronRight, Hash } from 'lucide-react';
 import ProductModal from './ProductModal';
+import { API_URL } from '@/lib/api';
 
 interface Category {
     id: number;
@@ -12,11 +13,8 @@ interface Category {
 interface Product {
     sku: string;
     name: string;
-    price_wholesale: number;
-    price_usd: number;
     stock_quantity: number;
     category_id?: number;
-    provider_name?: string;
     description?: string;
     images?: string[];
 }
@@ -29,25 +27,10 @@ export default function ProductCatalog() {
     const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
     const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [exchangeRate, setExchangeRate] = useState<number>(1450); // Default fallback
-
-    const fetchExchangeRate = async () => {
-        try {
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`);
-            if (response.ok) {
-                const data = await response.json();
-                setExchangeRate(Number(data.value));
-            }
-        } catch (error) {
-            console.error("Error fetching exchange rate:", error);
-        }
-    };
 
     const fetchCategories = async () => {
         try {
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/categories`);
+            const response = await fetch(`${API_URL}/products/categories`);
             if (response.ok) {
                 const data = await response.json();
                 setCategories(data);
@@ -60,10 +43,9 @@ export default function ProductCatalog() {
     const fetchProducts = async () => {
         try {
             setLoading(true);
-            const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-            // Fetch more products to handle local filtering better if needed, 
+            // Fetch more products to handle local filtering better if needed,
             // but the user wants it organized.
-            let apiUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=10000`;
+            let apiUrl = `${API_URL}/products/?limit=10000`;
 
             const response = await fetch(apiUrl);
             if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -78,7 +60,6 @@ export default function ProductCatalog() {
     };
 
     useEffect(() => {
-        fetchExchangeRate();
         fetchCategories();
         fetchProducts();
     }, []);
@@ -233,8 +214,7 @@ export default function ProductCatalog() {
                                                 {product.images?.[0] ? (
                                                     <img
                                                         src={(() => {
-                                                            const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-                                                            const baseUrl = `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}`;
+                                                            const baseUrl = `${API_URL}`;
                                                             return product.images[0].startsWith('http')
                                                                 ? product.images[0]
                                                                 : `${baseUrl}${product.images[0]}`;

@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { formatCurrency } from "../lib/format";
 
 interface OrderItem {
     product_sku: string;
@@ -26,14 +27,7 @@ interface GenerateBudgetPdfParams {
     dateStr: string;
 }
 
-const formatCurrency = (value: number) => {
-    return `$${value.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`;
-};
-
 export function generateBudgetPdf({ client, items, totals, discountPercent, hasIva, dateStr }: GenerateBudgetPdfParams) {
-    // Debug for validation (required by user)
-    console.log("Productos presupuesto:", items.length, items.map(p => p.product_sku));
-
     const doc = new jsPDF({
         orientation: "portrait",
         unit: "mm",

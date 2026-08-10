@@ -17,6 +17,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Users, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { NoraLead } from './types';
 import { useAuth } from '@/context/AuthContext';
+import { getToken } from '@/lib/api';
 import { fetchNoraLeads, updateNoraLeadStatus, type NoraLeadUpdate } from '@/lib/nora/api';
 import { timeOf, normalizeArPhone, buildNoraMessage, channelLabel } from '@/lib/nora/format';
 import NoraProspectsToolbar, {
@@ -67,7 +68,7 @@ export default function NoraProspectsPanel() {
             setLoading(true);
             setError(false);
             try {
-                const token = localStorage.getItem('token') ?? '';
+                const token = getToken() ?? '';
                 const data = await fetchNoraLeads(token);
                 if (!cancelled) setLeads(data);
             } catch (err) {
@@ -217,7 +218,7 @@ export default function NoraProspectsPanel() {
         setUpdatingLeadId(lead.id);
         setActionError(null);
         try {
-            const token = localStorage.getItem('token') ?? '';
+            const token = getToken() ?? '';
             const ok = await updateNoraLeadStatus(token, lead.id, payload);
             if (ok) {
                 setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, ...optimistic } : l)));

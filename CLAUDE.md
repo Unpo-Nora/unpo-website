@@ -22,7 +22,7 @@ These rules govern the in-progress split of NORA out from UNPO. They take preced
 - Every separation change ships **in stages**: (1) diagnosis, (2) technical plan, (3) minimal implementation, (4) validation. Do not jump straight to implementation.
 - **Before** implementing any separation change, first identify what is currently **shared**: shared files, shared components, shared endpoints, and shared models/tables. Surface that inventory as part of the diagnosis.
 - Do **not delete or remove UNPO code** while building NORA — only with explicit approval.
-- Do **not touch production, environment variables, Alembic migrations, or the `/fix_*` / `/migrate_*` endpoints** without explicit approval.
+- Do **not touch production, environment variables, or Alembic migrations** without explicit approval. (Los endpoints `/fix_*` y `debug_*` fueron eliminados de la API en 2026-08; el mantenimiento se ejecuta solo vía `backend/scripts/maintenance/`.)
 
 ## Running the project
 
@@ -42,13 +42,13 @@ Both containers mount their source as volumes with hot-reload (`uvicorn --reload
 
 Frontend (`cd frontend`): `npm run dev` · `npm run build` · `npm start` · `npm run lint` (ESLint via `eslint-config-next`). There is no frontend test suite.
 
-Backend (`cd backend`): `uvicorn app.main:app --reload --port 8000`. Requires a reachable Postgres (`DATABASE_URL`). There is no automated test suite — the many `check_*.py`, `tmp_*.py`, and root-level `*.py` scripts are one-off DB inspection/maintenance utilities, not tests.
+Backend (`cd backend`): `uvicorn app.main:app --reload --port 8000`. Requires a reachable Postgres (`DATABASE_URL`). The test suite lives in `backend/tests/` (stdlib `unittest`, SQLite in-memory, no network): run `python -m unittest discover -s tests -v` from `backend/`. (The old one-off `check_*.py` / `tmp_*.py` scripts that littered the repo root and `backend/` were deleted in 2026-08.)
 
 ## Architecture
 
 ### Backend (FastAPI + SQLAlchemy)
 
-- `app/main.py` — app entry: registers FastAPI, routers, CORS middleware, exception handlers, static mounts and the `/health` check. **The startup runs NO DDL**: it does **not** call `Base.metadata.create_all()`, and it does **not** auto-run `alembic upgrade` / `stamp` / `downgrade`. **Alembic is the single authorized mechanism for creating and evolving the PostgreSQL schema** — the active baseline is `71e9e987f7d2` (in `backend/alembic/versions/`, `down_revision=None`, scoped to `public`). On an **empty** database the schema is created explicitly with `alembic upgrade head`; an existing DB adopts a revision via `alembic stamp` (see `docs/unpo-alembic-baseline-runbook.md`). The historical one-off maintenance scripts (`backend/upgrade_db.py`, `backend/migrate_*.py`, `backend/scripts/maintenance/*`) and the archived migrations in `backend/alembic/legacy_versions/` are **legacy** and must **not** be used as a pattern for new migrations.
+- `app/main.py` — app entry: registers FastAPI, routers, CORS middleware, exception handlers, static mounts and the `/health` check. **The startup runs NO DDL**: it does **not** call `Base.metadata.create_all()`, and it does **not** auto-run `alembic upgrade` / `stamp` / `downgrade`. **Alembic is the single authorized mechanism for creating and evolving the PostgreSQL schema** — the active baseline is `71e9e987f7d2` (in `backend/alembic/versions/`, `down_revision=None`, scoped to `public`). On an **empty** database the schema is created explicitly with `alembic upgrade head`; an existing DB adopts a revision via `alembic stamp` (see `docs/unpo-alembic-baseline-runbook.md`). The archived migrations in `backend/alembic/legacy_versions/` are **legacy** and must **not** be used as a pattern for new migrations (the old `backend/upgrade_db.py` / `backend/migrate_*.py` one-offs were deleted in 2026-08; `backend/scripts/maintenance/` holds the maintained operational scripts, which never do DDL).
 - `app/models.py` — the single source of truth for the data model (~25 SQLAlchemy tables). Core domains: `Product`/`Category`/`Brand`, `Lead` (CRM, with `LeadStatus` and seller assignment), `SaleOrder`/`OrderItem`, `Purchase`/`Supplier`/`PurchaseItem`, `FinancialTransaction`/`Expense`/`CapitalIva` (finance, with Spanish field names like `tipo_movimiento`, `monto`), `User`, `Employee`, `PageView`, `InventoryAuditLog`. Many enums are defined here too.
 - `app/routers/*.py` — one router per domain (`products`, `leads`, `auth`, `analytics`, `sales`, `settings`, `users`, `hr`, `finance`). All are registered in `main.py`.
 - `app/crud.py` — DB access helpers shared by routers. `app/schemas.py` / `app/schemas_auth.py` — Pydantic request/response models.

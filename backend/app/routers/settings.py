@@ -1,25 +1,20 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import crud, models, schemas, database
 from .auth import get_current_user
-from passlib.context import CryptContext
+from ..dependencies.permissions import require_roles
+from ..utils.auth import verify_password
 
 router = APIRouter(
     prefix="/settings",
     tags=["settings"]
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
-
-from typing import List
-
 @router.get("/capital_ivas/list", response_model=List[schemas.CapitalIva])
 def get_all_capital_ivas(
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
     return crud.get_capital_ivas(db)
 
@@ -27,10 +22,8 @@ def get_all_capital_ivas(
 def create_capital_iva(
     iva: schemas.CapitalIvaCreate, 
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Solo admin puede agregar IVA")
     if iva.amount <= 0:
         raise HTTPException(status_code=400, detail="Monto no puede ser cero o negativo")
     return crud.create_capital_iva(db, iva, current_user.email)
@@ -39,17 +32,24 @@ def create_capital_iva(
 def delete_capital_iva(
     iva_id: int, 
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Solo admin puede eliminar IVA")
     success = crud.delete_capital_iva(db, iva_id)
     if not success:
         raise HTTPException(status_code=404, detail="IVA no encontrado")
     return {"status": "ok"}
 
+# Claves legibles por cualquier usuario autenticado (staff); el resto es solo admin.
+STAFF_READABLE_SETTINGS = {"manual_exchange_rate"}
+
 @router.get("/{key}", response_model=schemas.Settings)
-def get_setting(key: str, db: Session = Depends(database.get_db)):
+def get_setting(
+    key: str,
+    db: Session = Depends(database.get_db),
+    current_user: models.User = Depends(get_current_user)
+):
+    if key not in STAFF_READABLE_SETTINGS and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="No tiene permisos para leer esta configuración")
     setting = crud.get_setting(db, key=key)
     if not setting:
         # Provide sensible default if missing
@@ -63,11 +63,8 @@ def update_setting(
     key: str, 
     setting_data: schemas.SettingsUpdate, 
     db: Session = Depends(database.get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para editar configuraciones")
-        
     # Security check for sensitive settings
     if key == "manual_exchange_rate":
         if not setting_data.password:

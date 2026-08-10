@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { Search, History, FileText, Download, XCircle, MessageCircle, ShoppingCart, Trash2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 import CloseSaleModal from './CloseSaleModal';
 
 interface Client {
@@ -33,10 +35,7 @@ export default function ClientsDashboard() {
 
     const fetchClients = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/?status=CLIENT`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch('/leads/?status=CLIENT');
             const data = await response.json();
             setClients(data);
             setLoading(false);
@@ -51,10 +50,7 @@ export default function ClientsDashboard() {
             // El endpoint del remito ahora exige Authorization (Etapa 0A de seguridad).
             // window.open no envía headers, así que se descarga con fetch autenticado y se
             // abre el blob resultante.
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderId}/pdf`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await apiFetch(`/sales/${orderId}/pdf`);
             if (!res.ok) {
                 alert("No se pudo descargar el remito (sesión vencida o sin permisos).");
                 return;
@@ -71,10 +67,8 @@ export default function ClientsDashboard() {
         if (!confirm("¿Estás seguro de que quieres CANCELAR esta venta? Esta acción devolverá el stock y marcará el remito como cancelado.")) return;
 
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderId}/cancel`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await apiFetch(`/sales/${orderId}/cancel`, {
+                method: 'POST'
             });
 
             if (res.ok) {
@@ -262,10 +256,7 @@ function RemitosModal({ client, onClose, onDownload, onCancel }: { client: Clien
 
     const fetchHistory = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/lead/${client.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch(`/sales/lead/${client.id}`);
             const data = await response.json();
             setOrders(data);
             
@@ -387,7 +378,7 @@ function RemitosModal({ client, onClose, onDownload, onCancel }: { client: Clien
                                                 <div className="flex items-center gap-4">
                                                     <div className="text-right mr-4">
                                                         <div className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-0.5">Total</div>
-                                                        <div className="font-black text-slate-700">${order.total_amount?.toLocaleString()}</div>
+                                                        <div className="font-black text-slate-700">{formatCurrency(order.total_amount)}</div>
                                                     </div>
                                                     <div className="flex gap-2">
                                                         <button
