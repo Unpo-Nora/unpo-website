@@ -7,7 +7,6 @@ import {
     AlertTriangle,
     MessageSquare,
     BarChart3,
-    ArrowRight,
     Package,
     ShoppingCart,
     Award,
@@ -18,10 +17,11 @@ import {
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
-    LineChart, Line, PieChart, Pie, Cell, Legend, ComposedChart, Area
+    LineChart, Line, PieChart, Pie, Cell, Legend, ComposedChart
 } from 'recharts';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import ExpenseModal from './ExpenseModal';
 
@@ -88,14 +88,7 @@ export default function AnalyticsDashboard() {
     useEffect(() => {
         const fetchAnalytics = async () => {
             try {
-                const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-                const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-
-                const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/summary`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
+                const response = await apiFetch('/analytics/summary');
 
                 if (response.ok) {
                     const result = await response.json();
@@ -116,10 +109,7 @@ export default function AnalyticsDashboard() {
             const fetchHistorical = async () => {
                 setHistoricalLoading(true);
                 try {
-                    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/historical?year=${historicalYear}&month=${historicalMonth}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const response = await apiFetch(`/analytics/historical?year=${historicalYear}&month=${historicalMonth}`);
                     if (response.ok) {
                         const result = await response.json();
                         setHistoricalData(result);
@@ -139,10 +129,7 @@ export default function AnalyticsDashboard() {
             const fetchSellerData = async () => {
                 setSellerLoading(true);
                 try {
-                    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-                    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/seller/${selectedSeller}/trends`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const response = await apiFetch(`/analytics/seller/${selectedSeller}/trends`);
                     if (response.ok) {
                         const result = await response.json();
                         setSellerTrends(result);

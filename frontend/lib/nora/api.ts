@@ -9,8 +9,7 @@
 
 import type { NoraLead } from '@/components/nora/types';
 import type { NoraLeadStatus } from '@/components/nora/leadStatus';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { API_URL } from '../api';
 
 /**
  * Sources que pertenecen a la marca NORA: web + Meta Lead Ads (Facebook/Instagram).
@@ -35,7 +34,7 @@ function authHeaders(token: string): HeadersInit {
  * brand=nora). Incluye web + Meta Lead Ads (FACEBOOK_NORA / INSTAGRAM_NORA).
  */
 export async function fetchNoraLeads(token: string): Promise<NoraLead[]> {
-    const response = await fetch(`${API_BASE}/leads/?brand=nora`, {
+    const response = await fetch(`${API_URL}/leads/?brand=nora`, {
         headers: authHeaders(token),
     });
     const data = await response.json();
@@ -51,7 +50,7 @@ export async function updateNoraLeadStatus(
     leadId: number,
     payload: NoraLeadUpdate
 ): Promise<boolean> {
-    const response = await fetch(`${API_BASE}/leads/${leadId}`, {
+    const response = await fetch(`${API_URL}/leads/${leadId}`, {
         method: 'PATCH',
         headers: {
             'Content-Type': 'application/json',

@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Send, Loader2, CheckCircle } from 'lucide-react';
+import { API_URL } from '@/lib/api';
+import { UNPO_FALLBACK_SELLER_PHONE } from '@/lib/constants';
 
 export default function ContactForm() {
     const [isLoading, setIsLoading] = useState(false);
@@ -33,7 +35,7 @@ export default function ContactForm() {
         setIsLoading(true);
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/leads/`, {
+            const response = await fetch(`${API_URL}/leads/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -46,7 +48,7 @@ export default function ContactForm() {
 
             if (response.ok) {
                 const responseData = await response.json();
-                const assignedPhone = responseData.assigned_seller_phone || '1144227969';
+                const assignedPhone = responseData.assigned_seller_phone || UNPO_FALLBACK_SELLER_PHONE;
                 
                 const text = `Hola! Acabo de completar el formulario en la web de UNPO.
 Mi nombre es *${formData.full_name}*, mi negocio es *${formData.business_type}* y busco asesoramiento sobre *${formData.category_interest}*.`;

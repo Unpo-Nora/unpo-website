@@ -7,7 +7,6 @@ import { useAuth } from '@/context/AuthContext';
 import {
     LayoutDashboard,
     Users,
-    FileUp,
     LogOut,
     Settings,
     UserCircle,

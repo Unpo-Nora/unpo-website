@@ -1,7 +1,6 @@
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { Instagram, Facebook, Download } from 'lucide-react';
-import Link from 'next/link';
 
 export default function PrensaPage() {
     return (

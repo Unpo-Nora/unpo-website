@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { apiFetch } from '@/lib/api';
 import { UserPlus, Save, Users, Key, AlertCircle, RefreshCw, Trash } from 'lucide-react';
 
 interface StaffUser {
@@ -56,10 +57,7 @@ export default function UserManagement() {
             return;
         }
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await apiFetch('/users/');
             if (res.ok) {
                 const data = await res.json();
                 setUsers(data);
@@ -75,12 +73,10 @@ export default function UserManagement() {
         e.preventDefault();
         setActionLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/`, {
+            const res = await apiFetch('/users/', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     email: newUserEmail,
@@ -112,12 +108,8 @@ export default function UserManagement() {
         if (!window.confirm("¿Estás seguro de que deseas eliminar a este usuario?")) return;
         
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/${userId}`, {
-                method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            const res = await apiFetch(`/users/${userId}`, {
+                method: 'DELETE'
             });
 
             if (res.ok) {
@@ -141,13 +133,11 @@ export default function UserManagement() {
 
         setActionLoading(true);
         try {
-            const token = localStorage.getItem('token');
             // Todos los usuarios pueden cambiar su propia contraseña usando su ID actual
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/users/${currentUser?.id}/password`, {
+            const res = await apiFetch(`/users/${currentUser?.id}/password`, {
                 method: 'PUT',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     new_password: newPassword

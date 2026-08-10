@@ -1,8 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { DollarSign, Plus, Trash2, Box, PackagePlus, Users, ArrowRightLeft, Calendar, FileText, CheckCircle, AlertTriangle, ExternalLink } from 'lucide-react';
+import { DollarSign, Plus, Box, PackagePlus, Users, ArrowRightLeft, Calendar, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { apiFetch } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 import { useAuth } from '@/context/AuthContext';
 
 type TabType = 'flujo' | 'compras' | 'cuentas' | 'proveedores';
@@ -30,15 +32,12 @@ export default function PurchasesDashboard() {
     const fetchAllData = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            const headers = { 'Authorization': `Bearer ${token}` };
-            
             const [exRes, pRes, sRes, txRes, dRes] = await Promise.all([
-                fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, { headers }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/purchases`, { headers }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/suppliers`, { headers }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/financial-transactions`, { headers }),
-                fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/dashboard/finance`, { headers })
+                apiFetch('/settings/manual_exchange_rate'),
+                apiFetch('/finance/purchases'),
+                apiFetch('/finance/suppliers'),
+                apiFetch('/finance/financial-transactions'),
+                apiFetch('/finance/dashboard/finance')
             ]);
 
             if(exRes.ok) { const d = await exRes.json(); setExchangeRate(Number(d.value) || 1450); }
@@ -68,10 +67,9 @@ export default function PurchasesDashboard() {
     const handleCreateTransaction = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/financial-transactions`, {
+            const res = await apiFetch('/finance/financial-transactions', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     tipo_movimiento: txForm.tipo,
                     categoria: txForm.categoria,
@@ -91,10 +89,9 @@ export default function PurchasesDashboard() {
     const handleCreateSupplier = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/suppliers`, {
+            const res = await apiFetch('/finance/suppliers', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(supplierForm)
             });
             if(res.ok) {
@@ -107,7 +104,6 @@ export default function PurchasesDashboard() {
     const handleCreatePurchase = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            const token = localStorage.getItem('token');
             const cost_details = [];
             if (purchaseForm.cost_producto) cost_details.push({ tipo_costo: 'PRODUCTO', monto: parseFloat(purchaseForm.cost_producto)});
             if (purchaseForm.cost_flete) cost_details.push({ tipo_costo: 'FLETE', monto: parseFloat(purchaseForm.cost_flete)});
@@ -124,9 +120,9 @@ export default function PurchasesDashboard() {
                 items: []
             };
 
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/purchases`, {
+            const res = await apiFetch('/finance/purchases', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             if(res.ok) {
@@ -140,10 +136,8 @@ export default function PurchasesDashboard() {
     const handlePayPurchase = async (id: number) => {
         if(!confirm("¿Confirmar el pago total de esta cuenta y registrarlo en caja?")) return;
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/finance/purchases/${id}/pay`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await apiFetch(`/finance/purchases/${id}/pay`, {
+                method: 'POST'
             });
             if(res.ok) {
                 alert("Pago registrado exitosamente");
@@ -152,10 +146,6 @@ export default function PurchasesDashboard() {
                 alert("Error al registrar pago");
             }
         } catch(e) {}
-    };
-
-    const formatCurrency = (amount: number, currency: string) => {
-        return new Intl.NumberFormat('es-AR', { style: 'currency', currency: currency }).format(amount);
     };
 
     const formatStatus = (status: string) => {
@@ -196,20 +186,20 @@ export default function PurchasesDashboard() {
                     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
                         <div className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Balance General (ARS)</div>
                         <div className={`text-3xl font-black ${financeMetrics.balance_ars >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {formatCurrency(financeMetrics.balance_ars, 'ARS')}
+                            {formatCurrency(financeMetrics.balance_ars)}
                         </div>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
                         <div className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Ingresos Totales</div>
-                        <div className="text-2xl font-bold text-slate-800">{formatCurrency(financeMetrics.ingresos_ars, 'ARS')}</div>
+                        <div className="text-2xl font-bold text-slate-800">{formatCurrency(financeMetrics.ingresos_ars)}</div>
                     </div>
                     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
                         <div className="text-slate-500 text-sm font-bold uppercase tracking-wider mb-2">Egresos Reales</div>
-                        <div className="text-2xl font-bold text-slate-800">{formatCurrency(financeMetrics.egresos_ars, 'ARS')}</div>
+                        <div className="text-2xl font-bold text-slate-800">{formatCurrency(financeMetrics.egresos_ars)}</div>
                     </div>
                     <div className="bg-orange-50 p-5 rounded-2xl border border-orange-100 shadow-sm flex flex-col justify-between">
                         <div className="text-orange-600 text-sm font-bold uppercase tracking-wider mb-2">Cuentas por Pagar</div>
-                        <div className="text-2xl font-black text-orange-700">{formatCurrency(financeMetrics.cuentas_por_pagar_pendientes_ars + financeMetrics.cuentas_por_pagar_vencidas_ars, 'ARS')}</div>
+                        <div className="text-2xl font-black text-orange-700">{formatCurrency(financeMetrics.cuentas_por_pagar_pendientes_ars + financeMetrics.cuentas_por_pagar_vencidas_ars)}</div>
                     </div>
                 </div>
             )}
@@ -316,7 +306,7 @@ export default function PurchasesDashboard() {
                                                         {formatCurrency(tx.monto, tx.moneda)}
                                                     </td>
                                                     <td className="py-3 px-2 text-right text-slate-500 font-medium">
-                                                        {tx.moneda === 'USD' ? formatCurrency(tx.monto * exchangeRate, 'ARS') : '-'}
+                                                        {tx.moneda === 'USD' ? formatCurrency(tx.monto * exchangeRate) : '-'}
                                                     </td>
                                                     <td className="py-3 px-2 text-center">{formatStatus(tx.estado)}</td>
                                                 </tr>
@@ -355,7 +345,7 @@ export default function PurchasesDashboard() {
                                             <div className="flex items-center gap-6">
                                                 <div className="text-right">
                                                     <div className="font-black text-slate-800 text-xl">{formatCurrency(tx.monto, tx.moneda)}</div>
-                                                    {tx.moneda === 'USD' && <div className="text-xs text-slate-400 font-medium">~ {formatCurrency(tx.monto * exchangeRate, 'ARS')} ARS</div>}
+                                                    {tx.moneda === 'USD' && <div className="text-xs text-slate-400 font-medium">~ {formatCurrency(tx.monto * exchangeRate)} ARS</div>}
                                                 </div>
                                                 {tx.compra_id && (
                                                     <button onClick={() => handlePayPurchase(tx.compra_id)} className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl transition-colors shadow-sm">
@@ -469,7 +459,7 @@ export default function PurchasesDashboard() {
                                                 </div>
                                                 <div className="mt-4 p-3 bg-blue-50 text-blue-800 rounded-lg text-sm flex justify-between font-bold">
                                                     <span>Total Estimado de la Compra:</span>
-                                                    <span>{formatCurrency((parseFloat(purchaseForm.cost_producto||'0') + parseFloat(purchaseForm.cost_flete||'0') + parseFloat(purchaseForm.cost_impuestos||'0') + parseFloat(purchaseForm.cost_otros||'0')), purchaseForm.moneda)}</span>
+                                                    <span>{formatCurrency(parseFloat(purchaseForm.cost_producto||'0') + parseFloat(purchaseForm.cost_flete||'0') + parseFloat(purchaseForm.cost_impuestos||'0') + parseFloat(purchaseForm.cost_otros||'0'), purchaseForm.moneda)}</span>
                                                 </div>
                                             </div>
 

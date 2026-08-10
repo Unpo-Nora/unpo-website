@@ -11,7 +11,7 @@ export default function HRPage() {
 
     React.useEffect(() => {
         if (!loading && (!user || user.role !== 'admin')) {
-            router.push('/login');
+            router.push('/admin/login');
         }
     }, [user, loading, router]);
 

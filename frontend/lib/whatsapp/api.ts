@@ -1,5 +1,5 @@
 // Cliente HTTP del inbox de WhatsApp. Reusa el patrón del proyecto:
-// fetch a `${NEXT_PUBLIC_API_URL || 'http://localhost:8000'}` con Bearer de localStorage.
+// fetch a `${API_URL}` (lib/api) con Bearer de localStorage.
 // - Soporta AbortController (cancelar requests obsoletos del polling).
 // - No registra JWT ni respuestas completas.
 // - Errores tipados (ApiError con status) para que la UI maneje 401/403/404/red.
@@ -17,8 +17,7 @@ import {
   MessagesResponse,
   UnreadCountsResponse,
 } from "./types";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_URL } from "../api";
 
 function authHeaders(): Record<string, string> {
   const token =
@@ -39,7 +38,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     headers["Content-Type"] = "application/json";
     body = JSON.stringify(opts.body);
   }
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${API_URL}${path}`, {
     method: opts.method ?? "GET",
     headers,
     body,

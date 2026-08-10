@@ -1,5 +1,8 @@
+"use client";
+
 import React, { useState, useEffect } from 'react';
 import { X, DollarSign, Plus, Trash2 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 
 export default function ExpenseModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
     const [amount, setAmount] = useState('');
@@ -11,10 +14,7 @@ export default function ExpenseModal({ isOpen, onClose }: { isOpen: boolean, onC
 
     const fetchExpenses = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/expenses`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await apiFetch('/analytics/expenses');
             if (res.ok) {
                 const data = await res.json();
                 setExpenses(data);
@@ -26,9 +26,8 @@ export default function ExpenseModal({ isOpen, onClose }: { isOpen: boolean, onC
         if (isOpen) {
             fetchExpenses();
             const fetchExchange = async () => {
-                 const token = localStorage.getItem('token');
                  try {
-                    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, { headers: { 'Authorization': `Bearer ${token}` } });
+                    const res = await apiFetch('/settings/manual_exchange_rate');
                     if(res.ok) {
                         const data = await res.json();
                         setExchangeRate(Number(data.value) || 1);
@@ -43,17 +42,13 @@ export default function ExpenseModal({ isOpen, onClose }: { isOpen: boolean, onC
         e.preventDefault();
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
             const parsedAmount = parseFloat(amount);
             const finalAmount = currency === 'USD' ? parsedAmount * exchangeRate : parsedAmount;
             const finalDescription = currency === 'USD' ? `${description} (U$D ${parsedAmount})` : description;
-            
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/expenses`, {
+
+            const res = await apiFetch('/analytics/expenses', {
                 method: 'POST',
-                headers: { 
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ amount: finalAmount, description: finalDescription })
             });
             if (res.ok) {
@@ -68,10 +63,8 @@ export default function ExpenseModal({ isOpen, onClose }: { isOpen: boolean, onC
     const handleDelete = async (id: number) => {
         if (!confirm("¿Borrar gasto?")) return;
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/analytics/expenses/${id}`, {
-                method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await apiFetch(`/analytics/expenses/${id}`, {
+                method: 'DELETE'
             });
             if (res.ok) {
                 fetchExpenses();

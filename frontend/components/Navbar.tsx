@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { Users } from 'lucide-react';
 
 export default function Navbar() {
@@ -48,11 +47,6 @@ export default function Navbar() {
                                 Acceso Staff
                             </button>
                         </Link>
-                        {/* 
-                        <button className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg font-medium transition-all shadow-lg shadow-slate-900/20">
-                            Acceso Clientes
-                        </button>
-                        */}
                     </div>
                 </div>
             </div>

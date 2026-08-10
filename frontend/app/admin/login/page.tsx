@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { User, Lock, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
+import { API_URL } from '@/lib/api';
 
 export default function LoginPage() {
     const [email, setEmail] = useState('');
@@ -21,18 +22,24 @@ export default function LoginPage() {
             formData.append('username', email);
             formData.append('password', password);
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/auth/login`, {
+            const response = await fetch(`${API_URL}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: formData,
             });
 
-            const data = await response.json();
-
             if (response.ok) {
+                const data = await response.json();
                 await login(data.access_token);
             } else {
-                setError(data.detail || "Email o contraseña incorrectos");
+                let detail: string | undefined;
+                try {
+                    const data = await response.json();
+                    detail = data.detail;
+                } catch {
+                    // cuerpo no-JSON: se usa el mensaje por defecto
+                }
+                setError(detail || "Email o contraseña incorrectos");
             }
         } catch (err) {
             setError("No se pudo conectar con el servidor de autenticación");

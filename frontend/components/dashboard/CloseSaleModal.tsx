@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, ShoppingCart, Truck, CheckCircle2, Package, Search, ChevronRight, User } from 'lucide-react';
+import { API_URL, apiFetch } from '@/lib/api';
+import { formatCurrency } from '@/lib/format';
 
 interface Product {
     sku: string;
@@ -62,10 +64,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
 
     const fetchExchangeRate = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/settings/manual_exchange_rate`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch('/settings/manual_exchange_rate');
             if (response.ok) {
                 const data = await response.json();
                 setExchangeRate(Number(data.value) || 1);
@@ -77,10 +76,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
 
     const fetchProducts = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/products/?limit=1000`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const response = await apiFetch('/products/?limit=1000');
             const data = await response.json();
             setProducts(data);
         } catch (error) {
@@ -176,12 +172,10 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                 }))
             };
 
-            const token = localStorage.getItem('token');
-            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/`, {
+            const response = await apiFetch('/sales/', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
             });
@@ -191,11 +185,9 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
 
                 // El remito ahora requiere Authorization (Etapa 0A de seguridad); window.open
                 // directo no envía el header y daría 401. Se descarga con fetch autenticado
-                // (reutilizando el token de arriba) y se abre el blob.
+                // y se abre el blob.
                 try {
-                    const pdfRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/sales/${orderData.id}/pdf`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
-                    });
+                    const pdfRes = await apiFetch(`/sales/${orderData.id}/pdf`);
                     if (pdfRes.ok) {
                         const blobUrl = window.URL.createObjectURL(await pdfRes.blob());
                         window.open(blobUrl, '_blank');
@@ -225,7 +217,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
     const getImageUrl = (url?: string) => {
         if (!url) return null;
         if (url.startsWith('http')) return url;
-        const base = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+        const base = API_URL;
         return `${base}${url.startsWith('/') ? '' : '/'}${url}`;
     };
 
@@ -348,7 +340,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                                 {/* Cart Item Thumbnail */}
                                                 <div className="w-10 h-10 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 overflow-hidden">
                                                     {c.product_image ? (
-                                                        <img src={`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${c.product_image}`} alt={c.product_name} className="w-full h-full object-cover" />
+                                                        <img src={`${API_URL}${c.product_image}`} alt={c.product_name} className="w-full h-full object-cover" />
                                                     ) : (
                                                         <Package size={16} className="text-slate-300" />
                                                     )}
@@ -406,7 +398,7 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                         <div className="flex justify-between items-end mb-2 opacity-60">
                                             <span className="text-slate-500 font-bold uppercase tracking-widest text-[10px]">Subtotal (Sin Desc/IVA)</span>
                                             <span className="text-lg font-black text-slate-500 line-through">
-                                                ${rawTotalAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                {formatCurrency(rawTotalAmount)}
                                             </span>
                                         </div>
                                     )}
@@ -416,16 +408,16 @@ export default function CloseSaleModal({ lead, onClose, onSuccess }: CloseSaleMo
                                         <div className="text-right">
                                             {discountPercent > 0 && (
                                                 <div className="text-rose-500 font-bold text-xs tracking-wider mb-1">
-                                                    - AHORRO: ${(rawTotalAmount - discountedAmount).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    - AHORRO: {formatCurrency(rawTotalAmount - discountedAmount)}
                                                 </div>
                                             )}
                                             {hasIva && (
                                                 <div className="text-blue-500 font-bold text-xs tracking-wider mb-1">
-                                                    + IVA (21%): ${(ivaAmount).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                    + IVA (21%): {formatCurrency(ivaAmount)}
                                                 </div>
                                             )}
                                             <span className={`text-3xl font-black ${canProceed ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                                ${finalTotalAmount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                {formatCurrency(finalTotalAmount)}
                                             </span>
                                         </div>
                                     </div>

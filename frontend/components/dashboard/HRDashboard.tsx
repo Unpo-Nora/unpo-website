@@ -9,10 +9,9 @@ import {
     CheckCircle,
     UserPlus,
     X,
-    FileText,
-    Activity,
     CreditCard
 } from 'lucide-react';
+import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
 interface Employee {
@@ -52,15 +51,11 @@ export default function HRDashboard() {
     });
 
     const { user } = useAuth();
-    const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
     const fetchEmployees = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/hr/employees`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            const res = await apiFetch('/hr/employees');
             if (res.ok) {
                 const data = await res.json();
                 setEmployees(data);
@@ -78,15 +73,13 @@ export default function HRDashboard() {
 
     const handleSaveEmployee = async () => {
         try {
-            const token = localStorage.getItem('token');
-            const url = selectedEmployee ? `${API_URL}/hr/employees/${selectedEmployee.id}` : `${API_URL}/hr/employees`;
+            const url = selectedEmployee ? `/hr/employees/${selectedEmployee.id}` : '/hr/employees';
             const method = selectedEmployee ? 'PUT' : 'POST';
 
-            const res = await fetch(url, {
+            const res = await apiFetch(url, {
                 method,
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(formData)
             });
@@ -105,13 +98,11 @@ export default function HRDashboard() {
 
     const handleUpdateAbsences = async (empId: number, currentDays: number, increment: boolean) => {
         try {
-            const token = localStorage.getItem('token');
             const newAbsences = increment ? currentDays + 1 : Math.max(0, currentDays - 1);
-            const res = await fetch(`${API_URL}/hr/employees/${empId}`, {
+            const res = await apiFetch(`/hr/employees/${empId}`, {
                 method: 'PUT',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({ absent_days_this_month: newAbsences })
             });
@@ -124,10 +115,8 @@ export default function HRDashboard() {
     const handleGeneratePay = async (emp: Employee) => {
         setSelectedEmployee(emp);
         try {
-            const token = localStorage.getItem('token');
-            const res = await fetch(`${API_URL}/hr/employees/${emp.id}/pay`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
+            const res = await apiFetch(`/hr/employees/${emp.id}/pay`, {
+                method: 'POST'
             });
             if (res.ok) {
                 const data = await res.json();

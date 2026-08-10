@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { API_URL } from "@/lib/api";
 
 export default function VisitorTracker() {
     const hasTracked = useRef(false);
@@ -26,10 +27,8 @@ export default function VisitorTracker() {
                         : Math.random().toString(36).substring(2, 15);
                         
                     localStorage.setItem("unpo_visitor_id", visitorId);
-                    
-                    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-                    
-                    await fetch(`${apiUrl}/analytics/visit`, {
+
+                    await fetch(`${API_URL}/analytics/visit`, {
                         method: "POST",
                         headers: {
                             "Content-Type": "application/json"
