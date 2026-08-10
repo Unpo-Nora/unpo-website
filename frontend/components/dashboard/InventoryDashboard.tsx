@@ -13,7 +13,8 @@ import {
     History,
     TrendingUp,
     Wallet,
-    Trash2
+    Trash2,
+    Download
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
@@ -31,6 +32,7 @@ interface Product {
     iva_percent: number;
     provider_name: string;
     price_breakdown?: any;
+    is_active?: boolean;
 }
 
 export default function InventoryDashboard() {
@@ -255,6 +257,40 @@ export default function InventoryDashboard() {
     const handleCreateProduct = () => {
         setEditingProduct(null);
         setIsModalOpen(true);
+    };
+
+    const handleExportExcel = async () => {
+        const conStock = products.filter(p => p.stock_quantity > 0);
+        if (conStock.length === 0) {
+            setMessage({ type: 'error', text: 'No hay productos con stock para exportar.' });
+            return;
+        }
+
+        try {
+            const XLSX = await import('xlsx');
+            const rate = parseFloat(exchangeRate);
+            const dataToExport = conStock.map(p => ({
+                "SKU": p.sku,
+                "Nombre": p.name,
+                "Categoría": p.category_id,
+                "Stock": p.stock_quantity,
+                "Precio USD": Number(p.price_usd) || 0,
+                "Precio ARS": !isNaN(rate) ? Math.round((Number(p.price_usd) || 0) * rate) : '',
+                ...(!isVendedor ? { "Costo": Number(p.cost_price) || 0 } : {}),
+                "Proveedor": p.provider_name || '',
+                "Activo": p.is_active === false ? 'No' : 'Sí'
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(dataToExport);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Inventario");
+
+            const dateStr = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `inventario_UNPO_${dateStr}.xlsx`);
+        } catch (error) {
+            console.error("Error al exportar a Excel:", error);
+            setMessage({ type: 'error', text: 'Error al intentar exportar el inventario.' });
+        }
     };
 
     const handleModalSave = () => {
@@ -487,7 +523,13 @@ export default function InventoryDashboard() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {!isVendedor && (
+                    <button
+                        onClick={handleExportExcel}
+                        className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200 transition-all"
+                    >
+                        <Download size={18} />
+                        Exportar Excel
+                    </button>
                     <button
                         onClick={handleCreateProduct}
                         className="flex items-center gap-2 px-6 py-3 rounded-2xl font-bold bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all"
@@ -495,7 +537,6 @@ export default function InventoryDashboard() {
                         <Plus size={18} />
                         Crear Nuevo Producto
                     </button>
-                    )}
                 </div>
             </div>
 
@@ -660,15 +701,15 @@ export default function InventoryDashboard() {
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Precio USD</th>
                                 <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-right">Precio ARS (Act.)</th>
                                 {!isVendedor && <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">IVA</th>}
-                                {!isVendedor && <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">Acciones</th>}
+                                <th className="px-6 py-5 text-[11px] font-bold text-slate-400 uppercase tracking-wider text-center">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {paginatedProducts.map((p) => (
                                 <tr
                                     key={p.sku}
-                                    onClick={() => { if (!isVendedor) handleEditProduct(p); }}
-                                    className={`transition-colors group ${!isVendedor ? 'hover:bg-slate-50/50 cursor-pointer' : 'hover:bg-slate-50/20'}`}
+                                    onClick={() => handleEditProduct(p)}
+                                    className="transition-colors group hover:bg-slate-50/50 cursor-pointer"
                                 >
                                     <td className="px-6 py-5 text-center">
                                         <span className="text-[11px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded">
@@ -739,10 +780,10 @@ export default function InventoryDashboard() {
                                         </div>
                                     </td>
                                     {!isVendedor && (
-                                    <>
                                     <td className="px-6 py-5 text-center">
                                         <span className="text-[10px] font-bold text-slate-500">{p.iva_percent}%</span>
                                     </td>
+                                    )}
                                     <td className="px-6 py-5 text-center" onClick={(e) => { e.stopPropagation(); handleEditProduct(p); }}>
                                         <button
                                             type="button"
@@ -752,8 +793,6 @@ export default function InventoryDashboard() {
                                             <Edit size={16} />
                                         </button>
                                     </td>
-                                    </>
-                                    )}
                                 </tr>
                             ))}
                         </tbody>

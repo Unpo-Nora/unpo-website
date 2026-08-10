@@ -99,7 +99,7 @@ def read_categories(db: Session = Depends(get_db)):
 def create_category(
     category: schemas.CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin"))
+    current_user: models.User = Depends(require_roles("admin", "vendedor"))
 ):
     normalized_name = category.name.strip()
     from sqlalchemy import func
@@ -217,7 +217,7 @@ def get_audit_logs(
 @router.get("/next-sku")
 def get_next_sku(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin"))
+    current_user: models.User = Depends(require_roles("admin", "vendedor"))
 ):
     return {"next_sku": _next_sku(db)}
 
@@ -240,9 +240,9 @@ def read_product(
 
 @router.post("/", response_model=schemas.Product)
 def create_product(
-    product: schemas.ProductCreate, 
+    product: schemas.ProductCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin"))
+    current_user: models.User = Depends(require_roles("admin", "vendedor"))
 ):
     if not product.sku or product.sku.strip() == "":
         product.sku = _next_sku(db)
@@ -264,7 +264,7 @@ def update_product(
     sku: str,
     product: schemas.ProductCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin")),
+    current_user: models.User = Depends(require_roles("admin", "vendedor")),
 ):
     try:
         db_product = crud.update_product(db, sku=sku, product_data=product.model_dump(exclude_unset=True))
@@ -290,7 +290,7 @@ def adjust_stock(
     sku: str,
     adjustment_data: schemas.StockAdjustment,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin"))
+    current_user: models.User = Depends(require_roles("admin", "vendedor"))
 ):
     db_product = crud.get_product(db, sku=sku)
     if db_product is None:
@@ -367,7 +367,7 @@ async def upload_product_image(
     sku: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin"))
+    current_user: models.User = Depends(require_roles("admin", "vendedor"))
 ):
     db_product = crud.get_product(db, sku=sku)
     if db_product is None:

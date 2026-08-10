@@ -41,11 +41,11 @@ def create_sale_endpoint(
 
     Requiere autenticación (admin o vendedor). Un vendedor solo puede cerrar ventas
     sobre leads que le pertenecen; el ownership se valida ANTES de verificar o modificar
-    stock. Las reglas comerciales (mínimo, validación/descuento de stock, cambio a
-    CLIENT, remito) no se modifican.
+    stock. Sin monto mínimo de compra (se eliminó el piso de $100.000 en 2026-08 a
+    pedido del negocio).
     """
-    if order.total_amount < 100000:
-        raise HTTPException(status_code=400, detail="Minimum order amount must be at least $100,000")
+    if not order.items:
+        raise HTTPException(status_code=400, detail="La orden debe tener al menos un producto")
 
     db_lead = db.query(models.Lead).filter(models.Lead.id == order.lead_id).first()
     if not db_lead:

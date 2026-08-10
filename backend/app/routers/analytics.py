@@ -825,3 +825,133 @@ def delete_expense(
     if not success:
         raise HTTPException(status_code=404, detail="Expense not found")
     return {"status": "success"}
+
+
+# --- Reporte de calidad de leads (mensual) ---
+
+_BAD_FEEDBACK = ("No responde", "Numero erroneo")
+
+def _classify_lead_quality(status, feedback_status) -> str:
+    """Clasifica un lead en un bucket de calidad, con prioridad cliente > cotizado > basura > contactado.
+    Los NEW sin gestión quedan en 'sin_gestion' (el reporte los muestra aparte para no inflar 'basura')."""
+    if status == models.LeadStatus.CLIENT:
+        return "cliente"
+    if status in (models.LeadStatus.NEGOTIATION, models.LeadStatus.CLOSED):
+        return "cotizado"
+    if status == models.LeadStatus.LOST or (feedback_status or "") in _BAD_FEEDBACK:
+        return "basura"
+    if status == models.LeadStatus.CONTACTED:
+        return "contactado"
+    return "sin_gestion"
+
+@router.get("/lead-quality")
+def get_lead_quality_report(
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(require_roles("admin"))
+):
+    """
+    Reporte mensual de calidad de leads:
+    - totales y cuántos llegaron por WhatsApp (leads vinculados a una conversación del inbox);
+    - distribución basura / contactado / cotizado / cliente (+ sin gestión);
+    - embudo de conversión (recibidos → contactados → calificados → cotizados → clientes);
+    - top ciudades por % de clientes sobre cotizados (usa `locality`, fallback `province`;
+      solo hay ciudad cuando se cargaron datos de facturación).
+    'Cotizado' = status NEGOTIATION/CLOSED (se marca al generar presupuesto desde 2026-08)
+    o cliente (todo cliente pasó por cotización); no hay datos retroactivos anteriores.
+    """
+    start_date = datetime(year, month, 1)
+    month_days = calendar.monthrange(year, month)[1]
+    end_date = datetime(year, month, month_days, 23, 59, 59, 999999)
+
+    month_leads = db.query(
+        models.Lead.id,
+        models.Lead.status,
+        models.Lead.feedback_status,
+        models.Lead.locality,
+        models.Lead.province,
+    ).filter(
+        models.Lead.created_at >= start_date,
+        models.Lead.created_at <= end_date,
+    ).all()
+
+    total_leads = len(month_leads)
+
+    # Leads del mes vinculados a una conversación de WhatsApp
+    whatsapp_lead_ids = {
+        row[0] for row in db.query(models.WhatsAppConversation.lead_id)
+        .filter(models.WhatsAppConversation.lead_id != None).all()
+    }
+    whatsapp_leads = sum(1 for l in month_leads if l.id in whatsapp_lead_ids)
+
+    # Distribución de calidad
+    buckets = {"basura": 0, "contactado": 0, "cotizado": 0, "cliente": 0, "sin_gestion": 0}
+    for l in month_leads:
+        buckets[_classify_lead_quality(l.status, l.feedback_status)] += 1
+
+    quality_distribution = [
+        {"key": "basura", "label": "Leads Basura", "count": buckets["basura"]},
+        {"key": "contactado", "label": "Lead Contactado", "count": buckets["contactado"]},
+        {"key": "cotizado", "label": "Lead Cotizado", "count": buckets["cotizado"]},
+        {"key": "cliente", "label": "Leads Cliente", "count": buckets["cliente"]},
+        {"key": "sin_gestion", "label": "Sin Gestión", "count": buckets["sin_gestion"]},
+    ]
+
+    # Embudo (etapas acumulativas)
+    contacted_statuses = (
+        models.LeadStatus.CONTACTED, models.LeadStatus.NEGOTIATION,
+        models.LeadStatus.CLOSED, models.LeadStatus.CLIENT,
+    )
+    quoted_statuses = (models.LeadStatus.NEGOTIATION, models.LeadStatus.CLOSED, models.LeadStatus.CLIENT)
+
+    contactados = sum(1 for l in month_leads if l.status in contacted_statuses)
+    calificados = sum(
+        1 for l in month_leads
+        if (l.feedback_status or "").startswith("Respondio") or l.status in quoted_statuses
+    )
+    cotizados = sum(1 for l in month_leads if l.status in quoted_statuses)
+    clientes = buckets["cliente"]
+
+    funnel = [
+        {"stage": "Leads Recibidos", "count": total_leads},
+        {"stage": "Leads Contactados", "count": contactados},
+        {"stage": "Leads Calificados", "count": calificados},
+        {"stage": "Leads Cotizados", "count": cotizados},
+        {"stage": "Clientes", "count": clientes},
+    ]
+
+    # Top ciudades por % de clientes sobre cotizados (requiere ciudad cargada)
+    cities = {}
+    for l in month_leads:
+        city = (l.locality or l.province or "").strip().title()
+        if not city:
+            continue
+        entry = cities.setdefault(city, {"clients": 0, "quoted": 0})
+        if l.status in quoted_statuses:
+            entry["quoted"] += 1
+        if l.status == models.LeadStatus.CLIENT:
+            entry["clients"] += 1
+
+    top_cities = sorted(
+        (
+            {
+                "city": name,
+                "clients": data["clients"],
+                "quoted": data["quoted"],
+                "ratio_percent": round(data["clients"] * 100.0 / data["quoted"], 1),
+            }
+            for name, data in cities.items() if data["quoted"] > 0
+        ),
+        key=lambda c: (c["ratio_percent"], c["clients"]),
+        reverse=True,
+    )[:5]
+
+    return {
+        "period": {"year": year, "month": month},
+        "total_leads": total_leads,
+        "whatsapp_leads": whatsapp_leads,
+        "quality_distribution": quality_distribution,
+        "funnel": funnel,
+        "top_cities": top_cities,
+    }
