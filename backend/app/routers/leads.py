@@ -47,14 +47,15 @@ def read_leads(
     if status == "NEW":
         return crud.get_leads(db, skip=skip, limit=limit, status="NEW", brand=brand)
     elif status == "CONTACTED":
-        return crud.get_leads(db, skip=skip, limit=limit, status="CONTACTED", seller=current_user.email, brand=brand)
+        # Incluye NEGOTIATION: un lead cotizado sigue siendo un contactado en gestión.
+        return crud.get_leads(db, skip=skip, limit=limit, status=["CONTACTED", "NEGOTIATION"], seller=current_user.email, brand=brand)
     elif status == "CLIENT":
         return crud.get_leads(db, skip=skip, limit=limit, status="CLIENT", seller=current_user.email, brand=brand)
     elif status:
         return crud.get_leads(db, skip=skip, limit=limit, status=status, seller=current_user.email, brand=brand)
     else:
-        # Prioritize owned contacted leads
-        owned_contacted = crud.get_leads(db, limit=limit, status="CONTACTED", seller=current_user.email, brand=brand)
+        # Prioritize owned contacted leads (incluye cotizados NEGOTIATION)
+        owned_contacted = crud.get_leads(db, limit=limit, status=["CONTACTED", "NEGOTIATION"], seller=current_user.email, brand=brand)
         remaining_limit = limit - len(owned_contacted)
         all_new = []
         if remaining_limit > 0:
@@ -98,8 +99,13 @@ def update_lead(
                 status_code=403,
                 detail="No podés modificar un lead que no te pertenece. Los leads nuevos se toman desde 'Contactar'.",
             )
-        # Whitelist de campos editables por un vendedor.
-        payload = {k: v for k, v in payload.items() if k in {"status", "notes", "feedback_status"}}
+        # Whitelist de campos editables por un vendedor (incluye datos de contacto y
+        # facturación de sus propios clientes; nunca `seller`).
+        payload = {k: v for k, v in payload.items() if k in {
+            "status", "notes", "feedback_status",
+            "full_name", "email", "phone",
+            "dni_cuit", "address", "locality", "province", "zip_code",
+        }}
 
     updated_lead = crud.update_lead(db, lead_id, payload)
     if not updated_lead:

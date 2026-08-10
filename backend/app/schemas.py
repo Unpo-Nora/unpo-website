@@ -44,6 +44,15 @@ class LeadUpdate(BaseModel):
   notes: Optional[str] = None
   seller: Optional[str] = None
   feedback_status: Optional[str] = None
+  # Datos de contacto/facturación editables (edición de cliente)
+  full_name: Optional[str] = None
+  email: Optional[str] = None
+  phone: Optional[str] = None
+  dni_cuit: Optional[str] = None
+  address: Optional[str] = None
+  locality: Optional[str] = None
+  province: Optional[str] = None
+  zip_code: Optional[str] = None
 
 class LeadResponse(LeadBase):
     id: int

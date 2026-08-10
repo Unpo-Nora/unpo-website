@@ -159,10 +159,13 @@ def get_lead_by_contact(db: Session, email: str = None, phone: str = None):
         
     return db.query(models.Lead).filter(or_(*filters)).first()
 
-def get_leads(db: Session, skip: int = 0, limit: int = 5000, status: str = None, seller: str = None, brand: str = None):
+def get_leads(db: Session, skip: int = 0, limit: int = 5000, status=None, seller: str = None, brand: str = None):
     query = db.query(models.Lead)
     if status:
-        query = query.filter(models.Lead.status == status)
+        if isinstance(status, (list, tuple, set)):
+            query = query.filter(models.Lead.status.in_(status))
+        else:
+            query = query.filter(models.Lead.status == status)
     if seller:
         query = query.filter(models.Lead.seller == seller)
     # Brand segregation by source. NORA leads use the NORA_SOURCES set
