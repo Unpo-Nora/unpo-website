@@ -157,3 +157,40 @@ respuesta cruda del sender ni `external_message_id` completo.
   proceso que los cierre; `unknown` nunca se auto-reenvía.
 - **Cliente Meta real:** timeouts, mapeo de error codes (auth/rate-limit/re-engagement),
   y resolución del access token por línea.
+
+## Etapa 1I.2A — cliente real de Meta Graph API (`meta_sender.py`)
+
+`services/whatsapp/meta_sender.py` implementa `MetaGraphWhatsAppSender` (httpx.AsyncClient)
+contra `POST https://graph.facebook.com/{version}/{phone_number_id}/messages` con el payload
+estándar de texto (`preview_url=false`). **Un intento por invocación, sin auto-retry**: la
+ambigüedad la resuelven el webhook de statuses y el reconciliador (1I.2B).
+
+Clasificación (códigos ESTABLES, nunca detalle crudo de Meta):
+
+| Resultado del provider                 | Outcome              | error_code |
+|----------------------------------------|----------------------|------------|
+| 2xx con `messages[0].id`               | `accepted` (+wamid)  | — |
+| 2xx sin wamid / body no parseable      | `ambiguous`          | `WHATSAPP_ACCEPTED_WITHOUT_EXTERNAL_ID` |
+| timeout / desconexión / error httpx    | `ambiguous`          | `WHATSAPP_PROVIDER_RESULT_UNKNOWN` |
+| 429                                    | `ambiguous`          | `WHATSAPP_PROVIDER_RATE_LIMITED` |
+| 5xx y estados no reconocidos           | `ambiguous`          | `WHATSAPP_PROVIDER_RESULT_UNKNOWN` |
+| 401 / 403                              | `definitive_failure` | `WHATSAPP_PROVIDER_AUTH_ERROR` |
+| 400 / 404                              | `definitive_failure` | `WHATSAPP_PROVIDER_REJECTED` |
+| sin access token (sin tocar la red)    | `definitive_failure` | `WHATSAPP_SENDER_NOT_CONFIGURED` |
+
+Config (env, lectura en tiempo de llamada; el token **no tiene default** y jamás se loguea):
+`WHATSAPP_GRAPH_API_VERSION` (default v20.0, con validación de formato),
+`WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_CONNECT_TIMEOUT_SECONDS` (default 5) y
+`WHATSAPP_READ_TIMEOUT_SECONDS` (default 15), ambos acotados a [0.5, 120].
+
+Wiring: `get_whatsapp_sender()` devuelve `MetaGraphWhatsAppSender` SOLO con
+`WHATSAPP_OUTBOUND_ENABLED` encendido **y** token configurado; en cualquier otro caso,
+`DisabledWhatsAppSender`. Con el flag apagado (default y estado actual de producción) el
+endpoint sigue respondiendo `503 WHATSAPP_OUTBOUND_DISABLED` antes de crear filas: 1I.2A
+**no cambia el runtime**.
+
+Logs del cliente: solo `internal_message_id`, outcome, HTTP status de Meta, `error_code`,
+duración y tipo de excepción. Ante excepciones se descarta el mensaje de la excepción
+(puede contener URL/host); solo se registra su tipo. Tests:
+`tests/test_whatsapp_meta_sender.py` (MockTransport, sin red; incluye asserts de
+no-filtración de secretos en logs).
