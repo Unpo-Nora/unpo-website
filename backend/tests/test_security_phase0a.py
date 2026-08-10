@@ -313,18 +313,22 @@ class SecurityPhase0ATest(unittest.TestCase):
     def test_backdoor_setup_admin_404(self):
         self.assertEqual(self.client.get("/auth/setup-admin").status_code, 404)
 
-    # ============================ Debug de productos ==============================
-    def test_products_debug_anonymous_401(self):
-        r = self.client.get("/products/fix-images")
-        self.assertEqual(r.status_code, 401)
+    # ================= Endpoints de mantenimiento/debug eliminados =================
+    # fix-images / fix-valija ahora caen en GET /{sku} y devuelven 404 (producto inexistente);
+    # las rutas debug_* ya no están registradas.
+    def test_products_fix_images_removed(self):
+        self.assertEqual(self.client.get("/products/fix-images", headers=self._h(self.tok_admin)).status_code, 404)
 
-    def test_products_debug_seller_403(self):
-        r = self.client.get("/products/fix-images", headers=self._h(self.tok_a))
-        self.assertEqual(r.status_code, 403)
+    def test_products_fix_valija_removed(self):
+        self.assertEqual(self.client.get("/products/fix-valija", headers=self._h(self.tok_admin)).status_code, 404)
 
-    def test_products_debug_admin_ok(self):
-        r = self.client.get("/products/fix-images", headers=self._h(self.tok_admin))
-        self.assertEqual(r.status_code, 200, r.text)
+    def test_products_debug_post_removed(self):
+        r = self.client.post("/products/debug_post", json={"name": "X"}, headers=self._h(self.tok_admin))
+        self.assertIn(r.status_code, (404, 405))
+
+    def test_products_debug_put_removed(self):
+        r = self.client.put("/products/debug/TESTSKU", json={"name": "X"}, headers=self._h(self.tok_admin))
+        self.assertIn(r.status_code, (404, 405))
 
     # ================================= Regresión ==================================
     def test_login_ok(self):

@@ -20,8 +20,7 @@ def _get_ar_time():
 
 # --- Exchange Rate Helper ---
 def _get_exchange_rate(db: Session) -> float:
-    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
-    return float(rate_setting.value) if rate_setting else 1450.0
+    return crud.get_exchange_rate(db)
 
 # --- Middleware: Auto-update overdue transactions ---
 def _update_overdue_transactions(db: Session):

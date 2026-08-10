@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from .. import models, database
-from .auth import get_current_user
+from ..dependencies.permissions import require_roles
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
@@ -39,16 +39,11 @@ class EmployeeUpdate(BaseModel):
     hire_date: Optional[datetime] = None
 
 @router.get("/employees")
-def get_employees(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Unauthorized")
+def get_employees(db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     return db.query(models.Employee).all()
 
 @router.post("/employees")
-def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Unauthorized")
-        
+def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     email_val = employee.email.strip() if employee.email and employee.email.strip() else None
     phone_val = employee.phone.strip() if employee.phone and employee.phone.strip() else None
     address_val = employee.address.strip() if employee.address and employee.address.strip() else None
@@ -80,51 +75,14 @@ def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db), cur
     return db_emp
 
 @router.put("/employees/{emp_id}")
-def update_employee(emp_id: int, employee: EmployeeUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Unauthorized")
+def update_employee(emp_id: int, employee: EmployeeUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     db_emp = db.query(models.Employee).filter(models.Employee.id == emp_id).first()
     if not db_emp:
         raise HTTPException(status_code=404, detail="Employee not found")
         
-    update_data = vars(employee)
-    
+    update_dict = employee.model_dump(exclude_unset=True)
+
     # Normalize fields
-    if "email" in update_data and update_data["email"] is not None:
-        val = update_data["email"].strip() if update_data["email"].strip() else None
-        if val and val != db_emp.email:
-            existing = db.query(models.Employee).filter(models.Employee.email == val).first()
-            if existing:
-                raise HTTPException(status_code=400, detail="Ya existe un empleado con este correo electrónico.")
-        update_data["email"] = val
-
-    if "phone" in update_data and update_data["phone"] is not None:
-        update_data["phone"] = update_data["phone"].strip() if update_data["phone"].strip() else None
-
-    if "address" in update_data and update_data["address"] is not None:
-        update_data["address"] = update_data["address"].strip() if update_data["address"].strip() else None
-
-    for var, value in update_data.items():
-        if value is not None or var in ["email", "phone", "address"]:
-            # Only update if the value was explicitly provided. For Pydantic, vars() might return None for unset if not configured.
-            # But the existing logic did: if value is not None: setattr(db_emp, var, value). 
-            # If we want to allow setting to None, we need to check if it's set in the model.
-            # Let's keep it simple: if value is not None, or if we explicitly converted an empty string to None
-            pass
-            
-    # The existing logic skipped None values.
-    # To allow nulling out an existing email/phone, we must check if they are present in the request.
-    # EmployeeUpdate fields default to None. So we don't know if the user sent null, or omitted the field.
-    # We will just apply what we normalized.
-    for var, value in update_data.items():
-        # Only set if the value was provided in the update.
-        # But vars() gives all fields. So if it's None, it might have been omitted.
-        # Pydantic v1 vs v2: exclude_unset=True is better.
-        pass
-
-    # Better approach using exclude_unset if possible, but let's just do:
-    update_dict = employee.dict(exclude_unset=True)
-    
     if "email" in update_dict:
         val = update_dict["email"].strip() if update_dict["email"] and update_dict["email"].strip() else None
         if val and val != db_emp.email:
@@ -151,9 +109,7 @@ def update_employee(emp_id: int, employee: EmployeeUpdate, db: Session = Depends
     return db_emp
 
 @router.delete("/employees/{emp_id}")
-def delete_employee(emp_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Unauthorized")
+def delete_employee(emp_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     db_emp = db.query(models.Employee).filter(models.Employee.id == emp_id).first()
     if not db_emp:
         raise HTTPException(status_code=404, detail="Employee not found")
@@ -162,9 +118,7 @@ def delete_employee(emp_id: int, db: Session = Depends(get_db), current_user: mo
     return {"status": "success"}
 
 @router.post("/employees/{emp_id}/pay")
-def pay_employee(emp_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Unauthorized")
+def pay_employee(emp_id: int, db: Session = Depends(get_db), current_user: models.User = Depends(require_roles("admin"))):
     db_emp = db.query(models.Employee).filter(models.Employee.id == emp_id).first()
     if not db_emp:
         raise HTTPException(status_code=404, detail="Employee not found")

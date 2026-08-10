@@ -2,27 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from .. import database, crud, schemas_auth
+from ..database import get_db
 from ..utils import auth
 from datetime import timedelta
 from jose import JWTError, jwt
-import os
 
 router = APIRouter(
     prefix="/auth",
     tags=["auth"]
 )
 
-SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey_change_me_in_production")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
-
-def get_db():
-    db = database.SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
@@ -31,7 +22,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, auth.SECRET_KEY, algorithms=[auth.ALGORITHM])
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
@@ -42,6 +33,15 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     if user is None:
         raise credentials_exception
     return user
+
+async def get_current_user_optional(token: str = Depends(oauth2_scheme_optional), db: Session = Depends(get_db)):
+    """Usuario autenticado o None (para endpoints con respuesta pública reducida)."""
+    if not token:
+        return None
+    try:
+        return await get_current_user(token=token, db=db)
+    except HTTPException:
+        return None
 
 @router.post("/login", response_model=schemas_auth.Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -72,6 +72,6 @@ async def read_users_me(current_user = Depends(get_current_user)):
 # NOTA DE SEGURIDAD (Etapa 0A): se eliminaron los endpoints HTTP sin autenticación
 # `GET /auth/reset-nico`, `GET /auth/fix-roles` y `GET /auth/setup-admin`. Permitían,
 # de forma anónima, resetear contraseñas, mutar roles y crear un admin por defecto.
-# Ya no se registran como rutas (responden 404). Su lógica de mantenimiento, cuando
-# hace falta, se ejecuta manualmente por scripts locales equivalentes ya existentes
-# (p. ej. `backend/reset_nico.py`, `backend/seed_user.py`), fuera de la API pública.
+# Ya no se registran como rutas (responden 404). El mantenimiento de usuarios, cuando
+# hace falta, se ejecuta manualmente con los scripts de `backend/scripts/maintenance/`,
+# fuera de la API pública.

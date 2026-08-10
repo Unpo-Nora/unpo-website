@@ -26,100 +26,43 @@ if SUPABASE_URL and SUPABASE_KEY:
 # Dependency
 get_db = database.get_db
 
-from .auth import get_current_user
+from .auth import get_current_user_optional
 from ..dependencies.permissions import require_roles
 from ..utils.product_importer import sync_products_from_excel
 from ..utils.pdf_generator import generate_catalog_pdf
 from fastapi.responses import Response
 import logging
-import os
 
 logger = logging.getLogger("uvicorn.error")
 
-@router.get("/fix-images")
-def fix_all_images_endpoint(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin")),
-):
-    products = db.query(models.Product).all()
-    img_dir = "data/images"
-    count = 0
-    if not os.path.exists(img_dir):
-        return {"status": "error", "message": "Image dir not found"}
-        
-    debug_files = os.listdir(img_dir)
-    
-    for p in products:
-        sku_val = str(p.sku).strip()
-        images = []
-        for f in debug_files:
-            fname_lower = f.lower()
-            if fname_lower.startswith(sku_val.lower()) and (len(fname_lower) == len(sku_val) or fname_lower[len(sku_val)] in ['.', '_', '-']):
-                if os.path.splitext(f)[1].lower() in ['.jpg', '.jpeg', '.png', '.webp']:
-                    images.append(f"/static/images/{f}")
-        images = list(dict.fromkeys(images))
-        if images and (not p.images or set(p.images) != set(images)):
-            p.images = images
-            count += 1
-    db.commit()
-    return {
-        "status": "success", 
-        "updated": count, 
-        "debug_img_dir": img_dir,
-        "debug_files_count": len(debug_files),
-        "debug_files_sample": debug_files[:10]
-    }
+def _next_sku(db: Session) -> str:
+    """Próximo SKU autoincremental de la serie 10700xxx (fallback: 10700086)."""
+    last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
+    if last_product:
+        try:
+            return str(int(last_product.sku) + 1)
+        except ValueError:
+            pass
+    return "10700086"
 
-@router.get("/fix-valija")
-def fix_valija_category(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin")),
-):
-    valija = db.query(models.Category).filter(models.Category.name.ilike('%VALIJA%')).first()
-    bazar = db.query(models.Category).filter(models.Category.name.ilike('%BAZAR%')).first()
-    
-    if not bazar:
-        bazar = models.Category(name="Bazar")
-        db.add(bazar)
-        db.commit()
-        db.refresh(bazar)
-        
-    counts = 0
-    if valija:
-        products = db.query(models.Product).filter(models.Product.category_id == valija.id).all()
-        for p in products:
-            p.category_id = bazar.id
-            counts += 1
-        db.delete(valija)
-        db.commit()
-        return {"status": "success", "message": f"Updated {counts} products from VALIJA to BAZAR. Deleted VALIJA."}
-        
-    # Also directly fix "Set x2 bandeja cuadrada" if it exists just in case
-    product = db.query(models.Product).filter(models.Product.name.ilike('%bandeja cuadrada%')).first()
-    if product and product.category_id != bazar.id:
-        product.category_id = bazar.id
-        db.commit()
-        return {"status": "success", "message": "Updated specific product directly"}
-        
-    return {"status": "success", "message": "No VALIJA category found"}
+# NOTA DE SEGURIDAD: se eliminaron los endpoints de mantenimiento `GET /products/fix-images`
+# y `GET /products/fix-valija` (mutaban/borraban datos con un GET y volcaban contenido del
+# filesystem). Su lógica vive fuera de la API, en `backend/scripts/maintenance/` (p. ej.
+# `fix_valija_category.py`), y se ejecuta manualmente cuando hace falta.
 
 @router.get("/catalog/pdf")
 def download_catalog_pdf(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin", "vendedor"))
 ):
     """
     Genera y descarga un PDF del catálogo con productos en stock. Solo Staff.
     """
-    if current_user.role not in ["admin", "seller", "vendor", "vendedor"]:
-        raise HTTPException(status_code=403, detail="No tiene permisos para descargar el catálogo")
-        
     products = crud.get_products(db, in_stock=True, limit=1000)
-    
+
     # Obtener el tipo de cambio manual para los precios en ARS
-    rate_setting = crud.get_setting(db, key="manual_exchange_rate")
-    exchange_rate = float(rate_setting.value) if rate_setting else 1450.0
-    
+    exchange_rate = crud.get_exchange_rate(db)
+
     pdf_bytes = generate_catalog_pdf(products, exchange_rate=exchange_rate)
     
     return Response(
@@ -131,14 +74,11 @@ def download_catalog_pdf(
 @router.post("/sync")
 def sync_products(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
     """
     Sincroniza el catálogo de productos con el archivo Excel maestro. Solo Admins.
     """
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para realizar esta acción")
-        
     excel_path = "/app/data/Panel_control_UNPO.xlsm"
     
     if not os.path.exists(excel_path):
@@ -159,11 +99,8 @@ def read_categories(db: Session = Depends(get_db)):
 def create_category(
     category: schemas.CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para crear categorías")
-        
     normalized_name = category.name.strip()
     from sqlalchemy import func
     existing_cat = db.query(models.Category).filter(
@@ -180,17 +117,25 @@ def create_category(
     return db_cat
 
 
-@router.get("/", response_model=List[schemas.Product])
+def _is_staff(user: Optional[models.User]) -> bool:
+    return user is not None and user.role in ("admin", "vendedor")
+
+@router.get("/")
 def read_products(
-    skip: int = 0, 
-    limit: int = 10000, 
-    brand: Optional[str] = None, 
+    skip: int = 0,
+    limit: int = 10000,
+    brand: Optional[str] = None,
     category_id: Optional[int] = None,
     in_stock: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
 ):
+    """Catálogo. Staff autenticado recibe el producto completo; el público, la vista
+    reducida sin costos, precios internos ni proveedor."""
     products = crud.get_products(db, skip=skip, limit=limit, brand_slug=brand, category_id=category_id, in_stock=in_stock)
-    return products
+    if _is_staff(current_user):
+        return [schemas.Product.model_validate(p) for p in products]
+    return [schemas.ProductPublic.model_validate(p) for p in products]
 
 def optimize_all_images_bg():
     images_dir = "data/images"
@@ -237,11 +182,8 @@ def optimize_all_images_bg():
 @router.post("/optimize-images")
 def trigger_image_optimization(
     background_tasks: BackgroundTasks,
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para optimizar imágenes")
-    
     background_tasks.add_task(optimize_all_images_bg)
     return {"status": "success", "message": "Image optimization started in background"}
 
@@ -252,10 +194,8 @@ def get_audit_logs(
     year: Optional[int] = None,
     month: Optional[int] = None,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos")
     try:
         logs, total = crud.get_recent_audit_logs(db, skip=skip, limit=limit, year=year, month=month)
         
@@ -277,78 +217,36 @@ def get_audit_logs(
 @router.get("/next-sku")
 def get_next_sku(
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos")
-        
-    last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
-    if last_product:
-        try:
-            new_sku_int = int(last_product.sku) + 1
-        except ValueError:
-            new_sku_int = 10700086
-    else:
-        new_sku_int = 10700086
-    return {"next_sku": str(new_sku_int)}
+    return {"next_sku": _next_sku(db)}
 
-@router.get("/{sku}", response_model=schemas.Product)
-def read_product(sku: str, db: Session = Depends(get_db)):
+@router.get("/{sku}")
+def read_product(
+    sku: str,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user_optional)
+):
     db_product = crud.get_product(db, sku=sku)
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    return db_product
+    if _is_staff(current_user):
+        return schemas.Product.model_validate(db_product)
+    return schemas.ProductPublic.model_validate(db_product)
 
-@router.post("/debug_post", response_model=schemas.Product)
-def debug_post_product(
-    product: schemas.ProductCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin")),
-):
-    try:
-        if not product.sku or product.sku.strip() == "":
-            last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
-            if last_product:
-                try:
-                    new_sku_int = int(last_product.sku) + 1
-                except ValueError:
-                    new_sku_int = 10700086
-            else:
-                new_sku_int = 10700086
-            product.sku = str(new_sku_int)
-            
-        db_product = crud.get_product(db, sku=product.sku)
-        if db_product:
-            raise HTTPException(status_code=400, detail="Product already exists")
-        
-        new_product = crud.create_product(db=db, product=product)
-        return new_product # Note: No create_audit_log
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Error en debug_post_product")
-        raise HTTPException(status_code=400, detail="No se pudo crear el producto")
+# NOTA DE SEGURIDAD: se eliminaron `POST /products/debug_post` y `PUT /products/debug/{sku}`,
+# duplicados legacy de `POST /products/` y `PUT /products/{sku}` que evadían el registro de
+# auditoría de inventario. Usar siempre los endpoints oficiales.
 
 @router.post("/", response_model=schemas.Product)
 def create_product(
     product: schemas.ProductCreate, 
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para crear productos")
-        
     if not product.sku or product.sku.strip() == "":
-        last_product = db.query(models.Product).filter(models.Product.sku.like('10700%')).order_by(models.Product.sku.desc()).first()
-        if last_product:
-            try:
-                new_sku_int = int(last_product.sku) + 1
-            except ValueError:
-                new_sku_int = 10700086
-        else:
-            new_sku_int = 10700086
-        product.sku = str(new_sku_int)
-        
+        product.sku = _next_sku(db)
+
     db_product = crud.get_product(db, sku=product.sku)
     if db_product:
         raise HTTPException(status_code=400, detail="Product already exists")
@@ -360,28 +258,6 @@ def create_product(
         details=f"Producto creado: {new_product.sku} ({new_product.name})"
     ))
     return new_product
-
-@router.put("/debug/{sku}")
-def debug_update_product(
-    sku: str,
-    product: schemas.ProductCreate,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(require_roles("admin")),
-):
-    try:
-        db_product = crud.get_product(db, sku)
-        if not db_product:
-            raise HTTPException(status_code=404, detail="Product not found")
-        for key, value in product.model_dump(exclude_unset=True).items():
-            setattr(db_product, key, value)
-        db.commit()
-        db.refresh(db_product)
-        return {"success": True, "product": db_product.sku}
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Error en debug_update_product")
-        raise HTTPException(status_code=400, detail="No se pudo actualizar el producto")
 
 @router.put("/{sku}", response_model=schemas.Product)
 def update_product(
@@ -414,11 +290,8 @@ def adjust_stock(
     sku: str,
     adjustment_data: schemas.StockAdjustment,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para modificar stock")
-        
     db_product = crud.get_product(db, sku=sku)
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -441,11 +314,8 @@ def adjust_stock(
 def archive_product(
     sku: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para archivar productos")
-        
     db_product = crud.archive_product(db, sku=sku)
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -461,11 +331,8 @@ def archive_product(
 def restore_product(
     sku: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para restaurar productos")
-        
     db_product = db.query(models.Product).filter(models.Product.sku == sku).first()
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -485,11 +352,8 @@ def restore_product(
 def hard_delete_product(
     sku: str,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para eliminar productos")
-        
     db_product = crud.get_product(db, sku=sku)
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -503,11 +367,8 @@ async def upload_product_image(
     sku: str,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos para subir imágenes")
-    
     db_product = crud.get_product(db, sku=sku)
     if db_product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -566,11 +427,8 @@ class BatchUpdateRequest(BaseModel):
 def batch_update_inventory(
     request: BatchUpdateRequest,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user)
+    current_user: models.User = Depends(require_roles("admin"))
 ):
-    if current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="No tiene permisos")
-    
     actions_taken = []
     
     if request.new_exchange_rate:
