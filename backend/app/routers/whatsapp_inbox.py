@@ -38,6 +38,7 @@ from ..dependencies.permissions import VALID_ROLES, require_roles
 from ..services.whatsapp import config as wa_config
 from ..services.whatsapp import inbox as svc
 from ..services.whatsapp import outbound as outbound_svc
+from ..services.whatsapp.meta_sender import MetaGraphWhatsAppSender
 from ..services.whatsapp.redaction import safe_error
 from ..services.whatsapp.sender import (
     OUTCOME_AMBIGUOUS,
@@ -57,10 +58,17 @@ _admin_only = require_roles("admin")
 
 def get_whatsapp_sender() -> WhatsAppSender:
     """
-    Dependencia inyectable del sender saliente. En runtime (1I.1) devuelve el
-    `DisabledWhatsAppSender` (NO hace red). Los tests la sobrescriben con un
+    Dependencia inyectable del sender saliente.
+
+    1I.2A: devuelve el cliente real de Meta (`MetaGraphWhatsAppSender`) SOLO si el
+    flag `WHATSAPP_OUTBOUND_ENABLED` está encendido Y hay access token configurado.
+    En cualquier otro caso, `DisabledWhatsAppSender` (NO hace red). Con el flag
+    apagado —default— el endpoint responde 503 antes de llegar al sender, así que
+    el runtime actual no cambia. Los tests sobrescriben esta dependencia con un
     `FakeWhatsAppSender` vía `app.dependency_overrides[get_whatsapp_sender]`.
     """
+    if wa_config.outbound_enabled() and wa_config.outbound_sender_configured():
+        return MetaGraphWhatsAppSender()
     return DisabledWhatsAppSender()
 
 

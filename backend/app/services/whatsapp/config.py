@@ -133,3 +133,63 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 def outbound_enabled() -> bool:
     """¿Está habilitado el envío saliente? Lee `WHATSAPP_OUTBOUND_ENABLED` (default false)."""
     return (os.getenv(OUTBOUND_ENABLED_ENV) or "").strip().lower() in _TRUTHY
+
+
+# ---------------------------------------------------------------------------
+# Etapa 1I.2A — cliente real de Meta Graph API (envío saliente).
+# ---------------------------------------------------------------------------
+# El access token vive SOLO en el entorno (nunca en código, DB ni repo) y NO tiene
+# default. La versión de Graph API y los timeouts sí tienen defaults seguros.
+# Lecturas en tiempo de llamada, como el resto del módulo.
+GRAPH_API_VERSION_ENV = "WHATSAPP_GRAPH_API_VERSION"
+OUTBOUND_ACCESS_TOKEN_ENV = "WHATSAPP_ACCESS_TOKEN"
+CONNECT_TIMEOUT_ENV = "WHATSAPP_CONNECT_TIMEOUT_SECONDS"
+READ_TIMEOUT_ENV = "WHATSAPP_READ_TIMEOUT_SECONDS"
+
+DEFAULT_GRAPH_API_VERSION = "v20.0"
+DEFAULT_CONNECT_TIMEOUT_SECONDS = 5.0
+DEFAULT_READ_TIMEOUT_SECONDS = 15.0
+MIN_TIMEOUT_SECONDS = 0.5
+MAX_TIMEOUT_SECONDS = 120.0
+
+
+def _get_float(env_name: str, default: float, minimum: float, maximum: float) -> float:
+    """Lee un float de entorno acotado a [minimum, maximum]; si es inválido, default."""
+    raw = os.getenv(env_name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def get_graph_api_version() -> str:
+    """Versión de Graph API (formato `vNN.N`). Si el valor del entorno no tiene ese
+    formato se usa el default: una versión malformada rompería la URL del endpoint."""
+    raw = (os.getenv(GRAPH_API_VERSION_ENV) or "").strip()
+    if raw and raw.startswith("v") and raw[1:].replace(".", "", 1).isdigit():
+        return raw
+    return DEFAULT_GRAPH_API_VERSION
+
+
+def get_outbound_access_token() -> str:
+    """Access token del envío saliente. Cadena vacía si no está configurado.
+    NUNCA loguear este valor."""
+    return (os.getenv(OUTBOUND_ACCESS_TOKEN_ENV) or "").strip()
+
+
+def get_connect_timeout_seconds() -> float:
+    return _get_float(CONNECT_TIMEOUT_ENV, DEFAULT_CONNECT_TIMEOUT_SECONDS,
+                      MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)
+
+
+def get_read_timeout_seconds() -> float:
+    return _get_float(READ_TIMEOUT_ENV, DEFAULT_READ_TIMEOUT_SECONDS,
+                      MIN_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS)
+
+
+def outbound_sender_configured() -> bool:
+    """¿Está la configuración mínima del cliente real? Hoy: access token presente."""
+    return bool(get_outbound_access_token())

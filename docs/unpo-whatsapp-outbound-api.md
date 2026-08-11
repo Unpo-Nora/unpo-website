@@ -106,3 +106,11 @@ WHATSAPP_IDEMPOTENCY_MISMATCH`.
 
 Envío real a Meta, templates, media, reintento automático de `unknown`, y actualización de
 estados vía webhook (`sent/delivered/read/failed`) — llegan en 1I.2.
+
+### Estado en 1I.2A
+
+El cliente real de Meta existe (`MetaGraphWhatsAppSender`, ver la doc de arquitectura) pero
+el runtime NO cambia: `WHATSAPP_OUTBOUND_ENABLED` sigue apagado, no hay token configurado y
+el endpoint responde `503 WHATSAPP_OUTBOUND_DISABLED`. Siguen fuera de alcance: templates,
+media, retry de `unknown`, la re-correlación status-antes-de-wamid y el reconciliador
+(1I.2B), y el composer del frontend.
