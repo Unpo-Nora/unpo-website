@@ -193,3 +193,28 @@ def get_read_timeout_seconds() -> float:
 def outbound_sender_configured() -> bool:
     """¿Está la configuración mínima del cliente real? Hoy: access token presente."""
     return bool(get_outbound_access_token())
+
+
+# ---------------------------------------------------------------------------
+# Etapa 1I.2B — reconciliador de mensajes salientes.
+# ---------------------------------------------------------------------------
+# Umbrales del reconciliador (`services/whatsapp/reconcile.py`). Defaults seguros:
+# un envío real termina en segundos (timeouts de 5/15 s), así que 15 minutos en
+# `sending` solo puede ser un crash entre el CAS y la aplicación del resultado.
+STALE_SENDING_SECONDS_ENV = "WHATSAPP_RECONCILE_STALE_SENDING_SECONDS"
+UNKNOWN_REVIEW_SECONDS_ENV = "WHATSAPP_RECONCILE_UNKNOWN_REVIEW_SECONDS"
+
+DEFAULT_STALE_SENDING_SECONDS = 900          # 15 minutos
+DEFAULT_UNKNOWN_REVIEW_SECONDS = 86_400      # 24 h
+MIN_RECONCILE_SECONDS = 60
+MAX_RECONCILE_SECONDS = 30 * 86_400          # 30 días
+
+
+def get_stale_sending_seconds() -> int:
+    return _get_int(STALE_SENDING_SECONDS_ENV, DEFAULT_STALE_SENDING_SECONDS,
+                    MIN_RECONCILE_SECONDS, MAX_RECONCILE_SECONDS)
+
+
+def get_unknown_review_seconds() -> int:
+    return _get_int(UNKNOWN_REVIEW_SECONDS_ENV, DEFAULT_UNKNOWN_REVIEW_SECONDS,
+                    MIN_RECONCILE_SECONDS, MAX_RECONCILE_SECONDS)

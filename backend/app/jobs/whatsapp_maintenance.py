@@ -1,9 +1,11 @@
 """
-Comando de mantenimiento de WhatsApp: reprocesamiento y purga (Etapa 1D).
+Comando de mantenimiento de WhatsApp: reprocesamiento, purga (1D) y reconciliación
+de salientes (1I.2B).
 
 Uso:
     python -m app.jobs.whatsapp_maintenance reprocess --limit 100
     python -m app.jobs.whatsapp_maintenance purge --limit 500
+    python -m app.jobs.whatsapp_maintenance reconcile-outbound --limit 100
 
 Diseño (arquitectura §9): estos comandos se programan como cron/proceso SEPARADO, no
 como tarea de fondo del web. El comando es delgado: valida argumentos, arma la sesión
@@ -25,7 +27,7 @@ import sys
 from typing import List, Optional
 
 from ..database import SessionLocal
-from ..services.whatsapp import config, recovery
+from ..services.whatsapp import config, reconcile, recovery
 
 EXIT_OK = 0
 EXIT_OPERATIONAL_ERROR = 1
@@ -56,6 +58,11 @@ def _lease_type(value: str) -> int:
                          label="--lease-seconds")
 
 
+def _reconcile_seconds_type(value: str) -> int:
+    return _positive_int(value, minimum=config.MIN_RECONCILE_SECONDS,
+                         maximum=config.MAX_RECONCILE_SECONDS, label="--*-seconds")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="whatsapp_maintenance",
@@ -74,6 +81,17 @@ def _build_parser() -> argparse.ArgumentParser:
     pur = sub.add_parser("purge", help="Anular raw_payload de eventos vencidos.")
     pur.add_argument("--limit", type=_limit_type, default=None,
                      help=f"Tamaño del lote (default {config.DEFAULT_BATCH_SIZE}).")
+
+    rec = sub.add_parser(
+        "reconcile-outbound",
+        help="Cerrar salientes atascados (sending→unknown) y listar unknown viejos. NUNCA re-envía.",
+    )
+    rec.add_argument("--limit", type=_limit_type, default=None,
+                     help=f"Tamaño del lote (default {config.DEFAULT_BATCH_SIZE}).")
+    rec.add_argument("--stale-sending-seconds", type=_reconcile_seconds_type, default=None,
+                     help=f"Umbral de sending atascado (default {config.DEFAULT_STALE_SENDING_SECONDS}).")
+    rec.add_argument("--unknown-review-seconds", type=_reconcile_seconds_type, default=None,
+                     help=f"Umbral de unknown para revisión (default {config.DEFAULT_UNKNOWN_REVIEW_SECONDS}).")
 
     return parser
 
@@ -117,6 +135,20 @@ def _cmd_purge(args) -> int:
     return EXIT_OPERATIONAL_ERROR if result.operational_error else EXIT_OK
 
 
+def _cmd_reconcile(args) -> int:
+    batch = args.limit if args.limit is not None else config.get_batch_size()
+    stale = (args.stale_sending_seconds if args.stale_sending_seconds is not None
+             else config.get_stale_sending_seconds())
+    review = (args.unknown_review_seconds if args.unknown_review_seconds is not None
+              else config.get_unknown_review_seconds())
+    result = reconcile.reconcile_outbound(
+        _session_factory, stale_sending_seconds=stale,
+        unknown_review_seconds=review, batch_size=batch,
+    )
+    print(result.render())
+    return EXIT_OPERATIONAL_ERROR if result.operational_error else EXIT_OK
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
     try:
@@ -129,6 +161,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _cmd_reprocess(args)
     if args.command == "purge":
         return _cmd_purge(args)
+    if args.command == "reconcile-outbound":
+        return _cmd_reconcile(args)
     parser.print_usage()
     return EXIT_USAGE
 
