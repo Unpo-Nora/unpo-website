@@ -264,3 +264,16 @@ docker run --rm -v "$PWD/backend:/app" -w /app --entrypoint python \
 
 La concurrencia real y la migración se validan sobre un PostgreSQL 17 efímero
 (`alembic upgrade head`, nunca `create_all`), no en la suite SQLite.
+
+## 1I.2B — carrera status-antes-del-wamid (usa esta misma maquinaria)
+
+Un status de webhook cuyo wamid no matchea ningún mensaje **ya no siempre se ignora**:
+si en la línea hay un saliente CRM en vuelo (`sending`/`unknown` con wamid NULL), el
+processor lo reporta como error retryable (`status_before_external_id`) y el evento
+queda `failed` → esta maquinaria lo reintenta con backoff hasta que el wamid esté
+persistido y la correlación cierre. El ciclo es acotado (`max_attempts` → exhausted) y
+sin duplicados (dedup por `event_key`). Sin saliente en vuelo, el comportamiento es el
+histórico (`ignored`), para que los statuses de mensajes enviados por fuera del CRM no
+entren al ciclo de reintentos. El mismo comando de mantenimiento suma el subcomando
+`reconcile-outbound` (cerrar `sending` atascados como `unknown` y listar `unknown`
+viejos para revisión; JAMÁS re-envía) — ver la doc de arquitectura de outbound.

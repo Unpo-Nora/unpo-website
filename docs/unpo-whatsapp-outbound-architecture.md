@@ -194,3 +194,31 @@ duración y tipo de excepción. Ante excepciones se descarta el mensaje de la ex
 (puede contener URL/host); solo se registra su tipo. Tests:
 `tests/test_whatsapp_meta_sender.py` (MockTransport, sin red; incluye asserts de
 no-filtración de secretos en logs).
+
+## Etapa 1I.2B — re-correlación y reconciliador
+
+**Carrera status-antes-del-wamid (processor).** Si un status llega ANTES de que el
+endpoint persista el wamid del saliente (`apply_result`), el processor ya no lo descarta
+a ciegas: cuando en esa línea existe un saliente CRM en vuelo (`sending`/`unknown` con
+wamid NULL), reporta `status_before_external_id` como error retryable y el evento queda
+`failed` para que el **recovery de 1D** lo reintente con backoff; al re-procesarlo con el
+wamid ya persistido, la correlación cierra y el status se aplica (dedup por `event_key`).
+Reintentos ACOTADOS (`max_attempts` → exhausted). Sin saliente en vuelo → `ignored`
+histórico (statuses de mensajes enviados por fuera del CRM no entran al ciclo).
+
+**Reconciliador (`services/whatsapp/reconcile.py` + CLI `reconcile-outbound`).**
+- `sending` atascado (más viejo que `WHATSAPP_RECONCILE_STALE_SENDING_SECONDS`, default
+  900 s): crash entre el CAS y la aplicación del resultado → se cierra `sending→unknown`
+  vía CAS (`WHERE current_status='sending'`; si el mensaje avanzó, rowcount 0 y no se
+  pisa nada) con `error_code=WHATSAPP_RECONCILED_STALE_SENDING`.
+- `unknown` viejo (más viejo que `WHATSAPP_RECONCILE_UNKNOWN_REVIEW_SECONDS`, default
+  24 h): solo se cuenta y se listan ids internos para revisión humana. No se muta nada.
+- **REGLA CRÍTICA: `unknown` JAMÁS se re-envía automáticamente.** El módulo no importa
+  el sender ni ningún cliente HTTP (guarda estática en los tests). Limitación conocida y
+  deliberada: un `unknown` sin wamid no puede auto-correlacionarse (no se adivina por
+  destinatario/timestamp) → va a revisión humana.
+
+Sin migraciones: usa columnas existentes de `efa066dfdf30`. Comando (cron/manual, fuera
+del web): `python -m app.jobs.whatsapp_maintenance reconcile-outbound --limit 100`.
+Tests: `tests/test_whatsapp_reconcile.py` (26 tests; e2e de re-correlación usando el
+reprocesador real).

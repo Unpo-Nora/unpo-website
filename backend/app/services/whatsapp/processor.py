@@ -74,6 +74,15 @@ REASON_UNSUPPORTED_STATUS = "unsupported_status"
 # `REASON_UNSUPPORTED_MESSAGE_TYPE` y los motivos por elemento vienen del normalizador.
 REASON_UNKNOWN_MESSAGE = "unknown_external_message"
 REASON_MISSING_SENDER = "missing_sender"
+# 1I.2B: status cuyo wamid no matchea PERO hay un saliente CRM en vuelo en la línea.
+# Va a `report.errors` (no a skipped) para que el evento quede `failed` retryable y el
+# reprocesador (1D) lo re-correlacione cuando el wamid ya esté persistido.
+REASON_STATUS_BEFORE_WAMID = "status_before_external_id"
+
+# Espejo de los estados de `outbound.py` (ese módulo importa de ESTE; importarlo acá
+# crearía un ciclo). "En vuelo" = reservado/enviándose/ambiguo, siempre sin wamid.
+DIRECTION_OUTBOUND = "outbound"
+INFLIGHT_OUTBOUND_STATUSES = ("sending", "unknown")
 
 
 @dataclass
@@ -339,6 +348,31 @@ def _find_message_by_external_id(db: Session, external_id: str) -> Optional[mode
     )
 
 
+def _has_inflight_outbound(db: Session, line_id: int) -> bool:
+    """
+    ¿Hay un saliente CRM en vuelo (sin wamid persistido) en ESTA línea?
+
+    Es la guarda de la carrera status-antes-del-wamid (1I.2B): solo si existe un
+    candidato plausible vale la pena reintentar el evento. Sin esta guarda, cada
+    status de un mensaje enviado por fuera del CRM (p. ej. desde la app de WhatsApp
+    Business) entraría al ciclo de reintentos hasta agotarlo, inflando la tabla de
+    eventos sin ninguna posibilidad de correlación.
+    """
+    return (
+        db.query(models.WhatsAppMessage.id)
+        .join(models.WhatsAppConversation,
+              models.WhatsAppConversation.id == models.WhatsAppMessage.conversation_id)
+        .filter(
+            models.WhatsAppConversation.line_id == line_id,
+            models.WhatsAppMessage.direction == DIRECTION_OUTBOUND,
+            models.WhatsAppMessage.external_message_id.is_(None),
+            models.WhatsAppMessage.current_status.in_(INFLIGHT_OUTBOUND_STATUSES),
+        )
+        .first()
+        is not None
+    )
+
+
 def _process_message(db: Session, line: models.WhatsAppLine, item: NormalizedMessage,
                      report: ProcessingReport) -> None:
     """
@@ -425,6 +459,20 @@ def _process_status(db: Session, line: models.WhatsAppLine, item: NormalizedStat
 
     message = _find_message_by_external_id(db, item.external_message_id)
     if message is None:
+        if _has_inflight_outbound(db, line.id):
+            # Carrera status-antes-del-wamid (1I.2B): hay un envío CRM en vuelo cuyo
+            # wamid todavía no se persistió y este status podría pertenecerle. Se
+            # reporta como ERROR para que el evento quede `failed` retryable y el
+            # reprocesador (1D) vuelva a intentar la correlación con backoff. El ciclo
+            # es acotado (max_attempts → exhausted) y sin duplicados: los elementos ya
+            # aplicados en intentos previos deduplican por `event_key`/wamid.
+            report.errors.append(REASON_STATUS_BEFORE_WAMID)
+            logger.info(
+                "[whatsapp-webhook] estado sin mensaje conocido con saliente en vuelo: "
+                "reintento programado ext=%s line_id=%s",
+                mask_external_id(item.external_message_id), line.id,
+            )
+            return
         # Estado de un mensaje que no conocemos (p. ej. enviado desde la app de
         # WhatsApp Business antes de integrar la línea). Se ignora sin romper.
         report.skipped_reasons.append(REASON_UNKNOWN_MESSAGE)
