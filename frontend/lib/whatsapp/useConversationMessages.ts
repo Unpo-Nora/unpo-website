@@ -1,8 +1,9 @@
 "use client";
 
 // Mensajes de la conversación seleccionada: detalle, timeline con cursores older/newer,
-// polling forward (incluida conversación inicialmente vacía) y marcado de lectura
-// coordinado (usa el unread REAL, respeta document.hidden, no repite ni superpone).
+// polling de la página más nueva (agrega mensajes nuevos Y refresca current_status de
+// los ya cargados), envío saliente optimista (composer) y marcado de lectura coordinado
+// (usa el unread REAL, respeta document.hidden, no repite ni superpone).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { whatsappApi } from "./api";
@@ -14,6 +15,29 @@ import {
 } from "./types";
 
 const MESSAGES_PAGE = 50;
+
+// Páginas máximas del relleno forward ante un hueco (>50 mensajes entre polls).
+const GAP_FILL_MAX_PAGES = 5;
+
+// UUID v4 del caller (autoridad de idempotencia del contrato outbound). Fallback para
+// contextos sin crypto.randomUUID (http en LAN): el backend solo exige formato UUID.
+function newClientRequestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export interface SendResultUi {
+  ok: boolean;
+  outcome?: string;
+  duplicate?: boolean;
+  error?: { code?: string; status?: number; message: string };
+}
 
 function compareMsg(a: MessageOut, b: MessageOut): number {
   const ca = a.created_at ?? "";
@@ -42,6 +66,9 @@ export interface ConversationMessages {
   select: (id: number, unreadHint: number) => void;
   clear: () => void;
   reloadDetailAndHistory: () => void;
+  sending: boolean;
+  sendMessage: (text: string) => Promise<SendResultUi>;
+  retryMessage: (message: MessageOut) => Promise<SendResultUi>;
 }
 
 interface Options {
@@ -63,6 +90,10 @@ export function useConversationMessages(opts: Options): ConversationMessages {
   const [olderCursor, setOlderCursor] = useState<string | null>(null);
   const [history, setHistory] = useState<AssignmentHistoryOut[]>([]);
   const [historyFailed, setHistoryFailed] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const sendingRef = useRef(false);
+  const tempIdRef = useRef(-1); // ids optimistas negativos: jamás chocan con ids reales
 
   const selectedIdRef = useRef<number | null>(null);
   const newerCursorRef = useRef<string | null>(null);
@@ -274,6 +305,62 @@ export function useConversationMessages(opts: Options): ConversationMessages {
     }
   }, [handleSilent, onConnOk]);
 
+  // Mergea una página de mensajes: agrega los ids desconocidos y REFRESCA el
+  // current_status de los ya cargados. Esto último cierra el gap de 1I.0: los estados
+  // (sent/delivered/read/failed) avanzan por webhook sin crear mensajes nuevos, así
+  // que un poll que solo agrega ids nunca los actualizaría. Los mensajes optimistas
+  // (id temporal negativo) no están en `known` y no se tocan acá.
+  const mergePage = useCallback(
+    (items: MessageOut[], newerCursor: string | null) => {
+      const known = messageIdsRef.current;
+      const added = items.filter((m) => !known.has(m.id));
+      added.forEach((m) => known.add(m.id));
+      const byId = new Map(items.map((m) => [m.id, m]));
+      setMessages((prev) => {
+        let changed = added.length > 0;
+        const updated = prev.map((m) => {
+          const fresh = byId.get(m.id);
+          if (fresh && fresh.current_status !== m.current_status) {
+            changed = true;
+            return { ...m, current_status: fresh.current_status };
+          }
+          return m;
+        });
+        if (!changed) return prev;
+        return added.length > 0 ? [...updated, ...added].sort(compareMsg) : updated;
+      });
+      if (newerCursor) newerCursorRef.current = newerCursor;
+      if (added.length > 0) {
+        const maxId = Math.max(...added.map((m) => m.id));
+        if (maxId > lastLoadedMsgIdRef.current) lastLoadedMsgIdRef.current = maxId;
+        const inbound = added.filter((m) => m.direction === "inbound").length;
+        if (inbound > 0) currentUnreadRef.current += inbound;
+        maybeMarkRead();
+      }
+    },
+    [maybeMarkRead]
+  );
+
+  // Relleno de un hueco improbable: si llegaron MÁS de una página de mensajes entre
+  // polls, la página más nueva no solapa nada conocido; se pagina forward desde el
+  // último cursor conocido para no dejar agujeros en el timeline. Acotado.
+  const fillForwardGap = useCallback(
+    async (id: number, ac: AbortController) => {
+      let cursor: string | null = newerCursorRef.current;
+      for (let page = 0; page < GAP_FILL_MAX_PAGES && cursor; page += 1) {
+        const resp = await whatsappApi.getMessages(
+          id,
+          { direction: "forward", cursor, limit: MESSAGES_PAGE },
+          ac.signal
+        );
+        if (selectedIdRef.current !== id) return;
+        mergePage(resp.items, resp.newer_cursor);
+        cursor = resp.has_more ? resp.newer_cursor : null;
+      }
+    },
+    [mergePage]
+  );
+
   const pollNewer = useCallback(async () => {
     const id = selectedIdRef.current;
     if (!id || loadingMessagesRef.current || pollInFlightRef.current) return;
@@ -282,36 +369,123 @@ export function useConversationMessages(opts: Options): ConversationMessages {
     const ac = new AbortController();
     pollAbortRef.current = ac;
     try {
-      const cursor = newerCursorRef.current;
-      // Conversación vacía: forward SIN cursor detecta el primer mensaje; con cursor,
-      // solo mensajes posteriores (no re-descarga histórico).
+      // Página más NUEVA (backward sin cursor): detecta mensajes nuevos (incluida una
+      // conversación inicialmente vacía) Y trae los estados vigentes del tramo final
+      // del timeline, que `mergePage` aplica sobre los mensajes ya cargados.
       const resp = await whatsappApi.getMessages(
         id,
-        cursor
-          ? { direction: "forward", cursor, limit: MESSAGES_PAGE }
-          : { direction: "forward", limit: MESSAGES_PAGE },
+        { direction: "backward", limit: MESSAGES_PAGE },
         ac.signal
       );
       if (selectedIdRef.current !== id) return;
       const known = messageIdsRef.current;
-      const added = resp.items.filter((m) => !known.has(m.id));
-      added.forEach((m) => known.add(m.id));
-      if (added.length > 0) {
-        setMessages((prev) => [...prev, ...added].sort(compareMsg));
-        if (resp.newer_cursor) newerCursorRef.current = resp.newer_cursor;
-        const maxId = Math.max(...added.map((m) => m.id));
-        if (maxId > lastLoadedMsgIdRef.current) lastLoadedMsgIdRef.current = maxId;
-        const inbound = added.filter((m) => m.direction === "inbound").length;
-        if (inbound > 0) currentUnreadRef.current += inbound;
-        maybeMarkRead();
+      const overlaps = resp.items.some((m) => known.has(m.id));
+      if (!overlaps && known.size > 0 && resp.items.length > 0) {
+        await fillForwardGap(id, ac);
+        if (selectedIdRef.current !== id) return;
       }
+      mergePage(resp.items, resp.newer_cursor);
       onConnOk();
     } catch (e) {
       handleSilent(e);
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [handleSilent, maybeMarkRead, onConnOk]);
+  }, [fillForwardGap, handleSilent, mergePage, onConnOk]);
+
+  // ------------------------------------------------------------------ envío
+  const sendMessage = useCallback(
+    async (text: string): Promise<SendResultUi> => {
+      const id = selectedIdRef.current;
+      // Normalización espejo del backend (CRLF/CR → LF); el server re-normaliza igual.
+      const canonical = text.replace(/\r\n?/g, "\n");
+      if (!id) {
+        return { ok: false, error: { message: "No hay conversación seleccionada" } };
+      }
+      if (!canonical.trim()) {
+        return { ok: false, error: { message: "El mensaje está vacío" } };
+      }
+      // Guard de doble click/Enter repetido: un solo envío en vuelo desde esta UI
+      // (el backend además serializa por conversación con SEND_IN_PROGRESS).
+      if (sendingRef.current) {
+        return { ok: false, error: { message: "Ya hay un envío en curso" } };
+      }
+      sendingRef.current = true;
+      setSending(true);
+
+      const tempId = tempIdRef.current--;
+      const optimistic: MessageOut = {
+        id: tempId,
+        conversation_id: id,
+        direction: "outbound",
+        message_type: "text",
+        text_body: canonical,
+        current_status: "pending",
+        provider_timestamp: null,
+        sender_user_id: null,
+        created_at: new Date().toISOString(),
+      };
+      // El optimista NO entra a `known`: cuando el server devuelva el mensaje real,
+      // se reemplaza por id temporal; si el poll lo trae primero, se deduplica.
+      setMessages((prev) => [...prev, optimistic]);
+
+      try {
+        const resp = await whatsappApi.sendMessage(id, {
+          message_type: "text",
+          text: canonical,
+          client_request_id: newClientRequestId(),
+        });
+        if (selectedIdRef.current === id) {
+          const real = resp.message;
+          messageIdsRef.current.add(real.id);
+          if (real.id > lastLoadedMsgIdRef.current) lastLoadedMsgIdRef.current = real.id;
+          setMessages((prev) => {
+            const withoutTemp = prev.filter((m) => m.id !== tempId);
+            if (withoutTemp.some((m) => m.id === real.id)) {
+              return withoutTemp.map((m) => (m.id === real.id ? real : m));
+            }
+            return [...withoutTemp, real].sort(compareMsg);
+          });
+        }
+        return { ok: true, outcome: resp.outcome, duplicate: resp.duplicate };
+      } catch (e) {
+        // Error HTTP del contrato (409/503/400/…): el backend NO creó ninguna fila,
+        // así que el optimista se retira y la causa la muestra el composer.
+        if (selectedIdRef.current === id) {
+          setMessages((prev) => prev.filter((m) => m.id !== tempId));
+        }
+        if (e instanceof ApiError) {
+          if (e.status === 401) onUnauthorized();
+          return {
+            ok: false,
+            error: { code: e.code, status: e.status, message: e.message },
+          };
+        }
+        return { ok: false, error: { message: "No se pudo conectar. Revisá la conexión." } };
+      } finally {
+        sendingRef.current = false;
+        setSending(false);
+      }
+    },
+    [onUnauthorized]
+  );
+
+  const retryMessage = useCallback(
+    async (message: MessageOut): Promise<SendResultUi> => {
+      // Reintento explícito SOLO para fallos definitivos (`failed`), con un
+      // client_request_id NUEVO. Un `unknown` JAMÁS se reintenta desde la UI:
+      // podría duplicar un envío que en realidad salió (contrato 1I.0 §7).
+      if (
+        message.direction !== "outbound" ||
+        message.current_status !== "failed" ||
+        !message.text_body
+      ) {
+        return { ok: false, error: { message: "Este mensaje no admite reintento" } };
+      }
+      return sendMessage(message.text_body);
+    },
+    [sendMessage]
+  );
 
   const resetSelection = useCallback(() => {
     setDetail(null);
@@ -398,5 +572,8 @@ export function useConversationMessages(opts: Options): ConversationMessages {
     select,
     clear,
     reloadDetailAndHistory,
+    sending,
+    sendMessage,
+    retryMessage,
   };
 }

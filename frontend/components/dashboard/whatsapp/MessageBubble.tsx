@@ -1,23 +1,41 @@
 "use client";
 
 import React from "react";
-import { Check, CheckCheck, Clock, AlertTriangle, Paperclip } from "lucide-react";
+import {
+  Check,
+  CheckCheck,
+  Clock,
+  AlertTriangle,
+  HelpCircle,
+  Loader2,
+  Paperclip,
+  RotateCcw,
+} from "lucide-react";
 import { MessageOut } from "@/lib/whatsapp/types";
 import { formatMessageTime, messageTypeLabel } from "@/lib/whatsapp/format";
 
 const OUTBOUND_STATUS: Record<string, { label: string; icon: React.ReactNode }> = {
   pending: { label: "Pendiente", icon: <Clock size={13} /> },
+  sending: { label: "Enviando", icon: <Loader2 size={13} className="animate-spin" /> },
   accepted: { label: "Aceptado", icon: <Clock size={13} /> },
   sent: { label: "Enviado", icon: <Check size={13} /> },
   delivered: { label: "Entregado", icon: <CheckCheck size={13} /> },
   read: { label: "Leído", icon: <CheckCheck size={13} className="text-blue-500" /> },
-  failed: { label: "Falló", icon: <AlertTriangle size={13} className="text-red-500" /> },
+  failed: { label: "Falló", icon: <AlertTriangle size={13} className="text-red-300" /> },
+  // `unknown` NUNCA ofrece reintento: podría duplicar un envío que en realidad salió.
+  unknown: { label: "Sin confirmación", icon: <HelpCircle size={13} /> },
 };
 
-export default function MessageBubble({ message }: { message: MessageOut }) {
+interface Props {
+  message: MessageOut;
+  onRetry?: (message: MessageOut) => void;
+}
+
+export default function MessageBubble({ message, onRetry }: Props) {
   const isOutbound = message.direction === "outbound";
   const isText = message.message_type === "text";
   const status = isOutbound ? OUTBOUND_STATUS[message.current_status] : undefined;
+  const canRetry = isOutbound && message.current_status === "failed" && !!onRetry;
 
   return (
     <div className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}>
@@ -62,6 +80,18 @@ export default function MessageBubble({ message }: { message: MessageOut }) {
             </span>
           )}
         </div>
+        {canRetry && (
+          <div className="flex justify-end mt-1">
+            <button
+              type="button"
+              onClick={() => onRetry!(message)}
+              className="inline-flex items-center gap-1 text-[11px] font-semibold text-green-50 underline decoration-green-200/70 hover:text-white"
+            >
+              <RotateCcw size={11} />
+              Reintentar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

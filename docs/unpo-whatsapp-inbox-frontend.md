@@ -180,10 +180,39 @@ frontend configurado en esta etapa; el código nuevo pasa `tsc --noEmit`, `next 
 
 ## Fuera de alcance (1H)
 
-- Envío de mensajes salientes (el pie del panel lo informa: "El envío de mensajes se habilitará
-  en una próxima etapa").
+- ~~Envío de mensajes salientes~~ → implementado en la etapa **Composer** (ver abajo).
 - Media / adjuntos.
 - SSE / WebSocket (el MVP usa polling).
 - Conversión manual a lead, cierre/reapertura.
 - Conexión de números reales y cualquier cosa de **NORA**.
 - Automatizaciones de IA.
+
+## Etapa Composer — envío de texto desde el panel
+
+`components/dashboard/whatsapp/MessageComposer.tsx`, integrado en `ConversationPanel` sobre
+el contrato outbound de 1I.1 (`POST /whatsapp/conversations/{id}/messages`).
+
+- **Textarea**: Enter envía, Shift+Enter salto (respeta IMEs vía `isComposing`), auto-resize,
+  contador cerca del límite de 4096, borrador SOLO en estado de React (nunca localStorage).
+- **Envío optimista**: burbuja `pending` con id temporal negativo; al responder el server se
+  reemplaza por el mensaje real (dedup si el poll lo trajo primero); ante error HTTP del
+  contrato se retira (el backend no creó fila). Guard de doble envío en UI + el
+  `SEND_IN_PROGRESS` del backend.
+- **Idempotencia**: `client_request_id` = `crypto.randomUUID()` por intento.
+- **Errores mapeados** (nunca detalle crudo): `WHATSAPP_OUTBOUND_DISABLED` → banner
+  persistente y composer bloqueado; `WHATSAPP_TEMPLATE_REQUIRED` → aviso de ventana de 24 h
+  vencida; `SEND_IN_PROGRESS`, `TEXT_TOO_LONG`, 403, 404 → avisos específicos.
+- **Reintento explícito** SOLO para `failed` (nuevo UUID, botón en la burbuja).
+  Un `unknown` **jamás** ofrece reintento (podría duplicar un envío que salió).
+- **Permisos**: el composer se muestra si la línea de la conversación tiene
+  `can_send && is_active` (`GET /whatsapp/lines`); el backend re-valida siempre.
+- **Estados en burbuja**: se agregaron `sending` (spinner) y `unknown` ("Sin confirmación").
+
+### Fix de polling (gap de 1I.0)
+
+`useConversationMessages.pollNewer` ahora pide la página más NUEVA (`direction=backward`
+sin cursor) y la mergea con `mergePage`: agrega ids desconocidos Y **refresca el
+`current_status` de los mensajes ya cargados** (los statuses avanzan por webhook sin crear
+mensajes). Ante un hueco improbable (>50 mensajes entre polls, sin solape con lo conocido)
+se rellena con paginación forward acotada (`fillForwardGap`). El resto del comportamiento
+1H (unread autoritativo, `document.hidden`, serialización) se conserva.
