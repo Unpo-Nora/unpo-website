@@ -157,11 +157,40 @@ export interface GetMessagesParams {
   limit?: number;
 }
 
+// Respuesta del envío saliente (POST /whatsapp/conversations/{id}/messages — 1I.1).
+// `outcome`: "accepted" | "unknown" | "failed" (estado tras el intento síncrono).
+export interface OutboundSendResponse {
+  message: MessageOut;
+  accepted: boolean;
+  duplicate: boolean;
+  outcome: string;
+}
+
+export interface OutboundTextRequest {
+  message_type: "text";
+  text: string;
+  client_request_id: string;
+}
+
+// Códigos estables del contrato outbound que la UI distingue (el resto se trata
+// como error genérico). Nunca se muestra detalle crudo del backend/Meta.
+export const OUTBOUND_ERROR_CODES = {
+  DISABLED: "WHATSAPP_OUTBOUND_DISABLED",
+  TEMPLATE_REQUIRED: "WHATSAPP_TEMPLATE_REQUIRED",
+  SEND_IN_PROGRESS: "WHATSAPP_SEND_IN_PROGRESS",
+  TEXT_TOO_LONG: "WHATSAPP_TEXT_TOO_LONG",
+  TEXT_EMPTY: "WHATSAPP_TEXT_EMPTY",
+} as const;
+
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  // Código estable del contrato (p. ej. WHATSAPP_TEMPLATE_REQUIRED) cuando el
+  // backend responde `detail: {code, message}`; undefined para detail string.
+  code?: string;
+  constructor(status: number, message: string, code?: string) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }

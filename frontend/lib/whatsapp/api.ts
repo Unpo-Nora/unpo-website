@@ -15,6 +15,8 @@ import {
   GetMessagesParams,
   LineOut,
   MessagesResponse,
+  OutboundSendResponse,
+  OutboundTextRequest,
   UnreadCountsResponse,
 } from "./types";
 import { API_URL } from "../api";
@@ -46,20 +48,24 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   });
   if (!res.ok) {
     let detail = res.statusText || `HTTP ${res.status}`;
+    let code: string | undefined;
     try {
       const parsed: unknown = await res.json();
-      if (
-        parsed &&
-        typeof parsed === "object" &&
-        "detail" in parsed &&
-        typeof (parsed as { detail: unknown }).detail === "string"
-      ) {
-        detail = (parsed as { detail: string }).detail;
+      if (parsed && typeof parsed === "object" && "detail" in parsed) {
+        const d = (parsed as { detail: unknown }).detail;
+        if (typeof d === "string") {
+          detail = d;
+        } else if (d && typeof d === "object") {
+          // Contrato outbound (1I.1): detail = {code, message} con códigos ESTABLES.
+          const obj = d as { code?: unknown; message?: unknown };
+          if (typeof obj.code === "string") code = obj.code;
+          if (typeof obj.message === "string") detail = obj.message;
+        }
       }
     } catch {
       // cuerpo no-JSON: se conserva el statusText genérico (nunca crudo/técnico).
     }
-    throw new ApiError(res.status, detail);
+    throw new ApiError(res.status, detail, code);
   }
   if (res.status === 204) {
     return undefined as unknown as T;
@@ -142,5 +148,18 @@ export const whatsappApi = {
   // (sin email ni otros datos). El inbox ya no usa GET /users/.
   getAssignableUsers(signal?: AbortSignal): Promise<AssignableUser[]> {
     return request<AssignableUser[]>("/whatsapp/assignable-users", { signal });
+  },
+
+  // Envío saliente de texto (1I.1). `client_request_id` (UUID del CALLER) es la única
+  // autoridad de idempotencia: reintentar con el MISMO id devuelve el mensaje existente
+  // sin re-enviar; un reintento de un `failed` requiere un id NUEVO.
+  sendMessage(
+    conversationId: number,
+    body: OutboundTextRequest
+  ): Promise<OutboundSendResponse> {
+    return request<OutboundSendResponse>(
+      `/whatsapp/conversations/${conversationId}/messages`,
+      { method: "POST", body }
+    );
   },
 };

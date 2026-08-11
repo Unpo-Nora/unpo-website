@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MessageCircle,
   RefreshCw,
@@ -12,7 +12,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useWhatsAppInboxData } from "@/lib/whatsapp/useWhatsAppInboxData";
 import { useConversationMessages } from "@/lib/whatsapp/useConversationMessages";
 import { useAssignment } from "@/lib/whatsapp/useAssignment";
-import { InboxFilterState } from "@/lib/whatsapp/types";
+import { InboxFilterState, MessageOut } from "@/lib/whatsapp/types";
 import { formatMessageTime } from "@/lib/whatsapp/format";
 import WhatsAppFilters from "./WhatsAppFilters";
 import ConversationList from "./ConversationList";
@@ -95,7 +95,29 @@ export default function WhatsAppInboxDashboard() {
     markReadNow,
     loadOlder,
     reloadDetailAndHistory,
+    sendMessage,
+    retryMessage,
   } = conv;
+
+  // Permiso de envío efectivo de la línea de la conversación abierta (UX: el backend
+  // re-valida SIEMPRE; una línea incluida solo por asignación viene con can_send=false).
+  const canSend = useMemo(() => {
+    const lineId = conv.detail?.line.id;
+    if (!lineId) return false;
+    const line = data.lines.find((l) => l.id === lineId);
+    return !!line && line.is_active && line.can_send;
+  }, [conv.detail, data.lines]);
+
+  const handleRetry = useCallback(
+    (message: MessageOut) => {
+      void retryMessage(message).then((result) => {
+        if (!result.ok && result.error) {
+          setToast({ msg: result.error.message, kind: "err" });
+        }
+      });
+    },
+    [retryMessage]
+  );
 
   const onAssignDone = useCallback(
     (changed: boolean) => {
@@ -300,6 +322,10 @@ export default function WhatsAppInboxDashboard() {
               historyFailed={conv.historyFailed}
               nameFor={data.nameFor}
               onBack={() => setMobilePanelOpen(false)}
+              canSend={canSend}
+              sending={conv.sending}
+              onSend={sendMessage}
+              onRetry={handleRetry}
             />
           ) : (
             <WhatsAppEmptyState

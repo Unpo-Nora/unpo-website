@@ -13,6 +13,7 @@ interface Props {
   hasOlder: boolean;
   loadingOlder: boolean;
   onLoadOlder: () => void;
+  onRetry?: (message: MessageOut) => void;
 }
 
 export default function MessageTimeline({
@@ -22,6 +23,7 @@ export default function MessageTimeline({
   hasOlder,
   loadingOlder,
   onLoadOlder,
+  onRetry,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const prev = useRef<{ firstId: number | null; lastId: number | null; height: number; top: number }>({
@@ -130,7 +132,7 @@ export default function MessageTimeline({
           </div>
         )}
         {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} />
+          <MessageBubble key={m.id} message={m} onRetry={onRetry} />
         ))}
       </div>
       {newCount > 0 && !atBottom && (

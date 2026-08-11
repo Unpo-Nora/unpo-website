@@ -1,15 +1,17 @@
 "use client";
 
 import React from "react";
-import { ArrowLeft, Lock, Phone } from "lucide-react";
+import { ArrowLeft, Phone } from "lucide-react";
 import {
   AssignableUser,
   AssignmentHistoryOut,
   ConversationDetail,
   MessageOut,
 } from "@/lib/whatsapp/types";
+import { SendResultUi } from "@/lib/whatsapp/useConversationMessages";
 import { contactLabel, conversationStatusLabel } from "@/lib/whatsapp/format";
 import MessageTimeline from "./MessageTimeline";
+import MessageComposer from "./MessageComposer";
 import AssignmentControl from "./AssignmentControl";
 import AssignmentHistory from "./AssignmentHistory";
 import WhatsAppEmptyState from "./WhatsAppEmptyState";
@@ -30,6 +32,10 @@ interface Props {
   historyFailed: boolean;
   nameFor: (id: number | null) => string;
   onBack: () => void;
+  canSend: boolean;
+  sending: boolean;
+  onSend: (text: string) => Promise<SendResultUi>;
+  onRetry: (message: MessageOut) => void;
 }
 
 const STATUS_STYLES: Record<string, string> = {
@@ -54,6 +60,10 @@ export default function ConversationPanel({
   historyFailed,
   nameFor,
   onBack,
+  canSend,
+  sending,
+  onSend,
+  onRetry,
 }: Props) {
   if (!detail && !loadingDetail) {
     return (
@@ -127,19 +137,22 @@ export default function ConversationPanel({
           hasOlder={hasOlder}
           loadingOlder={loadingOlder}
           onLoadOlder={onLoadOlder}
+          onRetry={onRetry}
         />
       )}
 
       {/* Historial de asignaciones */}
       {detail && <AssignmentHistory items={historyItems} failed={historyFailed} nameFor={nameFor} />}
 
-      {/* Pie informativo (envío deshabilitado en esta etapa) */}
-      <div className="shrink-0 border-t border-slate-200 px-4 py-3 bg-slate-50">
-        <div className="flex items-center gap-2 text-sm text-slate-400 justify-center">
-          <Lock size={14} />
-          El envío de mensajes se habilitará en una próxima etapa
-        </div>
-      </div>
+      {/* Composer (el backend re-valida permisos, ventana de 24h y feature flag) */}
+      {detail && (
+        <MessageComposer
+          conversationId={detail.conversation_id}
+          canSend={canSend}
+          sending={sending}
+          onSend={onSend}
+        />
+      )}
     </div>
   );
 }
