@@ -1,11 +1,47 @@
 import httpx
+import logging
 import os
+import unicodedata
 from typing import Optional, Dict, Any
+
+logger = logging.getLogger("uvicorn.error")
 
 # Versión por defecto de la Graph API. Overridable via META_GRAPH_API_VERSION
 # (sin valor real hardcodeado). Se lee en tiempo de llamada para que un cambio de
 # entorno no requiera reimportar el módulo.
 DEFAULT_META_API_VERSION = "v19.0"
+
+# --- Detección tolerante de campos del formulario de Lead Ads -----------------
+# Meta expone las preguntas ESTÁNDAR con nombres fijos (`phone_number`, `email`,
+# `full_name`) pero las preguntas PERSONALIZADAS con un nombre generado a partir
+# del texto de la pregunta (p. ej. `¿cuál_es_tu_whatsapp?`). Diagnóstico 2026-08:
+# el 100 % de los leads de Meta llegaba sin teléfono porque el formulario de la
+# agencia pide el teléfono como pregunta personalizada y el código solo reconocía
+# el nombre estándar. La detección se hace por PALABRA CLAVE, normalizando
+# acentos/mayúsculas, para no depender del texto exacto de la pregunta.
+_PHONE_KEYWORDS = ("phone", "telefono", "celular", "whatsapp", "movil", "cel")
+_NAME_KEYWORDS = ("full_name", "first_name", "last_name", "nombre")
+_EMAIL_KEYWORDS = ("email", "e-mail", "correo", "mail")
+
+# Preguntas personalizadas del formulario UNPO (nombres tal como los genera Meta).
+_CUSTOM_FIELD_MAP = {
+    "¿qué_tipo_de_negocio_tenés?": "business_type",
+    "selecciona_tu_volumen_de_compra": "purchase_volume",
+    "¿por_cuál_categoría_estár_más_interesado?": "category_interest",
+    "¿hace_cuántos_años_estás_en_el_mercado?": "experience_level",
+    "¿en_qué_producto_estabas_interesado/a?": "product_interest",
+}
+
+
+def _norm(name: str) -> str:
+    """Minúsculas, sin acentos ni signos ¿?¡! — para comparar nombres de campo."""
+    text = unicodedata.normalize("NFKD", str(name or ""))
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return text.lower().replace("¿", "").replace("?", "").replace("¡", "").replace("!", "").strip()
+
+
+def _matches(norm_name: str, keywords) -> bool:
+    return any(k in norm_name for k in keywords)
 
 
 def _graph_url() -> str:
@@ -77,29 +113,39 @@ def transform_meta_lead_to_schemas(meta_data: Dict[str, Any], brand: str = "unpo
     if meta_data.get("ad_name"):
         transformed_data["ad_name"] = meta_data.get("ad_name")
 
+    unrecognized = []
     for field in field_data:
         name = field.get("name")
         values = field.get("values", [])
-        if not values:
+        if not values or not name:
             continue
 
         value = values[0]
+        norm = _norm(name)
 
-        if name in ["full_name", "first_name", "last_name"]:
-            transformed_data["full_name"] = value
-        elif name == "email":
+        if name in _CUSTOM_FIELD_MAP:
+            transformed_data[_CUSTOM_FIELD_MAP[name]] = value
+        elif name in ("full_name", "first_name", "last_name") or _matches(norm, _NAME_KEYWORDS):
+            # first_name/last_name: si vienen ambos se concatenan; si no, se pisa.
+            if name == "last_name" and transformed_data.get("full_name") not in (None, "Unknown"):
+                transformed_data["full_name"] = f"{transformed_data['full_name']} {value}".strip()
+            else:
+                transformed_data["full_name"] = value
+        elif name in ("email",) or _matches(norm, _EMAIL_KEYWORDS):
             transformed_data["email"] = value
-        elif name in ["phone_number", "phone"]:
-            transformed_data["phone"] = value
-        elif name == "¿qué_tipo_de_negocio_tenés?":
-            transformed_data["business_type"] = value
-        elif name == "selecciona_tu_volumen_de_compra":
-            transformed_data["purchase_volume"] = value
-        elif name == "¿por_cuál_categoría_estár_más_interesado?":
-            transformed_data["category_interest"] = value
-        elif name == "¿hace_cuántos_años_estás_en_el_mercado?":
-            transformed_data["experience_level"] = value
-        elif name == "¿en_qué_producto_estabas_interesado/a?":
-            transformed_data["product_interest"] = value
+        elif name in ("phone_number", "phone") or _matches(norm, _PHONE_KEYWORDS):
+            # Primer teléfono gana (si el formulario tuviera dos preguntas de contacto).
+            if not transformed_data.get("phone"):
+                transformed_data["phone"] = str(value).strip() or None
+        else:
+            unrecognized.append(name)
+
+    # Solo NOMBRES de campo no reconocidos (nunca valores: son datos personales).
+    # Permite detectar un cambio del formulario sin volver a perder datos en silencio.
+    if unrecognized:
+        logger.warning("[meta-leads] campos de formulario no reconocidos: %s", unrecognized)
+    if not transformed_data.get("phone"):
+        logger.warning("[meta-leads] lead sin teléfono; campos recibidos: %s",
+                       [f.get("name") for f in field_data])
 
     return transformed_data
