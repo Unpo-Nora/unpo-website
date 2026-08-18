@@ -58,6 +58,29 @@ def _parse_dt(value: Optional[str]) -> Optional[datetime]:
             return None
 
 
+def _meta_error_summary(response: httpx.Response) -> str:
+    """Resumen seguro del error de Graph API: code/subcode/type y el mensaje de Meta
+    (mensajes de permisos; nunca contienen datos de leads)."""
+    try:
+        err = (response.json() or {}).get("error") or {}
+    except Exception:
+        return "sin detalle"
+    return (f"code={err.get('code')} subcode={err.get('error_subcode')} "
+            f"type={err.get('type')} msg={str(err.get('message', ''))[:160]!r}")
+
+
+def _token_debug(client: httpx.Client, token: str) -> None:
+    """Qué es el token: tipo (USER/PAGE) y permisos concedidos. Sin imprimir el token."""
+    base = _graph_url()
+    r = client.get(f"{base}/debug_token", params={"input_token": token, "access_token": token})
+    if r.status_code != 200:
+        print(f"  (debug_token no disponible: HTTP {r.status_code})")
+        return
+    data = (r.json() or {}).get("data") or {}
+    print(f"Token: type={data.get('type')} valid={data.get('is_valid')} "
+          f"scopes={sorted(data.get('scopes') or [])}")
+
+
 def _get_paginated(client: httpx.Client, url: str, params: dict) -> List[dict]:
     """Recorre la paginación de Graph API (`paging.next`)."""
     items: List[dict] = []
@@ -66,8 +89,11 @@ def _get_paginated(client: httpx.Client, url: str, params: dict) -> List[dict]:
     while next_url:
         r = client.get(next_url, params=next_params)
         if r.status_code != 200:
-            # Sin body crudo (puede traer datos personales): solo status.
-            print(f"  ! Graph API HTTP {r.status_code} en {next_url.split('?')[0].rsplit('/', 1)[-1]}")
+            # Sin body crudo (puede traer datos personales): solo status + el error
+            # ESTRUCTURADO de Meta (code/subcode/type), que es lo que dice qué permiso
+            # falta o si el token es del tipo equivocado.
+            print(f"  ! Graph API HTTP {r.status_code} en {next_url.split('?')[0].rsplit('/', 1)[-1]}"
+                  f" -> {_meta_error_summary(r)}")
             break
         data = r.json()
         items.extend(data.get("data", []))
@@ -104,6 +130,7 @@ def fetch_meta_leads(token: str, page_id: str) -> List[dict]:
     """Todos los leads (≤90 días) de todos los formularios de la(s) Página(s)."""
     base = _graph_url()
     with httpx.Client(timeout=30.0) as client:
+        _token_debug(client, token)
         page_ids = resolve_page_ids(client, token, page_id)
         forms: List[dict] = []
         for pid in page_ids:
