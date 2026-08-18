@@ -53,6 +53,68 @@ class PickPhoneTest(unittest.TestCase):
         self.assertEqual(bf._pick_phone(cands, T0.replace(tzinfo=None) + timedelta(hours=1)), "+a")
 
 
+class ResolvePagesTest(unittest.TestCase):
+    """`/leadgen_forms` exige Page Access Token: se deriva de `/me/accounts`."""
+
+    def _client(self, handler):
+        import httpx
+        return httpx.Client(transport=httpx.MockTransport(handler))
+
+    def test_system_user_token_derives_page_token(self):
+        import httpx
+
+        def handler(request):
+            if request.url.path.endswith("/me/accounts"):
+                return httpx.Response(200, json={"data": [{"id": "PAGE1", "name": "UNPO", "access_token": "PAGE-TOKEN-1"}]})
+            return httpx.Response(400, json={"error": {"code": 190}})
+
+        with self._client(handler) as c:
+            pages = bf.resolve_pages(c, "SYS-TOKEN", "")
+        self.assertEqual(pages, [("PAGE1", "PAGE-TOKEN-1")])
+
+    def test_page_token_falls_back_to_me(self):
+        import httpx
+
+        def handler(request):
+            if request.url.path.endswith("/me/accounts"):
+                return httpx.Response(200, json={"data": []})
+            if request.url.path.endswith("/me"):
+                return httpx.Response(200, json={"id": "PAGE9"})
+            return httpx.Response(400)
+
+        with self._client(handler) as c:
+            pages = bf.resolve_pages(c, "PAGE-TOKEN", "")
+        self.assertEqual(pages, [("PAGE9", "PAGE-TOKEN")])
+
+    def test_forms_and_leads_use_page_token(self):
+        import httpx
+        seen = []
+
+        def handler(request):
+            seen.append((request.url.path, request.url.params.get("access_token")))
+            if request.url.path.endswith("/debug_token"):
+                return httpx.Response(200, json={"data": {"type": "SYSTEM_USER", "is_valid": True, "scopes": []}})
+            if request.url.path.endswith("/me/accounts"):
+                return httpx.Response(200, json={"data": [{"id": "PAGE1", "access_token": "PAGE-TOKEN-1"}]})
+            if request.url.path.endswith("/PAGE1/leadgen_forms"):
+                return httpx.Response(200, json={"data": [{"id": "FORM1", "status": "ACTIVE"}]})
+            if request.url.path.endswith("/FORM1/leads"):
+                return httpx.Response(200, json={"data": [{"id": "L1", "created_time": "2026-08-10T12:00:00+0000",
+                                                             "field_data": [{"name": "email", "values": ["a@example.com"]},
+                                                                            {"name": "phone_number", "values": ["+5490000000001"]}]}]})
+            return httpx.Response(400, json={"error": {"code": 190}})
+
+        RealClient = httpx.Client
+        with mock.patch.object(bf.httpx, "Client",
+                               lambda **kw: RealClient(transport=httpx.MockTransport(handler))):
+            leads = bf.fetch_meta_leads("SYS-TOKEN", "")
+        self.assertEqual(len(leads), 1)
+        forms_call = [t for (p, t) in seen if p.endswith("/leadgen_forms")]
+        leads_call = [t for (p, t) in seen if p.endswith("/FORM1/leads")]
+        self.assertEqual(forms_call, ["PAGE-TOKEN-1"])
+        self.assertEqual(leads_call, ["PAGE-TOKEN-1"])
+
+
 class RunTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

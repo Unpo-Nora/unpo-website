@@ -102,28 +102,36 @@ def _get_paginated(client: httpx.Client, url: str, params: dict) -> List[dict]:
     return items
 
 
-def resolve_page_ids(client: httpx.Client, token: str, page_id_env: str) -> List[str]:
+def resolve_pages(client: httpx.Client, token: str, page_id_env: str) -> List[Tuple[str, str]]:
     """
-    IDs de Página a recorrer. Si META_PAGE_ID está seteado, solo esa. Si no, se
-    autodetectan desde el token: un Page Access Token responde a `/me` con la Página
-    misma; un User token lista sus Páginas en `/me/accounts`.
+    Páginas a recorrer como (page_id, page_token).
+
+    `/{page}/leadgen_forms` EXIGE un Page Access Token (Graph error #190 si se llama con
+    un token de System User o de Usuario). `/me/accounts` devuelve, para cada Página a la
+    que el token tiene acceso, su `access_token` de Página derivado — así el token de
+    System User configurado en Render (que ya tiene pages_manage_ads/leads_retrieval)
+    alcanza sin generar nada nuevo en Meta. Si el token YA es de Página, `/me/accounts`
+    viene vacío y se usa el propio token con el id de `/me`.
+    Con META_PAGE_ID seteado se filtra a esa Página (el token de Página igual sale de
+    `/me/accounts`).
     """
-    if page_id_env:
-        return [page_id_env]
     base = _graph_url()
-    r = client.get(f"{base}/me", params={"access_token": token, "fields": "id,name"})
-    if r.status_code == 200:
-        me = r.json()
-        # Un Page token devuelve directamente la Página.
-        accounts = _get_paginated(client, f"{base}/me/accounts",
-                                  {"access_token": token, "fields": "id,name", "limit": PAGE_SIZE})
-        ids = [a["id"] for a in accounts if a.get("id")]
-        if not ids and me.get("id"):
-            ids = [str(me["id"])]
-        print(f"Páginas detectadas desde el token: {len(ids)}")
-        return ids
-    print(f"  ! No se pudo resolver la Página desde el token (HTTP {r.status_code}). Seteá META_PAGE_ID.")
-    return []
+    accounts = _get_paginated(client, f"{base}/me/accounts",
+                              {"access_token": token, "fields": "id,name,access_token", "limit": PAGE_SIZE})
+    pages: List[Tuple[str, str]] = [
+        (str(a["id"]), a.get("access_token") or token) for a in accounts if a.get("id")
+    ]
+    if not pages:
+        r = client.get(f"{base}/me", params={"access_token": token, "fields": "id"})
+        if r.status_code == 200 and (r.json() or {}).get("id"):
+            pages = [(str(r.json()["id"]), token)]
+    if page_id_env:
+        pages = [p for p in pages if p[0] == page_id_env] or [(page_id_env, token)]
+    print(f"Páginas detectadas desde el token: {len(pages)}"
+          + (" (con Page Access Token derivado)" if any(t != token for _, t in pages) else ""))
+    if not pages:
+        print("  ! No se pudo resolver ninguna Página desde el token. Seteá META_PAGE_ID.")
+    return pages
 
 
 def fetch_meta_leads(token: str, page_id: str) -> List[dict]:
@@ -131,17 +139,18 @@ def fetch_meta_leads(token: str, page_id: str) -> List[dict]:
     base = _graph_url()
     with httpx.Client(timeout=30.0) as client:
         _token_debug(client, token)
-        page_ids = resolve_page_ids(client, token, page_id)
-        forms: List[dict] = []
-        for pid in page_ids:
-            forms.extend(_get_paginated(client, f"{base}/{pid}/leadgen_forms",
-                                        {"access_token": token, "fields": "id,name,status", "limit": PAGE_SIZE}))
+        pages = resolve_pages(client, token, page_id)
+        forms: List[Tuple[dict, str]] = []   # (form, page_token)
+        for pid, ptoken in pages:
+            for form in _get_paginated(client, f"{base}/{pid}/leadgen_forms",
+                                       {"access_token": ptoken, "fields": "id,name,status", "limit": PAGE_SIZE}):
+                forms.append((form, ptoken))
         print(f"Formularios encontrados: {len(forms)}")
         leads: List[dict] = []
-        for form in forms:
+        for form, ptoken in forms:
             form_leads = _get_paginated(
                 client, f"{base}/{form['id']}/leads",
-                {"access_token": token,
+                {"access_token": ptoken,
                  "fields": "id,created_time,field_data,platform,ad_name,campaign_name",
                  "limit": PAGE_SIZE},
             )
