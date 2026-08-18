@@ -1,3 +1,4 @@
+import os
 from sqlalchemy.orm import Session
 from . import models, schemas
 from sqlalchemy import or_
@@ -109,6 +110,13 @@ def delete_capital_iva(db: Session, iva_id: int):
 # para que la asignación de vendedor y el filtro por marca no se desincronicen.
 NORA_SOURCES = ("WEB_NORA", "FACEBOOK_NORA", "INSTAGRAM_NORA")
 
+# Vendedor que recibe TODOS los leads del formulario web UNPO (decisión de negocio
+# 2026-08-18: Martín Trojavcich). Reemplaza la rotación alternada anterior. El
+# número solo se usa para armar el link de WhatsApp que ve el lead; puede
+# sobreescribirse por entorno sin redeploy.
+WEB_UNPO_SELLER_PHONE = os.getenv("WEB_UNPO_SELLER_PHONE", "1144227969")
+NORA_SELLER_PHONE = os.getenv("NORA_SELLER_PHONE", "1131488378")
+
 
 def create_lead(db: Session, lead: schemas.LeadCreate):
     db_lead = models.Lead(**lead.model_dump())
@@ -122,22 +130,13 @@ def create_lead(db: Session, lead: schemas.LeadCreate):
         from datetime import datetime, timezone
         db_lead.contacted_at = datetime.now(timezone.utc)
         
-    # Alternating assignment logic for WEB_UNPO leads
+    # Todos los leads del formulario web UNPO van al mismo vendedor (sin rotación).
     if db_lead.source == "WEB_UNPO":
-        # Find the last WEB_UNPO lead that has an assigned seller phone, locking it to prevent race conditions
-        last_assigned = db.query(models.Lead).filter(
-            models.Lead.source == "WEB_UNPO",
-            models.Lead.assigned_seller_phone.isnot(None)
-        ).with_for_update().order_by(models.Lead.id.desc()).first()
-        
-        if last_assigned and last_assigned.assigned_seller_phone == "1144227969":
-            db_lead.assigned_seller_phone = "1167063123"
-        else:
-            db_lead.assigned_seller_phone = "1144227969"
+        db_lead.assigned_seller_phone = WEB_UNPO_SELLER_PHONE
 
     # NORA leads (web + Meta Lead Ads) are assigned to the dedicated NORA seller.
     elif db_lead.source in NORA_SOURCES:
-        db_lead.assigned_seller_phone = "1131488378"
+        db_lead.assigned_seller_phone = NORA_SELLER_PHONE
 
     db.add(db_lead)
     db.commit()
