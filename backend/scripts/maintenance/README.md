@@ -28,3 +28,23 @@ python -m scripts.maintenance.migrate_capital_iva_system
 
 A futuro, esta lógica correctiva/estructural debería migrar a Alembic (pendiente:
 resolver los dos heads de migraciones).
+
+## `backfill_meta_lead_phones` — teléfonos históricos de leads de Meta (2026-08)
+
+Completa el teléfono de los leads UNPO de Instagram/Facebook que quedaron sin él antes del
+PR #33 (ver `docs/unpo-meta-leads-phone-diagnosis.md`). Vuelve a bajar los leads de los
+formularios de la Página desde la Graph API (retención de Meta: ~90 días) y los cruza con
+los del CRM por email + fecha. **Nunca pisa un teléfono existente; no toca NORA ni web.**
+
+Requiere `DATABASE_URL` y `META_PAGE_ACCESS_TOKEN` (el mismo del webhook). `META_PAGE_ID`
+es opcional (se autodetecta desde el token). **Dry-run por defecto**; no imprime datos
+personales, solo conteos.
+
+```bash
+cd backend
+python -m scripts.maintenance.backfill_meta_lead_phones           # dry-run: muestra cuántos completaría
+python -m scripts.maintenance.backfill_meta_lead_phones --apply   # escribe
+```
+
+Forma recomendada en producción: Render → servicio `unpo-backend` → **Shell** (ya tiene
+las variables de entorno) → correr el dry-run, revisar los conteos, y recién después `--apply`.
