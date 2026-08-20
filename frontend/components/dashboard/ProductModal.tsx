@@ -89,13 +89,19 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
         fetchCategories();
     }, [isOpen, product]);
 
+    // La calculadora solo pisa el precio cuando el usuario TOCÓ alguno de sus campos.
+    // Sin este flag, abrir el modal de un producto sin desglose recalculaba con el
+    // margen default y sobreescribía el precio guardado con solo abrir y guardar.
+    const [calcDirty, setCalcDirty] = useState(false);
+
     // Calculator useEffect
     useEffect(() => {
+        if (!calcDirty) return;
         let baseCost = purchaseCost;
         if (priceOrigin === 'importado') {
             baseCost += importTaxes;
         }
-        
+
         const finalArs = baseCost * (1 + formData.iva_percent / 100) * (1 + profitMargin / 100);
         const calcUsd = finalArs / exchangeRate;
 
@@ -113,7 +119,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                 }
             }));
         }
-    }, [priceOrigin, purchaseCost, importTaxes, profitMargin, formData.iva_percent, exchangeRate]);
+    }, [calcDirty, priceOrigin, purchaseCost, importTaxes, profitMargin, formData.iva_percent, exchangeRate]);
 
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
@@ -138,19 +144,30 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                 is_active: product.is_active !== false,
                 price_breakdown: product.price_breakdown || {}
             });
-            if (product.price_breakdown) {
-                 setPriceOrigin(product.price_breakdown.origin || 'argentina');
-                 setPurchaseCost(product.price_breakdown.purchase_cost || 0);
-                 setImportTaxes(product.price_breakdown.import_taxes || 0);
-                 setProfitMargin(product.price_breakdown.profit_margin || 30);
-            }
+            const breakdown = product.price_breakdown || {};
+            setPriceOrigin(breakdown.origin || 'argentina');
+            // Productos cargados antes de la calculadora (o importados por Excel) tienen
+            // cost_price pero NO price_breakdown: sin este fallback el costo aparecía en 0
+            // y la calculadora quedaba bloqueada (recalcula solo con costo > 0), por lo que
+            // cambiar la ganancia no actualizaba el precio final ni impactaba al guardar.
+            // Number(): la API serializa los decimales como string ("1000.00") y un
+            // string acá rompería la suma de impuestos de importación (concatenaría).
+            setPurchaseCost(Number(breakdown.purchase_cost || product.cost_price) || 0);
+            setImportTaxes(Number(breakdown.import_taxes) || 0);
+            // ?? y no ||: una ganancia guardada de 0% es válida y no debe volver a 30.
+            setProfitMargin(Number(breakdown.profit_margin ?? 30) || 0);
             setExistingImages(product.images || []);
         } else {
             setFormData({ sku: '', name: '', category_id: 0, description: '', stock_quantity: 0, cost_price: 0, price_usd: 0, iva_percent: 21, is_active: true, price_breakdown: {} });
+            setPriceOrigin('argentina');
+            setPurchaseCost(0);
+            setImportTaxes(0);
+            setProfitMargin(30);
             setExistingImages([]);
         }
         setSelectedFiles([]);
         setIsDragging(false);
+        setCalcDirty(false); // recién al tocar la calculadora se vuelve a pisar el precio
     }, [product, isOpen]);
 
     if (!isOpen) return null;
@@ -400,24 +417,24 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                                      <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Origen</label>
-                                        <select value={priceOrigin} onChange={e => setPriceOrigin(e.target.value as any)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none">
+                                        <select value={priceOrigin} onChange={e => { setCalcDirty(true); setPriceOrigin(e.target.value as any); }} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none">
                                             <option value="argentina">Argentina</option>
                                             <option value="importado">Importado</option>
                                         </select>
                                      </div>
                                      <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Costo Compra (ARS)</label>
-                                        <input type="number" min="0" value={purchaseCost} onChange={e => setPurchaseCost(parseFloat(e.target.value)||0)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
+                                        <input type="number" min="0" value={purchaseCost} onChange={e => { setCalcDirty(true); setPurchaseCost(parseFloat(e.target.value)||0); }} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
                                      </div>
                                      {priceOrigin === 'importado' && (
                                          <div className="space-y-1">
                                             <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Impuestos Imp. (ARS)</label>
-                                            <input type="number" min="0" value={importTaxes} onChange={e => setImportTaxes(parseFloat(e.target.value)||0)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
+                                            <input type="number" min="0" value={importTaxes} onChange={e => { setCalcDirty(true); setImportTaxes(parseFloat(e.target.value)||0); }} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
                                          </div>
                                      )}
                                      <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Ganancia (%)</label>
-                                        <input type="number" min="0" value={profitMargin} onChange={e => setProfitMargin(parseFloat(e.target.value)||0)} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
+                                        <input type="number" min="0" value={profitMargin} onChange={e => { setCalcDirty(true); setProfitMargin(parseFloat(e.target.value)||0); }} className="w-full px-3 py-2 bg-white border border-blue-200 rounded-lg text-sm font-bold text-slate-700 outline-none" />
                                      </div>
                                 </div>
                             </div>
@@ -430,7 +447,7 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                         type="number"
                                         min="0"
                                         value={formData.iva_percent}
-                                        onChange={(e) => setFormData({ ...formData, iva_percent: parseFloat(e.target.value) || 0 })}
+                                        onChange={(e) => { setCalcDirty(true); setFormData({ ...formData, iva_percent: parseFloat(e.target.value) || 0 }); }}
                                         className="w-full px-4 py-3 bg-white border border-blue-200 rounded-xl focus:border-blue-500 outline-none text-slate-700 font-bold"
                                     />
                                 </div>
@@ -451,6 +468,11 @@ export default function ProductModal({ isOpen, onClose, onSave, product }: Produ
                                         />
                                     </div>
                                     <p className="text-[10px] text-slate-500 text-right mt-1 font-medium">Cotización Actual Dólar: ${exchangeRate}</p>
+                                    {purchaseCost <= 0 && (
+                                        <p className="text-[10px] text-amber-600 text-right font-semibold">
+                                            Sin costo de compra la calculadora no recalcula: cargá el costo o editá el precio USD a mano.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         </div>
